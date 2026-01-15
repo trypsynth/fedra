@@ -1,7 +1,8 @@
 use std::env;
+
 use embed_manifest::{
 	embed_manifest,
-	manifest::{DpiAwareness, HeapType, ActiveCodePage, Setting, SupportedOS::*},
+	manifest::{ActiveCodePage, DpiAwareness, HeapType, Setting, SupportedOS::*},
 	new_manifest,
 };
 
