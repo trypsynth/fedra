@@ -1,7 +1,7 @@
 use reqwest::{Url, blocking::Client};
 use serde::Deserialize;
 
-use crate::error::Result;
+use crate::error::{Context, Result};
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
 
@@ -19,7 +19,7 @@ pub struct AppCredentials {
 
 impl MastodonClient {
 	pub fn new(base_url: Url) -> Result<Self> {
-		let http = Client::builder().user_agent("Fedra/0.1").build()?;
+		let http = Client::builder().user_agent("Fedra/0.1").build().context("Failed to create HTTP client")?;
 		Ok(Self { base_url, http })
 	}
 
@@ -34,9 +34,11 @@ impl MastodonClient {
 				("scopes", DEFAULT_SCOPES),
 				("website", ""),
 			])
-			.send()?
-			.error_for_status()?;
-		let payload: RegisterAppResponse = response.json()?;
+			.send()
+			.context("Failed to register app with instance")?
+			.error_for_status()
+			.context("Instance rejected app registration")?;
+		let payload: RegisterAppResponse = response.json().context("Invalid response from instance")?;
 		Ok(AppCredentials { client_id: payload.client_id, client_secret: payload.client_secret })
 	}
 
@@ -63,9 +65,11 @@ impl MastodonClient {
 				("code", code),
 				("scope", DEFAULT_SCOPES),
 			])
-			.send()?
-			.error_for_status()?;
-		let payload: TokenResponse = response.json()?;
+			.send()
+			.context("Failed to exchange token")?
+			.error_for_status()
+			.context("Instance rejected token exchange")?;
+		let payload: TokenResponse = response.json().context("Invalid token response")?;
 		Ok(payload.access_token)
 	}
 }

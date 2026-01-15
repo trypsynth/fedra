@@ -15,7 +15,7 @@ A native Mastodon desktop client for Windows, built with Rust and wxWidgets via 
 ```
 src/
 ├── main.rs      # Application entry, UI construction, account setup flow
-├── error.rs     # Centralized error types with thiserror
+├── error.rs     # Simplified error handling with anyhow
 ├── auth.rs      # OAuth authentication (local listener + OOB fallback)
 ├── config.rs    # Configuration persistence (JSON in APPDATA)
 └── mastodon.rs  # Mastodon API client (blocking reqwest)
@@ -27,23 +27,23 @@ src/
 |-------|---------|
 | `wxdragon` | Rust bindings to wxWidgets for native UI |
 | `reqwest` | HTTP client with blocking mode, form encoding, JSON, rustls |
-| `thiserror` | Derive macro for clean error type definitions |
+| `anyhow` | Ergonomic error handling with context |
 | `serde` / `serde_json` | Configuration serialization |
 | `url` | URL parsing and manipulation |
 | `webbrowser` | Open authorization URLs in default browser |
 
 ### Error Handling
 
-All errors flow through a centralized `Error` type in `error.rs`:
+Uses `anyhow` for simple, ergonomic error handling:
 
-- Uses `thiserror` for derive macros and automatic `Display` + `Error` implementations
-- Preserves error chains with `#[source]` attributes
-- Provides `user_message()` for display in UI dialogs
-- Extension trait `ResultExt` for adding semantic context
+- `anyhow::Result<T>` as the standard return type
+- `.context("message")` to add context to errors
+- `error::user_message()` extracts user-friendly messages for UI dialogs
 
 ```rust
 // Example usage
-client.register_app(name, uri).context_app_registration()?;
+let listener = TcpListener::bind("127.0.0.1:0")
+    .context("Failed to bind OAuth listener")?;
 ```
 
 ### Authentication Flow

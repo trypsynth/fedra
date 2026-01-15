@@ -8,8 +8,6 @@ mod mastodon;
 use url::Url;
 use wxdragon::prelude::*;
 
-use crate::error::Error;
-
 fn parse_instance_url(value: &str) -> Option<Url> {
 	let trimmed = value.trim();
 	if trimmed.is_empty() {
@@ -72,8 +70,8 @@ fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
 	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
 }
 
-fn show_error(frame: &Frame, err: &Error) {
-	let dialog = MessageDialog::builder(frame, err.user_message(), "Fedra")
+fn show_error(frame: &Frame, err: &anyhow::Error) {
+	let dialog = MessageDialog::builder(frame, error::user_message(err), "Fedra")
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
 		.build();
 	dialog.show_modal();
@@ -96,15 +94,18 @@ fn setup_new_account(frame: &Frame) -> Option<config::Account> {
 		}
 	};
 	let mut account = config::Account::new(instance_url.to_string());
-	if let Ok(credentials) = auth::oauth_with_local_listener(&client, "Fedra") {
-		account.access_token = Some(credentials.access_token);
-		account.client_id = Some(credentials.client_id);
-		account.client_secret = Some(credentials.client_secret);
+	// Try OAuth with local listener
+	if let Ok(result) = auth::oauth_with_local_listener(&client, "Fedra") {
+		account.access_token = Some(result.access_token);
+		account.client_id = Some(result.client_id);
+		account.client_secret = Some(result.client_secret);
 		return Some(account);
 	}
+	// Fall back to out-of-band OAuth
 	if let Some(acc) = try_oob_oauth(frame, &client, &instance_url, &mut account) {
 		return Some(acc);
 	}
+	// Fall back to manual token entry
 	let token = prompt_for_access_token(frame, &instance_url)?;
 	account.access_token = Some(token);
 	Some(account)
