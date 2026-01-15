@@ -1,0 +1,10 @@
+[package]
+name = "fedra"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wxdragon = "0.9.7"
+
+[build-dependencies]
+embed-manifest = "1.5.0"
