@@ -27,12 +27,15 @@ impl Default for Config {
 pub struct Account {
 	pub id: String,
 	pub instance: String,
+	pub access_token: Option<String>,
+	pub client_id: Option<String>,
+	pub client_secret: Option<String>,
 	pub acct: Option<String>,
 }
 
 impl Account {
 	pub fn new(instance: String) -> Self {
-		Self { id: new_account_id(), instance, acct: None }
+		Self { id: new_account_id(), instance, access_token: None, client_id: None, client_secret: None, acct: None }
 	}
 }
 
@@ -61,9 +64,6 @@ impl ConfigStore {
 		fs::write(&self.path, contents)
 	}
 
-	pub fn path(&self) -> &Path {
-		&self.path
-	}
 }
 
 fn config_path() -> PathBuf {

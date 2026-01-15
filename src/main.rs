@@ -1,13 +1,65 @@
 #![windows_subsystem = "windows"]
 
 mod config;
+mod mastodon;
 
+use url::Url;
 use wxdragon::prelude::*;
 
-fn prompt_for_instance(frame: &Frame) -> Option<String> {
-	let dialog = TextEntryDialog::builder(frame, "Enter your Mastodon instance", "Add Account")
-		.with_style(TextEntryDialogStyle::Default | TextEntryDialogStyle::ProcessEnter)
+fn parse_instance_url(value: &str) -> Option<Url> {
+	let trimmed = value.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	let candidate = if trimmed.contains("://") { trimmed.to_string() } else { format!("https://{}", trimmed) };
+	let mut url = Url::parse(&candidate).ok()?;
+	if url.host_str().is_none() {
+		return None;
+	}
+	if url.scheme() != "https" && url.scheme() != "http" {
+		return None;
+	}
+	url.set_fragment(None);
+	url.set_query(None);
+	url.set_path("/");
+	Some(url)
+}
+
+fn prompt_for_instance(frame: &Frame) -> Option<Url> {
+	loop {
+		let dialog =
+			TextEntryDialog::builder(frame, "Enter your Mastodon instance", "Add Account")
+				.with_style(TextEntryDialogStyle::Default | TextEntryDialogStyle::ProcessEnter)
+				.build();
+		let result = dialog.show_modal();
+		if result != ID_OK {
+			dialog.destroy();
+			return None;
+		}
+		let value = dialog.get_value().unwrap_or_default();
+		dialog.destroy();
+		if let Some(instance) = parse_instance_url(&value) {
+			return Some(instance);
+		}
+		let message = MessageDialog::builder(
+			frame,
+			"Please enter a valid instance URL.",
+			"Invalid Instance",
+		)
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
 		.build();
+		message.show_modal();
+	}
+}
+
+fn prompt_for_oauth_code(frame: &Frame, instance: &Url) -> Option<String> {
+	let dialog = TextEntryDialog::builder(
+		frame,
+		&format!("After authorizing Fedra on {}, paste the code here.", instance.host_str().unwrap_or("your instance")),
+		"Authorize Fedra",
+	)
+	.with_style(TextEntryDialogStyle::Default | TextEntryDialogStyle::ProcessEnter)
+	.build();
 	let result = dialog.show_modal();
 	if result != ID_OK {
 		dialog.destroy();
@@ -15,8 +67,15 @@ fn prompt_for_instance(frame: &Frame) -> Option<String> {
 	}
 	let value = dialog.get_value().unwrap_or_default();
 	dialog.destroy();
-	let instance = value.trim().to_string();
-	return Some(instance);
+	let trimmed = value.trim();
+	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+}
+
+fn show_error(frame: &Frame, message: &str) {
+	let dialog = MessageDialog::builder(frame, message, "Fedra")
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+		.build();
+	dialog.show_modal();
 }
 
 fn main() {
@@ -48,15 +107,61 @@ fn main() {
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
 		if config.accounts.is_empty() {
-			let instance = prompt_for_instance(&frame);
-			let instance = match instance {
+			let instance_url = prompt_for_instance(&frame);
+			let instance_url = match instance_url {
 				Some(value) => value,
 				None => {
 					frame.close(true);
 					return;
 				}
 			};
-			config.accounts.push(config::Account::new(instance));
+			let client = match mastodon::MastodonClient::new(instance_url.clone()) {
+				Ok(client) => client,
+				Err(_) => {
+					show_error(&frame, "Could not create a Mastodon client for that instance.");
+					frame.close(true);
+					return;
+				}
+			};
+			let credentials = match client.register_app("Fedra") {
+				Ok(credentials) => credentials,
+				Err(_) => {
+					show_error(&frame, "Failed to register the app with your instance.");
+					frame.close(true);
+					return;
+				}
+			};
+			let authorize_url = match client.build_authorize_url(&credentials) {
+				Ok(url) => url,
+				Err(_) => {
+					show_error(&frame, "Failed to build the authorization URL.");
+					frame.close(true);
+					return;
+				}
+			};
+			if webbrowser::open(authorize_url.as_str()).is_err() {
+				show_error(&frame, "Could not open your browser. Please open the URL manually.");
+			}
+			let code = match prompt_for_oauth_code(&frame, &instance_url) {
+				Some(code) => code,
+				None => {
+					frame.close(true);
+					return;
+				}
+			};
+			let access_token = match client.exchange_token(&credentials, &code) {
+				Ok(token) => token,
+				Err(_) => {
+					show_error(&frame, "Failed to exchange the authorization code for a token.");
+					frame.close(true);
+					return;
+				}
+			};
+			let mut account = config::Account::new(instance_url.to_string());
+			account.access_token = Some(access_token);
+			account.client_id = Some(credentials.client_id);
+			account.client_secret = Some(credentials.client_secret);
+			config.accounts.push(account);
 			let _ = store.save(&config);
 		}
 		frame.show(true);
