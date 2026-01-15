@@ -1,6 +1,6 @@
 use std::{
 	env, fs, io,
-	path::{Path, PathBuf},
+	path::PathBuf,
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -63,7 +63,6 @@ impl ConfigStore {
 		let contents = serde_json::to_string_pretty(config).unwrap_or_else(|_| "{}".to_string());
 		fs::write(&self.path, contents)
 	}
-
 }
 
 fn config_path() -> PathBuf {

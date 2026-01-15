@@ -2,7 +2,6 @@ use reqwest::{Url, blocking::Client};
 use serde::Deserialize;
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
-pub const OOB_REDIRECT_URI: &str = "urn:ietf:wg:oauth:2.0:oob";
 
 #[derive(Debug, Clone)]
 pub struct MastodonClient {
@@ -42,14 +41,14 @@ impl MastodonClient {
 		Ok(Self { base_url, http })
 	}
 
-	pub fn register_app(&self, app_name: &str) -> Result<AppCredentials, MastodonError> {
+	pub fn register_app(&self, app_name: &str, redirect_uri: &str) -> Result<AppCredentials, MastodonError> {
 		let url = self.base_url.join("api/v1/apps")?;
 		let response = self
 			.http
 			.post(url)
 			.form(&[
 				("client_name", app_name),
-				("redirect_uris", OOB_REDIRECT_URI),
+				("redirect_uris", redirect_uri),
 				("scopes", DEFAULT_SCOPES),
 				("website", ""),
 			])
@@ -59,17 +58,22 @@ impl MastodonClient {
 		Ok(AppCredentials { client_id: payload.client_id, client_secret: payload.client_secret })
 	}
 
-	pub fn build_authorize_url(&self, credentials: &AppCredentials) -> Result<Url, MastodonError> {
+	pub fn build_authorize_url(&self, credentials: &AppCredentials, redirect_uri: &str) -> Result<Url, MastodonError> {
 		let mut url = self.base_url.join("oauth/authorize")?;
 		url.query_pairs_mut()
 			.append_pair("client_id", &credentials.client_id)
-			.append_pair("redirect_uri", OOB_REDIRECT_URI)
+			.append_pair("redirect_uri", redirect_uri)
 			.append_pair("response_type", "code")
 			.append_pair("scope", DEFAULT_SCOPES);
 		Ok(url)
 	}
 
-	pub fn exchange_token(&self, credentials: &AppCredentials, code: &str) -> Result<String, MastodonError> {
+	pub fn exchange_token(
+		&self,
+		credentials: &AppCredentials,
+		code: &str,
+		redirect_uri: &str,
+	) -> Result<String, MastodonError> {
 		let url = self.base_url.join("oauth/token")?;
 		let response = self
 			.http
@@ -77,7 +81,7 @@ impl MastodonClient {
 			.form(&[
 				("client_id", credentials.client_id.as_str()),
 				("client_secret", credentials.client_secret.as_str()),
-				("redirect_uri", OOB_REDIRECT_URI),
+				("redirect_uri", redirect_uri),
 				("grant_type", "authorization_code"),
 				("code", code),
 				("scope", DEFAULT_SCOPES),
