@@ -6,6 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::Result;
+
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_VERSION: u32 = 1;
@@ -56,12 +58,19 @@ impl ConfigStore {
 		}
 	}
 
-	pub fn save(&self, config: &Config) -> io::Result<()> {
+	pub fn save(&self, config: &Config) -> Result<()> {
 		if let Some(parent) = self.path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		let contents = serde_json::to_string_pretty(config).unwrap_or_else(|_| "{}".to_string());
-		fs::write(&self.path, contents)
+		let contents = serde_json::to_string_pretty(config)?;
+		fs::write(&self.path, contents)?;
+		Ok(())
+	}
+}
+
+impl Default for ConfigStore {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

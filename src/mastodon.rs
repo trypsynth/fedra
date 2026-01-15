@@ -1,6 +1,8 @@
 use reqwest::{Url, blocking::Client};
 use serde::Deserialize;
 
+use crate::error::Result;
+
 pub const DEFAULT_SCOPES: &str = "read write follow";
 
 #[derive(Debug, Clone)]
@@ -15,33 +17,13 @@ pub struct AppCredentials {
 	pub client_secret: String,
 }
 
-#[derive(Debug)]
-pub enum MastodonError {
-	Url,
-	Http,
-}
-
-impl From<url::ParseError> for MastodonError {
-	fn from(value: url::ParseError) -> Self {
-		let _ = value;
-		Self::Url
-	}
-}
-
-impl From<reqwest::Error> for MastodonError {
-	fn from(value: reqwest::Error) -> Self {
-		let _ = value;
-		Self::Http
-	}
-}
-
 impl MastodonClient {
-	pub fn new(base_url: Url) -> Result<Self, MastodonError> {
+	pub fn new(base_url: Url) -> Result<Self> {
 		let http = Client::builder().user_agent("Fedra/0.1").build()?;
 		Ok(Self { base_url, http })
 	}
 
-	pub fn register_app(&self, app_name: &str, redirect_uri: &str) -> Result<AppCredentials, MastodonError> {
+	pub fn register_app(&self, app_name: &str, redirect_uri: &str) -> Result<AppCredentials> {
 		let url = self.base_url.join("api/v1/apps")?;
 		let response = self
 			.http
@@ -58,7 +40,7 @@ impl MastodonClient {
 		Ok(AppCredentials { client_id: payload.client_id, client_secret: payload.client_secret })
 	}
 
-	pub fn build_authorize_url(&self, credentials: &AppCredentials, redirect_uri: &str) -> Result<Url, MastodonError> {
+	pub fn build_authorize_url(&self, credentials: &AppCredentials, redirect_uri: &str) -> Result<Url> {
 		let mut url = self.base_url.join("oauth/authorize")?;
 		url.query_pairs_mut()
 			.append_pair("client_id", &credentials.client_id)
@@ -68,12 +50,7 @@ impl MastodonClient {
 		Ok(url)
 	}
 
-	pub fn exchange_token(
-		&self,
-		credentials: &AppCredentials,
-		code: &str,
-		redirect_uri: &str,
-	) -> Result<String, MastodonError> {
+	pub fn exchange_token(&self, credentials: &AppCredentials, code: &str, redirect_uri: &str) -> Result<String> {
 		let url = self.base_url.join("oauth/token")?;
 		let response = self
 			.http

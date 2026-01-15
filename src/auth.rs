@@ -7,21 +7,14 @@ use std::{
 
 use url::Url;
 
-use crate::mastodon::MastodonClient;
+use crate::{
+	error::{Error, Result, ResultExt},
+	mastodon::MastodonClient,
+};
 
 const CALLBACK_PATH: &str = "/oauth/callback";
 const LISTEN_TIMEOUT: Duration = Duration::from_secs(120);
 pub const OOB_REDIRECT_URI: &str = "urn:ietf:wg:oauth:2.0:oob";
-
-#[derive(Debug)]
-pub enum AuthError {
-	Listen,
-	Register,
-	AuthorizeUrl,
-	Browser,
-	Timeout,
-	TokenExchange,
-}
 
 pub struct OAuthCredentials {
 	pub access_token: String,
@@ -29,18 +22,15 @@ pub struct OAuthCredentials {
 	pub client_secret: String,
 }
 
-pub fn oauth_with_local_listener(client: &MastodonClient, app_name: &str) -> Result<OAuthCredentials, AuthError> {
-	let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| AuthError::Listen)?;
-	let addr = listener.local_addr().map_err(|_| AuthError::Listen)?;
+pub fn oauth_with_local_listener(client: &MastodonClient, app_name: &str) -> Result<OAuthCredentials> {
+	let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| Error::ListenerBind)?;
+	let addr = listener.local_addr().map_err(|_| Error::ListenerBind)?;
 	let redirect_uri = format!("http://127.0.0.1:{}{}", addr.port(), CALLBACK_PATH);
-	let credentials = client.register_app(app_name, &redirect_uri).map_err(|_| AuthError::Register)?;
-	let authorize_url = client.build_authorize_url(&credentials, &redirect_uri).map_err(|_| AuthError::AuthorizeUrl)?;
-	if webbrowser::open(authorize_url.as_str()).is_err() {
-		return Err(AuthError::Browser);
-	}
-	let code = wait_for_code(listener, addr.port()).ok_or(AuthError::Timeout)?;
-	let access_token =
-		client.exchange_token(&credentials, &code, &redirect_uri).map_err(|_| AuthError::TokenExchange)?;
+	let credentials = client.register_app(app_name, &redirect_uri).context_app_registration()?;
+	let authorize_url = client.build_authorize_url(&credentials, &redirect_uri).context_authorize_url()?;
+	webbrowser::open(authorize_url.as_str()).map_err(|_| Error::BrowserOpen)?;
+	let code = wait_for_code(listener, addr.port()).ok_or(Error::OAuthTimeout)?;
+	let access_token = client.exchange_token(&credentials, &code, &redirect_uri).context_token_exchange()?;
 	Ok(OAuthCredentials { access_token, client_id: credentials.client_id, client_secret: credentials.client_secret })
 }
 
@@ -51,10 +41,7 @@ fn wait_for_code(listener: TcpListener, port: u16) -> Option<String> {
 		match listener.accept() {
 			Ok((mut stream, _)) => {
 				let mut buffer = [0u8; 4096];
-				let size = match stream.read(&mut buffer) {
-					Ok(size) => size,
-					Err(_) => return None,
-				};
+				let size = stream.read(&mut buffer).ok()?;
 				let request = String::from_utf8_lossy(&buffer[..size]);
 				let code = extract_code(&request, port);
 				let _ = respond_ok(&mut stream);
@@ -73,20 +60,13 @@ fn wait_for_code(listener: TcpListener, port: u16) -> Option<String> {
 
 fn extract_code(request: &str, port: u16) -> Option<String> {
 	let line = request.lines().next()?;
-	let line = line.strip_prefix("GET ")?;
-	let path_end = line.find(' ')?;
-	let path = &line[..path_end];
+	let path = line.strip_prefix("GET ")?.split_whitespace().next()?;
 	if !path.starts_with(CALLBACK_PATH) {
 		return None;
 	}
 	let full = format!("http://127.0.0.1:{}{}", port, path);
 	let url = Url::parse(&full).ok()?;
-	for (key, value) in url.query_pairs() {
-		if key == "code" {
-			return Some(value.to_string());
-		}
-	}
-	None
+	url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.to_string())
 }
 
 fn respond_ok(stream: &mut impl Write) -> std::io::Result<()> {
