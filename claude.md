@@ -14,11 +14,13 @@ A native Mastodon desktop client for Windows, built with Rust and wxWidgets via 
 
 ```
 src/
-├── main.rs      # Application entry, UI construction, account setup flow
+├── main.rs      # Application entry, UI construction, event handling
 ├── error.rs     # Simplified error handling with anyhow
+├── dialogs.rs   # UI dialogs (prompts, messages, errors)
 ├── auth.rs      # OAuth authentication (local listener + OOB fallback)
 ├── config.rs    # Configuration persistence (JSON in APPDATA)
-└── mastodon.rs  # Mastodon API client (blocking reqwest)
+├── mastodon.rs  # Mastodon API client (HTTP, status types)
+└── streaming.rs # WebSocket streaming for real-time updates
 ```
 
 ### Key Dependencies
@@ -27,8 +29,9 @@ src/
 |-------|---------|
 | `wxdragon` | Rust bindings to wxWidgets for native UI |
 | `reqwest` | HTTP client with blocking mode, form encoding, JSON, rustls |
+| `tungstenite` | WebSocket client for streaming API |
 | `anyhow` | Ergonomic error handling with context |
-| `serde` / `serde_json` | Configuration serialization |
+| `serde` / `serde_json` | Configuration and API response serialization |
 | `url` | URL parsing and manipulation |
 | `webbrowser` | Open authorization URLs in default browser |
 
@@ -51,6 +54,16 @@ let listener = TcpListener::bind("127.0.0.1:0")
 1. Try OAuth with local TCP listener (port 0 for auto-assignment)
 2. Fall back to out-of-band (OOB) code entry via dialog
 3. Fall back to manual access token entry
+
+### Timeline & Streaming
+
+The app prefers WebSocket streaming over polling to reduce server load:
+
+1. On startup, fetch initial timeline via REST API (`GET /api/v1/timelines/home`)
+2. Connect to streaming API (`wss://instance/api/v1/streaming?stream=user`)
+3. Background thread processes WebSocket messages
+4. Timer polls the channel every 100ms to update UI
+5. Automatic reconnection with exponential backoff on disconnect
 
 ### Configuration
 
@@ -93,19 +106,21 @@ Configured in `rustfmt.toml`:
 Early development. Features implemented:
 - OAuth authentication with local callback listener
 - Account persistence in JSON config
+- Home timeline display with real-time streaming updates
 - Basic posting via menu (Ctrl+N)
-
-UI shows timeline selector but does not yet fetch or display posts.
+- Manual refresh (F5)
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+N | New Post |
+| F5 | Refresh Timeline |
 
 ## Next Steps
 
-- Fetch and display home timeline
 - Expand post dialog with character count and visibility options
 - Support multiple accounts switching
-- Timeline refresh and streaming
+- Display post details (CW, boosts, favorites)
+- Local and Federated timelines
+- Notifications
