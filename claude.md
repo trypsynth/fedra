@@ -90,12 +90,22 @@ Configured in `rustfmt.toml`:
 
 ## Current Status
 
-Early development. Basic OAuth flow and account persistence implemented. UI shows timeline selector but does not yet fetch or display posts.
+Early development. Features implemented:
+- OAuth authentication with local callback listener
+- Account persistence in JSON config
+- Basic posting via menu (Ctrl+N)
+
+UI shows timeline selector but does not yet fetch or display posts.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+N | New Post |
 
 ## Next Steps
 
 - Fetch and display home timeline
-- Implement posting functionality
-- Add keyboard shortcuts
+- Expand post dialog with character count and visibility options
 - Support multiple accounts switching
 - Timeline refresh and streaming

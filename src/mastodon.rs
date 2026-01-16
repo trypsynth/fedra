@@ -72,6 +72,19 @@ impl MastodonClient {
 		let payload: TokenResponse = response.json().context("Invalid token response")?;
 		Ok(payload.access_token)
 	}
+
+	pub fn post_status(&self, access_token: &str, status: &str) -> Result<()> {
+		let url = self.base_url.join("api/v1/statuses")?;
+		self.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&[("status", status)])
+			.send()
+			.context("Failed to post status")?
+			.error_for_status()
+			.context("Instance rejected status post")?;
+		Ok(())
+	}
 }
 
 #[derive(Debug, Deserialize)]

@@ -5,8 +5,12 @@ mod config;
 mod error;
 mod mastodon;
 
+use std::{cell::RefCell, rc::Rc};
+
 use url::Url;
 use wxdragon::prelude::*;
+
+const ID_NEW_POST: i32 = 1001;
 
 fn parse_instance_url(value: &str) -> Option<Url> {
 	let trimmed = value.trim();
@@ -77,9 +81,23 @@ fn show_error(frame: &Frame, err: &anyhow::Error) {
 	dialog.show_modal();
 }
 
+fn show_error_msg(frame: &Frame, message: &str) {
+	let dialog = MessageDialog::builder(frame, message, "Fedra")
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+		.build();
+	dialog.show_modal();
+}
+
 fn show_warning(frame: &Frame, message: &str, title: &str) {
 	let dialog = MessageDialog::builder(frame, message, title)
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
+		.build();
+	dialog.show_modal();
+}
+
+fn show_info(frame: &Frame, message: &str, title: &str) {
+	let dialog = MessageDialog::builder(frame, message, title)
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconInformation)
 		.build();
 	dialog.show_modal();
 }
@@ -146,6 +164,13 @@ fn try_oob_oauth(
 	Some(account.clone())
 }
 
+fn build_menu_bar() -> MenuBar {
+	let post_menu = Menu::builder()
+		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
+		.build();
+	MenuBar::builder().append(post_menu, "&Post").build()
+}
+
 fn build_main_ui(frame: &Frame) {
 	let panel = Panel::builder(frame).build();
 	let sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -166,10 +191,64 @@ fn build_main_ui(frame: &Frame) {
 	frame.set_sizer(frame_sizer, true);
 }
 
+fn do_new_post(frame: &Frame, config: &config::Config) {
+	let account = match config.accounts.first() {
+		Some(acc) => acc,
+		None => {
+			show_error_msg(frame, "No account configured.");
+			return;
+		}
+	};
+	let access_token = match &account.access_token {
+		Some(token) => token,
+		None => {
+			show_error_msg(frame, "Account has no access token.");
+			return;
+		}
+	};
+	let dialog = TextEntryDialog::builder(frame, "What's on your mind?", "New Post")
+		.with_style(TextEntryDialogStyle::Default | TextEntryDialogStyle::ProcessEnter)
+		.build();
+	if dialog.show_modal() != ID_OK {
+		dialog.destroy();
+		return;
+	}
+	let content = dialog.get_value().unwrap_or_default();
+	dialog.destroy();
+	let content = content.trim();
+	if content.is_empty() {
+		return;
+	}
+	let instance_url = match Url::parse(&account.instance) {
+		Ok(url) => url,
+		Err(_) => {
+			show_error_msg(frame, "Invalid instance URL in account.");
+			return;
+		}
+	};
+	let client = match mastodon::MastodonClient::new(instance_url) {
+		Ok(c) => c,
+		Err(err) => {
+			show_error(frame, &err);
+			return;
+		}
+	};
+	match client.post_status(access_token, content) {
+		Ok(()) => {
+			show_info(frame, "Your post has been published!", "Posted");
+		}
+		Err(err) => {
+			show_error(frame, &err);
+		}
+	}
+}
+
 fn main() {
 	let _ = wxdragon::main(|_| {
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
+		let menu_bar = build_menu_bar();
+		frame.set_menu_bar(menu_bar);
 		build_main_ui(&frame);
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
@@ -185,6 +264,13 @@ fn main() {
 				}
 			}
 		}
+		let config = Rc::new(RefCell::new(config));
+		let config_clone = config.clone();
+		frame.on_menu_selected(move |event| {
+			if event.get_id() == ID_NEW_POST {
+				do_new_post(&frame, &config_clone.borrow());
+			}
+		});
 		frame.show(true);
 		frame.centre();
 	});
