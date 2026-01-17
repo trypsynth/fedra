@@ -88,10 +88,11 @@ pub struct PostResult {
 	pub visibility: PostVisibility,
 }
 
-const MAX_POST_CHARS: usize = 500;
+const DEFAULT_MAX_POST_CHARS: usize = 500;
 
-pub fn prompt_for_post(frame: &Frame) -> Option<PostResult> {
-	let dialog = Dialog::builder(frame, "Post - 0 of 500 characters").with_size(500, 300).build();
+pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostResult> {
+	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
+	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(500, 300).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
@@ -121,7 +122,7 @@ pub fn prompt_for_post(frame: &Frame) -> Option<PostResult> {
 	timer.on_tick(move |_| {
 		let text = content_text.get_value();
 		let char_count = text.chars().count();
-		dialog.set_label(&format!("Post - {} of {} characters", char_count, MAX_POST_CHARS));
+		dialog.set_label(&format!("Post - {} of {} characters", char_count, max_chars));
 	});
 	timer.start(100, false);
 	ok_button.on_click(move |_| {

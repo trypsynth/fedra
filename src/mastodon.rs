@@ -168,6 +168,21 @@ impl MastodonClient {
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
 		Ok(statuses)
 	}
+
+	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
+		let url = self.base_url.join("api/v1/instance")?;
+		let response = self
+			.http
+			.get(url)
+			.send()
+			.context("Failed to fetch instance info")?
+			.error_for_status()
+			.context("Instance rejected info request")?;
+		let info: InstanceResponse = response.json().context("Invalid instance response")?;
+		let max_chars =
+			info.configuration.and_then(|c| c.statuses).and_then(|s| s.max_characters).unwrap_or(500) as usize;
+		Ok(InstanceInfo { max_post_chars: max_chars })
+	}
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,4 +194,33 @@ struct RegisterAppResponse {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
 	access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstanceResponse {
+	#[serde(default)]
+	configuration: Option<InstanceConfiguration>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstanceConfiguration {
+	#[serde(default)]
+	statuses: Option<StatusConfiguration>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusConfiguration {
+	#[serde(default)]
+	max_characters: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InstanceInfo {
+	pub max_post_chars: usize,
+}
+
+impl Default for InstanceInfo {
+	fn default() -> Self {
+		Self { max_post_chars: 500 }
+	}
 }

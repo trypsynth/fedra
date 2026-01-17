@@ -29,11 +29,19 @@ struct AppState {
 	stream_handle: Option<StreamHandle>,
 	network_handle: Option<NetworkHandle>,
 	streaming_url: Option<Url>,
+	max_post_chars: Option<usize>,
 }
 
 impl AppState {
 	fn new(config: Config) -> Self {
-		Self { config, statuses: Vec::new(), stream_handle: None, network_handle: None, streaming_url: None }
+		Self {
+			config,
+			statuses: Vec::new(),
+			stream_handle: None,
+			network_handle: None,
+			streaming_url: None,
+			max_post_chars: None,
+		}
 	}
 
 	fn active_account(&self) -> Option<&config::Account> {
@@ -116,7 +124,7 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 		dialogs::show_error_msg(frame, "No account configured.");
 		return;
 	}
-	let post = match dialogs::prompt_for_post(frame) {
+	let post = match dialogs::prompt_for_post(frame, state.max_post_chars) {
 		Some(p) => p,
 		None => return,
 	};
@@ -146,7 +154,6 @@ fn refresh_timeline(frame: &Frame, state: &AppState) {
 
 fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
 	timeline_list.clear();
-	// Display oldest first, newest at bottom
 	for status in statuses.iter().rev() {
 		timeline_list.append(&status.timeline_display());
 	}
@@ -183,8 +190,6 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 	for event in events {
 		match event {
 			streaming::StreamEvent::Update(status) => {
-				// New items go at front of storage (newest first internally)
-				// but display is reversed, so they appear at the bottom
 				state.statuses.insert(0, *status);
 				needs_update = true;
 			}
@@ -198,7 +203,6 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 		}
 	}
 	if needs_update {
-		// Preserve selection - since new items appear at bottom, index stays stable
 		let current_selection = timeline_list.get_selection();
 		update_timeline_ui(timeline_list, &state.statuses);
 		if let Some(sel) = current_selection
@@ -221,10 +225,9 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 				state.statuses = statuses;
 				update_timeline_ui(timeline_list, &state.statuses);
 				if !state.statuses.is_empty() {
-					// Preserve position on refresh, or focus last (newest) on initial load
 					let selection = match previous_selection {
 						Some(sel) => (sel as usize).min(state.statuses.len() - 1) as u32,
-						None => (state.statuses.len() - 1) as u32, // Focus newest (bottom)
+						None => (state.statuses.len() - 1) as u32,
 					};
 					timeline_list.set_selection(selection, true);
 				}
@@ -289,6 +292,11 @@ fn main() {
 			Some((url, token))
 		});
 		if let Some((url, token)) = network_info {
+			if let Ok(client) = MastodonClient::new(url.clone()) {
+				if let Ok(info) = client.get_instance_info() {
+					state.max_post_chars = Some(info.max_post_chars);
+				}
+			}
 			state.streaming_url = Some(url.clone());
 			state.network_handle = network::start_network(url, token).ok();
 		}
