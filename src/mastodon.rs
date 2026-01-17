@@ -139,12 +139,12 @@ impl MastodonClient {
 		Ok(payload.access_token)
 	}
 
-	pub fn post_status(&self, access_token: &str, status: &str) -> Result<()> {
+	pub fn post_status(&self, access_token: &str, status: &str, visibility: &str) -> Result<()> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		self.http
 			.post(url)
 			.bearer_auth(access_token)
-			.form(&[("status", status)])
+			.form(&[("status", status), ("visibility", visibility)])
 			.send()
 			.context("Failed to post status")?
 			.error_for_status()

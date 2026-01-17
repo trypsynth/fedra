@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug)]
 pub enum NetworkCommand {
 	FetchTimeline { limit: Option<u32> },
-	PostStatus { content: String },
+	PostStatus { content: String, visibility: String },
 	Shutdown,
 }
 
@@ -79,8 +79,8 @@ fn network_loop(
 				let result = client.get_home_timeline(&access_token, limit);
 				let _ = responses.send(NetworkResponse::TimelineLoaded(result));
 			}
-			Ok(NetworkCommand::PostStatus { content }) => {
-				let result = client.post_status(&access_token, &content);
+			Ok(NetworkCommand::PostStatus { content, visibility }) => {
+				let result = client.post_status(&access_token, &content, &visibility);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {

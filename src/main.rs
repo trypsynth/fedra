@@ -116,13 +116,16 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 		dialogs::show_error_msg(frame, "No account configured.");
 		return;
 	}
-	let content = match dialogs::prompt_for_post(frame) {
-		Some(c) => c,
+	let post = match dialogs::prompt_for_post(frame) {
+		Some(p) => p,
 		None => return,
 	};
 	match &state.network_handle {
 		Some(handle) => {
-			handle.send(NetworkCommand::PostStatus { content });
+			handle.send(NetworkCommand::PostStatus {
+				content: post.content,
+				visibility: post.visibility.as_api_str().to_string(),
+			});
 		}
 		None => {
 			dialogs::show_error_msg(frame, "Network not available.");
@@ -198,10 +201,10 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 		// Preserve selection - since new items appear at bottom, index stays stable
 		let current_selection = timeline_list.get_selection();
 		update_timeline_ui(timeline_list, &state.statuses);
-		if let Some(sel) = current_selection {
-			if (sel as usize) < state.statuses.len() {
-				timeline_list.set_selection(sel, true);
-			}
+		if let Some(sel) = current_selection
+			&& (sel as usize) < state.statuses.len()
+		{
+			timeline_list.set_selection(sel, true);
 		}
 	}
 }
