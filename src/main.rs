@@ -18,7 +18,7 @@ use crate::{
 	config::{Account, Config},
 	mastodon::{MastodonClient, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse},
-	timeline::{TimelineManager, TimelineType},
+	timeline::{Timeline, TimelineManager, TimelineType},
 };
 
 const ID_NEW_POST: i32 = 1001;
@@ -169,6 +169,19 @@ fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
 	}
 }
 
+fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
+	if timeline.statuses.is_empty() {
+		timeline.selected_index = None;
+		return;
+	}
+	let selection = match timeline.selected_index {
+		Some(sel) if sel < timeline.statuses.len() => sel,
+		_ => timeline.statuses.len() - 1,
+	};
+	timeline.selected_index = Some(selection);
+	timeline_list.set_selection(selection as u32, true);
+}
+
 fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineType) {
 	let base_url = match &state.streaming_url {
 		Some(url) => url.clone(),
@@ -223,14 +236,10 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 		}
 	}
 	if active_needs_update {
-		if let Some(active) = state.timeline_manager.active() {
-			let current_selection = timeline_list.get_selection();
+		if let Some(active) = state.timeline_manager.active_mut() {
+			active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
 			update_timeline_ui(timeline_list, &active.statuses);
-			if let Some(sel) = current_selection
-				&& (sel as usize) < active.statuses.len()
-			{
-				timeline_list.set_selection(sel, true);
-			}
+			apply_timeline_selection(timeline_list, active);
 		}
 	}
 }
@@ -246,17 +255,13 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(statuses) } => {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					let previous_selection = if is_active { timeline_list.get_selection() } else { None };
+					if is_active {
+						timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+					}
 					timeline.statuses = statuses;
 					if is_active {
 						update_timeline_ui(timeline_list, &timeline.statuses);
-						if !timeline.statuses.is_empty() {
-							let selection = match previous_selection {
-								Some(sel) => (sel as usize).min(timeline.statuses.len() - 1) as u32,
-								None => (timeline.statuses.len() - 1) as u32,
-							};
-							timeline_list.set_selection(selection, true);
-						}
+						apply_timeline_selection(timeline_list, timeline);
 					}
 				}
 			}
@@ -273,19 +278,15 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 	}
 }
 
-fn open_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, timeline_type: TimelineType) {
+fn open_timeline(
+	state: &mut AppState,
+	frame: &Frame,
+	selector: &ListBox,
+	timeline_list: &ListBox,
+	timeline_type: TimelineType,
+) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
-		let existing_index = state.timeline_manager.iter().position(|t| t.timeline_type == timeline_type);
-		if let Some(index) = existing_index {
-			state.timeline_manager.set_active(index);
-			selector.set_selection(index as u32, true);
-			if let Some(active) = state.timeline_manager.active() {
-				update_timeline_ui(timeline_list, &active.statuses);
-				if !active.statuses.is_empty() {
-					timeline_list.set_selection((active.statuses.len() - 1) as u32, true);
-				}
-			}
-		}
+		dialogs::show_error_msg(frame, "That timeline is already open.");
 		return;
 	}
 	selector.append(timeline_type.display_name());
@@ -317,11 +318,9 @@ fn close_timeline(state: &mut AppState, frame: &Frame, selector: &ListBox, timel
 	}
 	let active_index = state.timeline_manager.active_index();
 	selector.set_selection(active_index as u32, true);
-	if let Some(active) = state.timeline_manager.active() {
+	if let Some(active) = state.timeline_manager.active_mut() {
 		update_timeline_ui(timeline_list, &active.statuses);
-		if !active.statuses.is_empty() {
-			timeline_list.set_selection((active.statuses.len() - 1) as u32, true);
-		}
+		apply_timeline_selection(timeline_list, active);
 	}
 }
 
@@ -412,12 +411,25 @@ fn main() {
 			if let Some(index) = event.get_selection() {
 				if index >= 0 {
 					let mut state = state_selector.borrow_mut();
+					if let Some(active) = state.timeline_manager.active_mut() {
+						active.selected_index = timeline_list_selector.get_selection().map(|sel| sel as usize);
+					}
 					state.timeline_manager.set_active(index as usize);
-					if let Some(active) = state.timeline_manager.active() {
+					if let Some(active) = state.timeline_manager.active_mut() {
 						update_timeline_ui(&timeline_list_selector, &active.statuses);
-						if !active.statuses.is_empty() {
-							timeline_list_selector.set_selection((active.statuses.len() - 1) as u32, true);
-						}
+						apply_timeline_selection(&timeline_list_selector, active);
+					}
+				}
+			}
+		});
+		let state_timeline_list = state.clone();
+		let timeline_list_state = timeline_list_selector;
+		timeline_list_state.on_selection_changed(move |event| {
+			if let Some(selection) = event.get_selection() {
+				if selection >= 0 {
+					let mut state = state_timeline_list.borrow_mut();
+					if let Some(active) = state.timeline_manager.active_mut() {
+						active.selected_index = Some(selection as usize);
 					}
 				}
 			}
@@ -435,6 +447,7 @@ fn main() {
 			ID_LOCAL_TIMELINE => {
 				open_timeline(
 					&mut state_menu.borrow_mut(),
+					&frame,
 					&timelines_selector_menu,
 					&timeline_list_menu,
 					TimelineType::Local,
@@ -443,6 +456,7 @@ fn main() {
 			ID_FEDERATED_TIMELINE => {
 				open_timeline(
 					&mut state_menu.borrow_mut(),
+					&frame,
 					&timelines_selector_menu,
 					&timeline_list_menu,
 					TimelineType::Federated,

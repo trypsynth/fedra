@@ -55,11 +55,12 @@ pub struct Timeline {
 	pub timeline_type: TimelineType,
 	pub statuses: Vec<Status>,
 	pub stream_handle: Option<StreamHandle>,
+	pub selected_index: Option<usize>,
 }
 
 impl Timeline {
 	pub fn new(timeline_type: TimelineType) -> Self {
-		Self { timeline_type, statuses: Vec::new(), stream_handle: None }
+		Self { timeline_type, statuses: Vec::new(), stream_handle: None, selected_index: None }
 	}
 }
 
