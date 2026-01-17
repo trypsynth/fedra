@@ -72,12 +72,7 @@ fn setup_new_account(frame: &Frame) -> Option<Account> {
 	Some(account)
 }
 
-fn try_oob_oauth(
-	frame: &Frame,
-	client: &MastodonClient,
-	instance_url: &Url,
-	account: &mut Account,
-) -> Option<Account> {
+fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, account: &mut Account) -> Option<Account> {
 	let credentials = match client.register_app("Fedra", auth::OOB_REDIRECT_URI) {
 		Ok(creds) => creds,
 		Err(err) => {
@@ -196,7 +191,9 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 				state.statuses.retain(|s| s.id != id);
 				needs_update = true;
 			}
-			streaming::StreamEvent::Connected | streaming::StreamEvent::Disconnected | streaming::StreamEvent::Error(_) => {}
+			streaming::StreamEvent::Connected
+			| streaming::StreamEvent::Disconnected
+			| streaming::StreamEvent::Error(_) => {}
 		}
 	}
 	if needs_update {
@@ -244,8 +241,7 @@ fn main() {
 		let panel = Panel::builder(&frame).build();
 		let sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
-		let timelines_selector =
-			ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
+		let timelines_selector = ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
 		timelines_selector.set_selection(0_u32, true);
 		let timeline_list = ListBox::builder(&panel).build();
 		let timelines_sizer = BoxSizer::builder(Orientation::Vertical).build();
