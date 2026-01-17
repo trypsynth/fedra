@@ -8,18 +8,19 @@ use url::Url;
 use crate::{
 	error::Result,
 	mastodon::{MastodonClient, Status},
+	timeline::TimelineType,
 };
 
 #[derive(Debug)]
 pub enum NetworkCommand {
-	FetchTimeline { limit: Option<u32> },
+	FetchTimeline { timeline_type: TimelineType, limit: Option<u32> },
 	PostStatus { content: String, visibility: String },
 	Shutdown,
 }
 
 #[derive(Debug)]
 pub enum NetworkResponse {
-	TimelineLoaded(Result<Vec<Status>>),
+	TimelineLoaded { timeline_type: TimelineType, result: Result<Vec<Status>> },
 	PostComplete(Result<()>),
 }
 
@@ -75,9 +76,9 @@ fn network_loop(
 ) {
 	loop {
 		match commands.recv() {
-			Ok(NetworkCommand::FetchTimeline { limit }) => {
-				let result = client.get_home_timeline(&access_token, limit);
-				let _ = responses.send(NetworkResponse::TimelineLoaded(result));
+			Ok(NetworkCommand::FetchTimeline { timeline_type, limit }) => {
+				let result = client.get_timeline(&access_token, &timeline_type, limit);
+				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
 			Ok(NetworkCommand::PostStatus { content, visibility }) => {
 				let result = client.post_status(&access_token, &content, &visibility);

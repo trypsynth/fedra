@@ -73,10 +73,9 @@ The app prefers WebSocket streaming over polling to reduce server load:
 
 ## Build
 
-```bash
-# Debug build
-cargo build
+Always use release builds for faster iteration:
 
+```bash
 # Release build (optimized)
 cargo build --release
 

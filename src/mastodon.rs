@@ -1,7 +1,10 @@
 use reqwest::{Url, blocking::Client};
 use serde::Deserialize;
 
-use crate::error::{Context, Result};
+use crate::{
+	error::{Context, Result},
+	timeline::TimelineType,
+};
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
 
@@ -153,16 +156,31 @@ impl MastodonClient {
 	}
 
 	pub fn get_home_timeline(&self, access_token: &str, limit: Option<u32>) -> Result<Vec<Status>> {
-		let mut url = self.base_url.join("api/v1/timelines/home")?;
-		if let Some(limit) = limit {
-			url.query_pairs_mut().append_pair("limit", &limit.to_string());
+		self.get_timeline(access_token, &TimelineType::Home, limit)
+	}
+
+	pub fn get_timeline(
+		&self,
+		access_token: &str,
+		timeline_type: &TimelineType,
+		limit: Option<u32>,
+	) -> Result<Vec<Status>> {
+		let mut url = self.base_url.join(timeline_type.api_path())?;
+		{
+			let mut query = url.query_pairs_mut();
+			for (key, value) in timeline_type.api_query_params() {
+				query.append_pair(key, value);
+			}
+			if let Some(limit) = limit {
+				query.append_pair("limit", &limit.to_string());
+			}
 		}
 		let response = self
 			.http
 			.get(url)
 			.bearer_auth(access_token)
 			.send()
-			.context("Failed to fetch home timeline")?
+			.context("Failed to fetch timeline")?
 			.error_for_status()
 			.context("Instance rejected timeline request")?;
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;

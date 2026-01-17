@@ -7,6 +7,7 @@ mod error;
 mod mastodon;
 mod network;
 mod streaming;
+mod timeline;
 
 use std::{cell::RefCell, mem, rc::Rc};
 
@@ -17,18 +18,21 @@ use crate::{
 	config::{Account, Config},
 	mastodon::{MastodonClient, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse},
-	streaming::StreamHandle,
+	timeline::{TimelineManager, TimelineType},
 };
 
 const ID_NEW_POST: i32 = 1001;
 const ID_REFRESH: i32 = 1002;
+const ID_LOCAL_TIMELINE: i32 = 1003;
+const ID_FEDERATED_TIMELINE: i32 = 1004;
+const ID_CLOSE_TIMELINE: i32 = 1005;
 
 struct AppState {
 	config: Config,
-	statuses: Vec<Status>,
-	stream_handle: Option<StreamHandle>,
+	timeline_manager: TimelineManager,
 	network_handle: Option<NetworkHandle>,
 	streaming_url: Option<Url>,
+	access_token: Option<String>,
 	max_post_chars: Option<usize>,
 }
 
@@ -36,20 +40,16 @@ impl AppState {
 	fn new(config: Config) -> Self {
 		Self {
 			config,
-			statuses: Vec::new(),
-			stream_handle: None,
+			timeline_manager: TimelineManager::new(),
 			network_handle: None,
 			streaming_url: None,
+			access_token: None,
 			max_post_chars: None,
 		}
 	}
 
 	fn active_account(&self) -> Option<&config::Account> {
 		self.config.accounts.first()
-	}
-
-	fn access_token(&self) -> Option<&str> {
-		self.active_account()?.access_token.as_deref()
 	}
 }
 
@@ -116,7 +116,13 @@ fn build_menu_bar() -> MenuBar {
 		.append_separator()
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh timeline")
 		.build();
-	MenuBar::builder().append(post_menu, "&Post").build()
+	let timelines_menu = Menu::builder()
+		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline", "Open local timeline")
+		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
+		.append_separator()
+		.append_item(ID_CLOSE_TIMELINE, "&Close Timeline", "Close current timeline")
+		.build();
+	MenuBar::builder().append(post_menu, "&Post").append(timelines_menu, "&Timelines").build()
 }
 
 fn do_new_post(frame: &Frame, state: &AppState) {
@@ -142,9 +148,13 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 }
 
 fn refresh_timeline(frame: &Frame, state: &AppState) {
+	let timeline_type = match state.timeline_manager.active() {
+		Some(t) => t.timeline_type.clone(),
+		None => return,
+	};
 	match &state.network_handle {
 		Some(handle) => {
-			handle.send(NetworkCommand::FetchTimeline { limit: Some(40) });
+			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40) });
 		}
 		None => {
 			dialogs::show_error_msg(frame, "Network not available.");
@@ -159,56 +169,68 @@ fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
 	}
 }
 
-fn start_streaming(state: &mut AppState) {
+fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineType) {
 	let base_url = match &state.streaming_url {
 		Some(url) => url.clone(),
 		None => return,
 	};
-	let access_token = match state.access_token() {
+	let access_token = match &state.access_token {
+		Some(t) => t.clone(),
+		None => return,
+	};
+	let timeline = match state.timeline_manager.get_mut(timeline_type) {
 		Some(t) => t,
 		None => return,
 	};
-	let mut streaming_url = match base_url.join("api/v1/streaming") {
-		Ok(url) => url,
-		Err(_) => return,
-	};
-	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
-	if streaming_url.set_scheme(scheme).is_err() {
+	if timeline.stream_handle.is_some() {
 		return;
 	}
-	streaming_url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", "user");
-	state.stream_handle = Some(streaming::start_streaming(streaming_url));
+	timeline.stream_handle = streaming::start_streaming(base_url, access_token, timeline_type.clone());
 }
 
 fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
-	let handle = match &state.stream_handle {
-		Some(h) => h,
-		None => return,
-	};
-	let events = handle.drain();
-	let mut needs_update = false;
-	for event in events {
-		match event {
-			streaming::StreamEvent::Update(status) => {
-				state.statuses.insert(0, *status);
-				needs_update = true;
+	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
+	let mut active_needs_update = false;
+	for timeline in state.timeline_manager.iter_mut() {
+		let handle = match &timeline.stream_handle {
+			Some(h) => h,
+			None => continue,
+		};
+		let events = handle.drain();
+		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
+		for event in events {
+			match event {
+				streaming::StreamEvent::Update { timeline_type, status } => {
+					if timeline.timeline_type == timeline_type {
+						timeline.statuses.insert(0, *status);
+						if is_active {
+							active_needs_update = true;
+						}
+					}
+				}
+				streaming::StreamEvent::Delete { timeline_type, id } => {
+					if timeline.timeline_type == timeline_type {
+						timeline.statuses.retain(|s| s.id != id);
+						if is_active {
+							active_needs_update = true;
+						}
+					}
+				}
+				streaming::StreamEvent::Connected(_)
+				| streaming::StreamEvent::Disconnected(_)
+				| streaming::StreamEvent::Error { .. } => {}
 			}
-			streaming::StreamEvent::Delete(id) => {
-				state.statuses.retain(|s| s.id != id);
-				needs_update = true;
-			}
-			streaming::StreamEvent::Connected
-			| streaming::StreamEvent::Disconnected
-			| streaming::StreamEvent::Error(_) => {}
 		}
 	}
-	if needs_update {
-		let current_selection = timeline_list.get_selection();
-		update_timeline_ui(timeline_list, &state.statuses);
-		if let Some(sel) = current_selection
-			&& (sel as usize) < state.statuses.len()
-		{
-			timeline_list.set_selection(sel, true);
+	if active_needs_update {
+		if let Some(active) = state.timeline_manager.active() {
+			let current_selection = timeline_list.get_selection();
+			update_timeline_ui(timeline_list, &active.statuses);
+			if let Some(sel) = current_selection
+				&& (sel as usize) < active.statuses.len()
+			{
+				timeline_list.set_selection(sel, true);
+			}
 		}
 	}
 }
@@ -218,21 +240,27 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 		Some(h) => h,
 		None => return,
 	};
+	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	for response in handle.drain() {
 		match response {
-			NetworkResponse::TimelineLoaded(Ok(statuses)) => {
-				let previous_selection = timeline_list.get_selection();
-				state.statuses = statuses;
-				update_timeline_ui(timeline_list, &state.statuses);
-				if !state.statuses.is_empty() {
-					let selection = match previous_selection {
-						Some(sel) => (sel as usize).min(state.statuses.len() - 1) as u32,
-						None => (state.statuses.len() - 1) as u32,
-					};
-					timeline_list.set_selection(selection, true);
+			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(statuses) } => {
+				let is_active = active_type.as_ref() == Some(&timeline_type);
+				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+					let previous_selection = if is_active { timeline_list.get_selection() } else { None };
+					timeline.statuses = statuses;
+					if is_active {
+						update_timeline_ui(timeline_list, &timeline.statuses);
+						if !timeline.statuses.is_empty() {
+							let selection = match previous_selection {
+								Some(sel) => (sel as usize).min(timeline.statuses.len() - 1) as u32,
+								None => (timeline.statuses.len() - 1) as u32,
+							};
+							timeline_list.set_selection(selection, true);
+						}
+					}
 				}
 			}
-			NetworkResponse::TimelineLoaded(Err(ref err)) => {
+			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
 				dialogs::show_error(frame, err);
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
@@ -241,6 +269,58 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 			NetworkResponse::PostComplete(Err(ref err)) => {
 				dialogs::show_error(frame, err);
 			}
+		}
+	}
+}
+
+fn open_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, timeline_type: TimelineType) {
+	if !state.timeline_manager.open(timeline_type.clone()) {
+		let existing_index = state.timeline_manager.iter().position(|t| t.timeline_type == timeline_type);
+		if let Some(index) = existing_index {
+			state.timeline_manager.set_active(index);
+			selector.set_selection(index as u32, true);
+			if let Some(active) = state.timeline_manager.active() {
+				update_timeline_ui(timeline_list, &active.statuses);
+				if !active.statuses.is_empty() {
+					timeline_list.set_selection((active.statuses.len() - 1) as u32, true);
+				}
+			}
+		}
+		return;
+	}
+	selector.append(timeline_type.display_name());
+	let new_index = state.timeline_manager.len() - 1;
+	state.timeline_manager.set_active(new_index);
+	selector.set_selection(new_index as u32, true);
+	if let Some(handle) = &state.network_handle {
+		handle.send(NetworkCommand::FetchTimeline { timeline_type: timeline_type.clone(), limit: Some(40) });
+	}
+	start_streaming_for_timeline(state, &timeline_type);
+	timeline_list.clear();
+}
+
+fn close_timeline(state: &mut AppState, frame: &Frame, selector: &ListBox, timeline_list: &ListBox) {
+	let active_type = match state.timeline_manager.active() {
+		Some(t) => t.timeline_type.clone(),
+		None => return,
+	};
+	if !active_type.is_closeable() {
+		dialogs::show_error_msg(frame, "Cannot close the Home timeline.");
+		return;
+	}
+	if !state.timeline_manager.close(&active_type) {
+		return;
+	}
+	selector.clear();
+	for name in state.timeline_manager.display_names() {
+		selector.append(&name);
+	}
+	let active_index = state.timeline_manager.active_index();
+	selector.set_selection(active_index as u32, true);
+	if let Some(active) = state.timeline_manager.active() {
+		update_timeline_ui(timeline_list, &active.statuses);
+		if !active.statuses.is_empty() {
+			timeline_list.set_selection((active.statuses.len() - 1) as u32, true);
 		}
 	}
 }
@@ -286,24 +366,34 @@ fn main() {
 			}
 		}
 		let mut state = AppState::new(config);
+		state.timeline_manager.open(TimelineType::Home);
+		state.timeline_manager.open(TimelineType::Local);
 		let network_info = state.active_account().and_then(|account| {
 			let url = Url::parse(&account.instance).ok()?;
 			let token = account.access_token.clone()?;
 			Some((url, token))
 		});
-		if let Some((url, token)) = network_info {
+		if let Some((url, token)) = network_info.clone() {
 			if let Ok(client) = MastodonClient::new(url.clone()) {
 				if let Ok(info) = client.get_instance_info() {
 					state.max_post_chars = Some(info.max_post_chars);
 				}
 			}
 			state.streaming_url = Some(url.clone());
+			state.access_token = Some(token.clone());
 			state.network_handle = network::start_network(url, token).ok();
 		}
 		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::FetchTimeline { limit: Some(40) });
+			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40) });
+			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Local, limit: Some(40) });
 		}
-		start_streaming(&mut state);
+		start_streaming_for_timeline(&mut state, &TimelineType::Home);
+		start_streaming_for_timeline(&mut state, &TimelineType::Local);
+		timelines_selector.clear();
+		for name in state.timeline_manager.display_names() {
+			timelines_selector.append(&name);
+		}
+		timelines_selector.set_selection(0_u32, true);
 		let state = Rc::new(RefCell::new(state));
 		let timer = Timer::new(&frame);
 		let state_timer = state.clone();
@@ -316,13 +406,50 @@ fn main() {
 		timer.start(100, false); // Check every 100ms
 		// Keep timer alive, it would be dropped at end of scope otherwise
 		mem::forget(timer);
+		let state_selector = state.clone();
+		let timeline_list_selector = timeline_list;
+		timelines_selector.on_selection_changed(move |event| {
+			if let Some(index) = event.get_selection() {
+				if index >= 0 {
+					let mut state = state_selector.borrow_mut();
+					state.timeline_manager.set_active(index as usize);
+					if let Some(active) = state.timeline_manager.active() {
+						update_timeline_ui(&timeline_list_selector, &active.statuses);
+						if !active.statuses.is_empty() {
+							timeline_list_selector.set_selection((active.statuses.len() - 1) as u32, true);
+						}
+					}
+				}
+			}
+		});
 		let state_menu = state.clone();
+		let timelines_selector_menu = timelines_selector;
+		let timeline_list_menu = timeline_list_selector;
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_NEW_POST => {
 				do_new_post(&frame, &state_menu.borrow());
 			}
 			ID_REFRESH => {
 				refresh_timeline(&frame, &state_menu.borrow());
+			}
+			ID_LOCAL_TIMELINE => {
+				open_timeline(
+					&mut state_menu.borrow_mut(),
+					&timelines_selector_menu,
+					&timeline_list_menu,
+					TimelineType::Local,
+				);
+			}
+			ID_FEDERATED_TIMELINE => {
+				open_timeline(
+					&mut state_menu.borrow_mut(),
+					&timelines_selector_menu,
+					&timeline_list_menu,
+					TimelineType::Federated,
+				);
+			}
+			ID_CLOSE_TIMELINE => {
+				close_timeline(&mut state_menu.borrow_mut(), &frame, &timelines_selector_menu, &timeline_list_menu);
 			}
 			_ => {}
 		});

@@ -8,15 +8,15 @@ use serde::Deserialize;
 use tungstenite::{Message, connect};
 use url::Url;
 
-use crate::mastodon::Status;
+use crate::{mastodon::Status, timeline::TimelineType};
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-	Update(Box<Status>),
-	Delete(String),
-	Connected,
-	Disconnected,
-	Error(String),
+	Update { timeline_type: TimelineType, status: Box<Status> },
+	Delete { timeline_type: TimelineType, id: String },
+	Connected(TimelineType),
+	Disconnected(TimelineType),
+	Error { timeline_type: TimelineType, message: String },
 }
 
 pub struct StreamHandle {
@@ -38,20 +38,25 @@ impl StreamHandle {
 	}
 }
 
-pub fn start_streaming(streaming_url: Url) -> StreamHandle {
+pub fn start_streaming(base_url: Url, access_token: String, timeline_type: TimelineType) -> Option<StreamHandle> {
+	let stream_param = timeline_type.stream_params()?;
+	let mut streaming_url = base_url.join("api/v1/streaming").ok()?;
+	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
+	streaming_url.set_scheme(scheme).ok()?;
+	streaming_url.query_pairs_mut().append_pair("access_token", &access_token).append_pair("stream", stream_param);
 	let (sender, receiver) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		streaming_loop(streaming_url, sender);
+		streaming_loop(streaming_url, timeline_type, sender);
 	});
-	StreamHandle { receiver, _thread: thread }
+	Some(StreamHandle { receiver, _thread: thread })
 }
 
-fn streaming_loop(url: Url, sender: Sender<StreamEvent>) {
+fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEvent>) {
 	let mut retry_count = 0;
 	let max_retries = 5;
 	let base_delay = Duration::from_secs(1);
 	loop {
-		match connect_and_stream(&url, &sender) {
+		match connect_and_stream(&url, &timeline_type, &sender) {
 			Ok(()) => {
 				// Clean disconnect, stop streaming
 				break;
@@ -59,11 +64,13 @@ fn streaming_loop(url: Url, sender: Sender<StreamEvent>) {
 			Err(e) => {
 				retry_count += 1;
 				if retry_count > max_retries {
-					let _ = sender
-						.send(StreamEvent::Error(format!("Streaming failed after {} retries: {}", max_retries, e)));
+					let _ = sender.send(StreamEvent::Error {
+						timeline_type: timeline_type.clone(),
+						message: format!("Streaming failed after {} retries: {}", max_retries, e),
+					});
 					break;
 				}
-				let _ = sender.send(StreamEvent::Disconnected);
+				let _ = sender.send(StreamEvent::Disconnected(timeline_type.clone()));
 				let delay = base_delay * 2u32.pow(retry_count - 1);
 				thread::sleep(delay);
 			}
@@ -71,13 +78,13 @@ fn streaming_loop(url: Url, sender: Sender<StreamEvent>) {
 	}
 }
 
-fn connect_and_stream(url: &Url, sender: &Sender<StreamEvent>) -> Result<(), String> {
+fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>) -> Result<(), String> {
 	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {}", e))?;
-	let _ = sender.send(StreamEvent::Connected);
+	let _ = sender.send(StreamEvent::Connected(timeline_type.clone()));
 	loop {
 		match socket.read() {
 			Ok(Message::Text(text)) => {
-				if let Some(event) = parse_stream_message(&text)
+				if let Some(event) = parse_stream_message(&text, timeline_type)
 					&& sender.send(event).is_err()
 				{
 					return Ok(());
@@ -108,17 +115,17 @@ struct StreamMessage {
 	payload: Option<String>,
 }
 
-fn parse_stream_message(text: &str) -> Option<StreamEvent> {
+fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<StreamEvent> {
 	let msg: StreamMessage = serde_json::from_str(text).ok()?;
 	match msg.event.as_str() {
 		"update" => {
 			let payload = msg.payload?;
 			let status: Status = serde_json::from_str(&payload).ok()?;
-			Some(StreamEvent::Update(Box::new(status)))
+			Some(StreamEvent::Update { timeline_type: timeline_type.clone(), status: Box::new(status) })
 		}
 		"delete" => {
 			let status_id = msg.payload?;
-			Some(StreamEvent::Delete(status_id))
+			Some(StreamEvent::Delete { timeline_type: timeline_type.clone(), id: status_id })
 		}
 		_ => None,
 	}
