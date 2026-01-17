@@ -216,8 +216,16 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 	for response in handle.drain() {
 		match response {
 			NetworkResponse::TimelineLoaded(Ok(statuses)) => {
+				let previous_selection = timeline_list.get_selection();
 				state.statuses = statuses;
-				update_timeline_ui(timeline_list, &state.statuses, true);
+				update_timeline_ui(timeline_list, &state.statuses, false);
+				if !state.statuses.is_empty() {
+					let selection = match previous_selection {
+						Some(sel) => (sel as usize).min(state.statuses.len() - 1) as u32,
+						None => 0,
+					};
+					timeline_list.set_selection(selection, true);
+				}
 			}
 			NetworkResponse::TimelineLoaded(Err(ref err)) => {
 				dialogs::show_error(frame, err);

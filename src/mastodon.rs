@@ -71,6 +71,7 @@ impl Account {
 
 fn strip_html(html: &str) -> String {
 	html2text::config::plain()
+		.link_footnotes(false)
 		.string_from_read(html.as_bytes(), usize::MAX)
 		.unwrap_or_else(|_| html.to_string())
 		.trim()
