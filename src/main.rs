@@ -146,10 +146,13 @@ fn refresh_timeline(frame: &Frame, state: &AppState) {
 	}
 }
 
-fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
+fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status], focus_first: bool) {
 	timeline_list.clear();
 	for status in statuses {
 		timeline_list.append(&status.timeline_display());
+	}
+	if focus_first && !statuses.is_empty() {
+		timeline_list.set_selection(0_u32, true);
 	}
 }
 
@@ -180,30 +183,31 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 		None => return,
 	};
 	let events = handle.drain();
+	let mut items_added_above = 0usize;
 	let mut needs_update = false;
 	for event in events {
 		match event {
 			streaming::StreamEvent::Update(status) => {
 				state.statuses.insert(0, *status);
+				items_added_above += 1;
 				needs_update = true;
 			}
 			streaming::StreamEvent::Delete(id) => {
 				state.statuses.retain(|s| s.id != id);
 				needs_update = true;
 			}
-			streaming::StreamEvent::Connected => {
-				// Could show status indicator
-			}
-			streaming::StreamEvent::Disconnected => {
-				// Could show status indicator
-			}
-			streaming::StreamEvent::Error(_msg) => {
-				// Streaming failed, could fall back to polling
-			}
+			streaming::StreamEvent::Connected | streaming::StreamEvent::Disconnected | streaming::StreamEvent::Error(_) => {}
 		}
 	}
 	if needs_update {
-		update_timeline_ui(timeline_list, &state.statuses);
+		let current_selection = timeline_list.get_selection();
+		update_timeline_ui(timeline_list, &state.statuses, false);
+		if let Some(sel) = current_selection {
+			let new_selection = sel as usize + items_added_above;
+			if new_selection < state.statuses.len() {
+				timeline_list.set_selection(new_selection as u32, true);
+			}
+		}
 	}
 }
 
@@ -216,7 +220,7 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 		match response {
 			NetworkResponse::TimelineLoaded(Ok(statuses)) => {
 				state.statuses = statuses;
-				update_timeline_ui(timeline_list, &state.statuses);
+				update_timeline_ui(timeline_list, &state.statuses, true);
 			}
 			NetworkResponse::TimelineLoaded(Err(ref err)) => {
 				dialogs::show_error(frame, err);
@@ -240,10 +244,9 @@ fn main() {
 		let panel = Panel::builder(&frame).build();
 		let sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
-		let timelines_selector = ListBox::builder(&panel)
-			.with_choices(vec!["Home".to_string(), "Local".to_string(), "Federated".to_string()])
-			.build();
-		timelines_selector.set_selection(0, true);
+		let timelines_selector =
+			ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
+		timelines_selector.set_selection(0_u32, true);
 		let timeline_list = ListBox::builder(&panel).build();
 		let timelines_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		timelines_sizer.add(&timelines_label, 0, SizerFlag::All, 8);
