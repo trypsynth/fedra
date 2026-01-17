@@ -109,6 +109,160 @@ fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	}
 }
 
+fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Vec<PostMedia>> {
+	let dialog = Dialog::builder(parent, "Manage Media").with_size(520, 360).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let list_label = StaticText::builder(&panel).with_label("Attachments:").build();
+	let media_list = ListBox::builder(&panel).build();
+	let add_button = Button::builder(&panel).with_label("Add...").build();
+	let remove_button = Button::builder(&panel).with_label("Remove").build();
+	let desc_label = StaticText::builder(&panel).with_label("Description for selected media:").build();
+	let desc_text = TextCtrl::builder(&panel).build();
+	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let ok_button = Button::builder(&panel).with_label("Done").build();
+	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
+	list_buttons.add(&add_button, 0, SizerFlag::Bottom, 8);
+	list_buttons.add(&remove_button, 0, SizerFlag::Bottom, 8);
+	list_sizer.add(&media_list, 1, SizerFlag::Expand | SizerFlag::Right, 8);
+	list_sizer.add_sizer(&list_buttons, 0, SizerFlag::AlignLeft, 0);
+	buttons_sizer.add_stretch_spacer(1);
+	buttons_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
+	buttons_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&list_sizer, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&desc_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&desc_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+
+	let items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial));
+	refresh_media_list(&media_list, &items.borrow());
+	if !items.borrow().is_empty() {
+		media_list.set_selection(0, true);
+		remove_button.enable(true);
+		desc_label.enable(true);
+		desc_text.enable(true);
+		if let Some(first) = items.borrow().first() {
+			desc_text.set_value(first.description.as_deref().unwrap_or(""));
+		}
+	}
+	if items.borrow().is_empty() {
+		remove_button.enable(false);
+		desc_label.enable(false);
+		desc_text.enable(false);
+	}
+
+	let items_add = items.clone();
+	let media_list_add = media_list;
+	let remove_button_add = remove_button;
+	add_button.on_click(move |_| {
+		let file_dialog = FileDialog::builder(&panel)
+			.with_message("Select media to attach")
+			.with_wildcard("Media files|*.png;*.jpg;*.jpeg;*.gif;*.mp4;*.webm;*.mov|All files|*.*")
+			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist | FileDialogStyle::Multiple)
+			.build();
+		if file_dialog.show_modal() == ID_OK {
+			let mut paths = file_dialog.get_paths();
+			if paths.is_empty() {
+				if let Some(path) = file_dialog.get_path() {
+					paths.push(path);
+				}
+			}
+			if !paths.is_empty() {
+				let mut items = items_add.borrow_mut();
+				for path in paths {
+					items.push(PostMedia { path, description: None });
+				}
+				refresh_media_list(&media_list_add, &items);
+				media_list_add.set_selection((items.len() - 1) as u32, true);
+				remove_button_add.enable(true);
+			}
+		}
+	});
+
+	let items_remove = items.clone();
+	let media_list_remove = media_list_add;
+	let remove_button_remove = remove_button_add;
+	let desc_label_remove = desc_label;
+	let desc_text_remove = desc_text;
+	remove_button.on_click(move |_| {
+		if let Some(selection) = media_list_remove.get_selection() {
+			let index = selection as usize;
+			let mut items = items_remove.borrow_mut();
+			if index < items.len() {
+				items.remove(index);
+				refresh_media_list(&media_list_remove, &items);
+				if !items.is_empty() {
+					let next = index.min(items.len() - 1);
+					media_list_remove.set_selection(next as u32, true);
+					remove_button_remove.enable(true);
+				} else {
+					remove_button_remove.enable(false);
+				}
+			}
+		}
+		desc_text_remove.set_value("");
+		desc_label_remove.enable(false);
+		desc_text_remove.enable(false);
+	});
+
+	let items_select = items.clone();
+	let desc_label_select = desc_label_remove;
+	let desc_text_select = desc_text_remove;
+	let remove_button_select = remove_button_remove;
+	let media_list_select = media_list_remove;
+	media_list_select.on_selection_changed(move |_| {
+		let selection = media_list_select.get_selection().map(|sel| sel as usize);
+		let items = items_select.borrow();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			desc_label_select.enable(true);
+			desc_text_select.enable(true);
+			desc_text_select.set_value(items[index].description.as_deref().unwrap_or(""));
+			remove_button_select.enable(true);
+		} else {
+			desc_text_select.set_value("");
+			desc_label_select.enable(false);
+			desc_text_select.enable(false);
+			remove_button_select.enable(false);
+		}
+	});
+
+	let items_desc = items.clone();
+	let media_list_desc = media_list_select;
+	desc_text_select.on_text_changed(move |_| {
+		let selection = media_list_desc.get_selection().map(|sel| sel as usize);
+		let mut items = items_desc.borrow_mut();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			let value = desc_text_select.get_value();
+			let trimmed = value.trim();
+			items[index].description = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+		}
+	});
+
+	ok_button.on_click(move |_| {
+		dialog.end_modal(ID_OK);
+	});
+	cancel_button.on_click(move |_| {
+		dialog.end_modal(ID_CANCEL);
+	});
+	dialog.centre();
+	let result = dialog.show_modal();
+	if result != ID_OK {
+		return None;
+	}
+	Some(items.borrow().clone())
+}
+
 pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(700, 560).build();
@@ -142,19 +296,8 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
 	let media_label = StaticText::builder(&panel).with_label("Media:").build();
-	let media_list = ListBox::builder(&panel).build();
-	let media_add_button = Button::builder(&panel).with_label("Add Media...").build();
-	let media_remove_button = Button::builder(&panel).with_label("Remove Selected").build();
-	let media_desc_label = StaticText::builder(&panel).with_label("Description for selected media:").build();
-	let media_desc_text = TextCtrl::builder(&panel).build();
-	media_desc_label.enable(false);
-	media_desc_text.enable(false);
-	let media_buttons = BoxSizer::builder(Orientation::Vertical).build();
-	media_buttons.add(&media_add_button, 0, SizerFlag::Bottom, 8);
-	media_buttons.add(&media_remove_button, 0, SizerFlag::Bottom, 8);
-	let media_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	media_sizer.add(&media_list, 1, SizerFlag::Expand | SizerFlag::Right, 8);
-	media_sizer.add_sizer(&media_buttons, 0, SizerFlag::AlignLeft, 0);
+	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
+	let media_count_label = StaticText::builder(&panel).with_label("No media attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_label("Post").build();
 	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
@@ -169,89 +312,30 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&content_type_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&media_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
-	main_sizer.add_sizer(&media_sizer, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&media_desc_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
-	main_sizer.add(&media_desc_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&media_count_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(Vec::new()));
-	let media_items_add = media_items.clone();
-	let media_list_add = media_list;
-	media_add_button.on_click(move |_| {
-		let file_dialog = FileDialog::builder(&panel)
-			.with_message("Select media to attach")
-			.with_wildcard("Media files|*.png;*.jpg;*.jpeg;*.gif;*.mp4;*.webm;*.mov|All files|*.*")
-			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist | FileDialogStyle::Multiple)
-			.build();
-		if file_dialog.show_modal() == ID_OK {
-			let mut paths = file_dialog.get_paths();
-			if paths.is_empty() {
-				if let Some(path) = file_dialog.get_path() {
-					paths.push(path);
-				}
-			}
-			if !paths.is_empty() {
-				let mut items = media_items_add.borrow_mut();
-				for path in paths {
-					items.push(PostMedia { path, description: None });
-				}
-				refresh_media_list(&media_list_add, &items);
-				if !items.is_empty() {
-					media_list_add.set_selection((items.len() - 1) as u32, true);
-				}
-			}
-		}
-	});
-	let media_items_remove = media_items.clone();
-	let media_list_remove = media_list_add;
-	let media_desc_label_remove = media_desc_label;
-	let media_desc_text_remove = media_desc_text;
-	media_remove_button.on_click(move |_| {
-		if let Some(selection) = media_list_remove.get_selection() {
-			let index = selection as usize;
-			let mut items = media_items_remove.borrow_mut();
-			if index < items.len() {
-				items.remove(index);
-				refresh_media_list(&media_list_remove, &items);
-			}
-			media_desc_text_remove.set_value("");
-			media_desc_label_remove.enable(false);
-			media_desc_text_remove.enable(false);
-		}
-	});
-	let media_items_select = media_items.clone();
-	let media_desc_label_select = media_desc_label_remove;
-	let media_desc_text_select = media_desc_text_remove;
-	let media_list_select = media_list_remove;
-	media_list_select.on_selection_changed(move |_| {
-		let selection = media_list_select.get_selection().map(|sel| sel as usize);
-		let items = media_items_select.borrow();
-		if let Some(index) = selection
-			&& index < items.len()
-		{
-			media_desc_label_select.enable(true);
-			media_desc_text_select.enable(true);
-			media_desc_text_select.set_value(items[index].description.as_deref().unwrap_or(""));
-		} else {
-			media_desc_text_select.set_value("");
-			media_desc_label_select.enable(false);
-			media_desc_text_select.enable(false);
-		}
-	});
-	let media_items_desc = media_items.clone();
-	let media_list_desc = media_list_select;
-	media_desc_text_select.on_text_changed(move |_| {
-		let selection = media_list_desc.get_selection().map(|sel| sel as usize);
-		let mut items = media_items_desc.borrow_mut();
-		if let Some(index) = selection
-			&& index < items.len()
-		{
-			let value = media_desc_text_select.get_value();
-			let trimmed = value.trim();
-			items[index].description = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+	let media_items_manage = media_items.clone();
+	let media_count_update = media_count_label;
+	let media_parent = dialog;
+	media_button.on_click(move |_| {
+		let current = media_items_manage.borrow().clone();
+		if let Some(updated) = prompt_for_media(&media_parent, current) {
+			let count = updated.len();
+			*media_items_manage.borrow_mut() = updated;
+			let label = if count == 0 {
+				"No media attached.".to_string()
+			} else if count == 1 {
+				"1 item attached.".to_string()
+			} else {
+				format!("{} items attached.", count)
+			};
+			media_count_update.set_label(&label);
 		}
 	});
 	let cw_label_toggle = cw_label;
@@ -290,9 +374,6 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	}
 	let content = content_text.get_value();
 	let trimmed = content.trim();
-	if trimmed.is_empty() {
-		return None;
-	}
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
 	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
 	let spoiler_text = if cw_checkbox.get_value() {
