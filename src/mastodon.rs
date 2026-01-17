@@ -37,14 +37,18 @@ impl Status {
 		strip_html(&self.content)
 	}
 
-	pub fn summary(&self) -> String {
-		let author = &self.account.display_name_or_username();
-		let text = self.display_text();
-		let preview: String = text.chars().take(100).collect();
-		if self.reblog.is_some() {
-			format!("{} boosted: {}", author, preview)
-		} else {
-			format!("{}: {}", author, preview)
+	pub fn timeline_display(&self) -> String {
+		match &self.reblog {
+			Some(boosted) => {
+				let booster = self.account.display_name_or_username();
+				let author = boosted.account.display_name_or_username();
+				let content = strip_html(&boosted.content);
+				format!("{} boosted {}: {}", booster, author, content)
+			}
+			None => {
+				let author = self.account.display_name_or_username();
+				format!("{}: {}", author, self.display_text())
+			}
 		}
 	}
 }
@@ -66,45 +70,10 @@ impl Account {
 }
 
 fn strip_html(html: &str) -> String {
-	let mut result = String::with_capacity(html.len());
-	let mut in_tag = false;
-	let mut chars = html.chars().peekable();
-	while let Some(c) = chars.next() {
-		match c {
-			'<' => {
-				in_tag = true;
-				let tag_start: String = chars.clone().take(3).collect();
-				if (tag_start.starts_with("br") || tag_start.starts_with("p>") || tag_start.starts_with("p "))
-					&& !result.ends_with('\n')
-					&& !result.is_empty()
-				{
-					result.push('\n');
-				}
-			}
-			'>' => in_tag = false,
-			'&' if !in_tag => {
-				let entity: String = chars.clone().take_while(|&c| c != ';').collect();
-				let skip = entity.len() + 1; // +1 for semicolon
-				match entity.as_str() {
-					"amp" => result.push('&'),
-					"lt" => result.push('<'),
-					"gt" => result.push('>'),
-					"quot" => result.push('"'),
-					"apos" => result.push('\''),
-					"nbsp" => result.push(' '),
-					_ => result.push('&'), // Unknown entity, keep as-is
-				}
-				if entity.as_str() != "amp" || chars.clone().next() == Some(';') {
-					for _ in 0..skip {
-						chars.next();
-					}
-				}
-			}
-			_ if !in_tag => result.push(c),
-			_ => {}
-		}
-	}
-	result.trim().to_string()
+	html2text::from_read(html.as_bytes(), usize::MAX)
+		.unwrap_or_else(|_| html.to_string())
+		.trim()
+		.to_string()
 }
 
 impl MastodonClient {
@@ -196,14 +165,6 @@ impl MastodonClient {
 			.context("Instance rejected timeline request")?;
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
 		Ok(statuses)
-	}
-
-	pub fn streaming_url(&self, access_token: &str) -> Result<Url> {
-		let mut url = self.base_url.join("api/v1/streaming")?;
-		let scheme = if self.base_url.scheme() == "https" { "wss" } else { "ws" };
-		url.set_scheme(scheme).map_err(|_| anyhow::anyhow!("Failed to set WebSocket scheme"))?;
-		url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", "user");
-		Ok(url)
 	}
 }
 

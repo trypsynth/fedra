@@ -5,9 +5,10 @@ mod config;
 mod dialogs;
 mod error;
 mod mastodon;
+mod network;
 mod streaming;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, mem, rc::Rc};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -15,6 +16,7 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{Account, Config},
 	mastodon::{MastodonClient, Status},
+	network::{NetworkCommand, NetworkHandle, NetworkResponse},
 	streaming::StreamHandle,
 };
 
@@ -25,12 +27,13 @@ struct AppState {
 	config: Config,
 	statuses: Vec<Status>,
 	stream_handle: Option<StreamHandle>,
-	client: Option<MastodonClient>,
+	network_handle: Option<NetworkHandle>,
+	streaming_url: Option<Url>,
 }
 
 impl AppState {
 	fn new(config: Config) -> Self {
-		Self { config, statuses: Vec::new(), stream_handle: None, client: None }
+		Self { config, statuses: Vec::new(), stream_handle: None, network_handle: None, streaming_url: None }
 	}
 
 	fn active_account(&self) -> Option<&config::Account> {
@@ -114,70 +117,31 @@ fn build_menu_bar() -> MenuBar {
 }
 
 fn do_new_post(frame: &Frame, state: &AppState) {
-	let account = match state.active_account() {
-		Some(acc) => acc,
-		None => {
-			dialogs::show_error_msg(frame, "No account configured.");
-			return;
-		}
-	};
-	let access_token = match &account.access_token {
-		Some(token) => token,
-		None => {
-			dialogs::show_error_msg(frame, "Account has no access token.");
-			return;
-		}
-	};
+	if state.active_account().is_none() {
+		dialogs::show_error_msg(frame, "No account configured.");
+		return;
+	}
 	let content = match dialogs::prompt_for_post(frame) {
 		Some(c) => c,
 		None => return,
 	};
-	let instance_url = match Url::parse(&account.instance) {
-		Ok(url) => url,
-		Err(_) => {
-			dialogs::show_error_msg(frame, "Invalid instance URL in account.");
-			return;
+	match &state.network_handle {
+		Some(handle) => {
+			handle.send(NetworkCommand::PostStatus { content });
 		}
-	};
-	let client = match mastodon::MastodonClient::new(instance_url) {
-		Ok(c) => c,
-		Err(err) => {
-			dialogs::show_error(frame, &err);
-			return;
-		}
-	};
-	match client.post_status(access_token, &content) {
-		Ok(()) => {
-			dialogs::show_info(frame, "Your post has been published!", "Posted");
-		}
-		Err(err) => {
-			dialogs::show_error(frame, &err);
+		None => {
+			dialogs::show_error_msg(frame, "Network not available.");
 		}
 	}
 }
 
-fn refresh_timeline(frame: &Frame, state: &mut AppState, timeline_list: &ListBox) {
-	let client = match &state.client {
-		Some(c) => c,
+fn refresh_timeline(frame: &Frame, state: &AppState) {
+	match &state.network_handle {
+		Some(handle) => {
+			handle.send(NetworkCommand::FetchTimeline { limit: Some(40) });
+		}
 		None => {
-			dialogs::show_error_msg(frame, "No client available.");
-			return;
-		}
-	};
-	let access_token = match state.access_token() {
-		Some(t) => t.to_string(),
-		None => {
-			dialogs::show_error_msg(frame, "No access token available.");
-			return;
-		}
-	};
-	match client.get_home_timeline(&access_token, Some(40)) {
-		Ok(statuses) => {
-			state.statuses = statuses;
-			update_timeline_ui(timeline_list, &state.statuses);
-		}
-		Err(err) => {
-			dialogs::show_error(frame, &err);
+			dialogs::show_error_msg(frame, "Network not available.");
 		}
 	}
 }
@@ -185,23 +149,28 @@ fn refresh_timeline(frame: &Frame, state: &mut AppState, timeline_list: &ListBox
 fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
 	timeline_list.clear();
 	for status in statuses {
-		timeline_list.append(&status.summary());
+		timeline_list.append(&status.timeline_display());
 	}
 }
 
 fn start_streaming(state: &mut AppState) {
-	let client = match &state.client {
-		Some(c) => c,
+	let base_url = match &state.streaming_url {
+		Some(url) => url.clone(),
 		None => return,
 	};
 	let access_token = match state.access_token() {
 		Some(t) => t,
 		None => return,
 	};
-	let streaming_url = match client.streaming_url(access_token) {
+	let mut streaming_url = match base_url.join("api/v1/streaming") {
 		Ok(url) => url,
 		Err(_) => return,
 	};
+	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
+	if streaming_url.set_scheme(scheme).is_err() {
+		return;
+	}
+	streaming_url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", "user");
 	state.stream_handle = Some(streaming::start_streaming(streaming_url));
 }
 
@@ -235,6 +204,30 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 	}
 	if needs_update {
 		update_timeline_ui(timeline_list, &state.statuses);
+	}
+}
+
+fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list: &ListBox) {
+	let handle = match &state.network_handle {
+		Some(h) => h,
+		None => return,
+	};
+	for response in handle.drain() {
+		match response {
+			NetworkResponse::TimelineLoaded(Ok(statuses)) => {
+				state.statuses = statuses;
+				update_timeline_ui(timeline_list, &state.statuses);
+			}
+			NetworkResponse::TimelineLoaded(Err(ref err)) => {
+				dialogs::show_error(frame, err);
+			}
+			NetworkResponse::PostComplete(Ok(())) => {
+				dialogs::show_info(frame, "Your post has been published!", "Posted");
+			}
+			NetworkResponse::PostComplete(Err(ref err)) => {
+				dialogs::show_error(frame, err);
+			}
+		}
 	}
 }
 
@@ -281,27 +274,38 @@ fn main() {
 			}
 		}
 		let mut state = AppState::new(config);
-		if let Some(account) = state.active_account()
-			&& let Ok(url) = Url::parse(&account.instance)
-		{
-			state.client = mastodon::MastodonClient::new(url).ok();
+		let network_info = state.active_account().and_then(|account| {
+			let url = Url::parse(&account.instance).ok()?;
+			let token = account.access_token.clone()?;
+			Some((url, token))
+		});
+		if let Some((url, token)) = network_info {
+			state.streaming_url = Some(url.clone());
+			state.network_handle = network::start_network(url, token).ok();
 		}
-		refresh_timeline(&frame, &mut state, &timeline_list);
+		if let Some(handle) = &state.network_handle {
+			handle.send(NetworkCommand::FetchTimeline { limit: Some(40) });
+		}
 		start_streaming(&mut state);
 		let state = Rc::new(RefCell::new(state));
 		let timer = Timer::new(&frame);
 		let state_timer = state.clone();
+		let frame_timer = frame;
 		timer.on_tick(move |_| {
-			process_stream_events(&mut state_timer.borrow_mut(), &timeline_list);
+			let mut state = state_timer.borrow_mut();
+			process_stream_events(&mut state, &timeline_list);
+			process_network_responses(&frame_timer, &mut state, &timeline_list);
 		});
 		timer.start(100, false); // Check every 100ms
+		// Keep timer alive, it would be dropped at end of scope otherwise
+		mem::forget(timer);
 		let state_menu = state.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_NEW_POST => {
 				do_new_post(&frame, &state_menu.borrow());
 			}
 			ID_REFRESH => {
-				refresh_timeline(&frame, &mut state_menu.borrow_mut(), &timeline_list);
+				refresh_timeline(&frame, &state_menu.borrow());
 			}
 			_ => {}
 		});
