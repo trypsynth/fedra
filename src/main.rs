@@ -140,6 +140,13 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 			handle.send(NetworkCommand::PostStatus {
 				content: post.content,
 				visibility: post.visibility.as_api_str().to_string(),
+				spoiler_text: post.spoiler_text,
+				content_type: post.content_type,
+				media: post
+					.media
+					.into_iter()
+					.map(|item| network::MediaUpload { path: item.path, description: item.description })
+					.collect(),
 			});
 		}
 		None => {

@@ -1,4 +1,7 @@
-use reqwest::{Url, blocking::Client};
+use reqwest::{
+	Url,
+	blocking::{Client, multipart},
+};
 use serde::Deserialize;
 
 use crate::{
@@ -142,17 +145,62 @@ impl MastodonClient {
 		Ok(payload.access_token)
 	}
 
-	pub fn post_status(&self, access_token: &str, status: &str, visibility: &str) -> Result<()> {
+	pub fn post_status_with_media(
+		&self,
+		access_token: &str,
+		status: &str,
+		visibility: &str,
+		spoiler_text: Option<&str>,
+		media_ids: &[String],
+		content_type: Option<&str>,
+	) -> Result<()> {
 		let url = self.base_url.join("api/v1/statuses")?;
+		let mut params =
+			vec![("status".to_string(), status.to_string()), ("visibility".to_string(), visibility.to_string())];
+		if let Some(spoiler) = spoiler_text {
+			if !spoiler.trim().is_empty() {
+				params.push(("spoiler_text".to_string(), spoiler.to_string()));
+			}
+		}
+		if let Some(content_type) = content_type {
+			if !content_type.trim().is_empty() {
+				params.push(("content_type".to_string(), content_type.to_string()));
+			}
+		}
+		for media_id in media_ids {
+			params.push(("media_ids[]".to_string(), media_id.clone()));
+		}
 		self.http
 			.post(url)
 			.bearer_auth(access_token)
-			.form(&[("status", status), ("visibility", visibility)])
+			.form(&params)
 			.send()
 			.context("Failed to post status")?
 			.error_for_status()
 			.context("Instance rejected status post")?;
 		Ok(())
+	}
+
+	pub fn upload_media(&self, access_token: &str, path: &str, description: Option<&str>) -> Result<String> {
+		let url = self.base_url.join("api/v2/media")?;
+		let part = multipart::Part::file(path).context("Failed to read media file")?;
+		let mut form = multipart::Form::new().part("file", part);
+		if let Some(description) = description {
+			if !description.trim().is_empty() {
+				form = form.text("description", description.to_string());
+			}
+		}
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.multipart(form)
+			.send()
+			.context("Failed to upload media")?
+			.error_for_status()
+			.context("Instance rejected media upload")?;
+		let payload: MediaResponse = response.json().context("Invalid media upload response")?;
+		Ok(payload.id)
 	}
 
 	pub fn get_timeline(
@@ -208,6 +256,11 @@ struct RegisterAppResponse {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
 	access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaResponse {
+	id: String,
 }
 
 #[derive(Debug, Deserialize)]

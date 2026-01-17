@@ -13,9 +13,24 @@ use crate::{
 
 #[derive(Debug)]
 pub enum NetworkCommand {
-	FetchTimeline { timeline_type: TimelineType, limit: Option<u32> },
-	PostStatus { content: String, visibility: String },
+	FetchTimeline {
+		timeline_type: TimelineType,
+		limit: Option<u32>,
+	},
+	PostStatus {
+		content: String,
+		visibility: String,
+		spoiler_text: Option<String>,
+		content_type: Option<String>,
+		media: Vec<MediaUpload>,
+	},
 	Shutdown,
+}
+
+#[derive(Debug, Clone)]
+pub struct MediaUpload {
+	pub path: String,
+	pub description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -80,8 +95,30 @@ fn network_loop(
 				let result = client.get_timeline(&access_token, &timeline_type, limit);
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
-			Ok(NetworkCommand::PostStatus { content, visibility }) => {
-				let result = client.post_status(&access_token, &content, &visibility);
+			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media }) => {
+				let mut media_ids = Vec::new();
+				let mut upload_failed = None;
+				for item in media {
+					match client.upload_media(&access_token, &item.path, item.description.as_deref()) {
+						Ok(id) => media_ids.push(id),
+						Err(err) => {
+							upload_failed = Some(err);
+							break;
+						}
+					}
+				}
+				if let Some(err) = upload_failed {
+					let _ = responses.send(NetworkResponse::PostComplete(Err(err)));
+					continue;
+				}
+				let result = client.post_status_with_media(
+					&access_token,
+					&content,
+					&visibility,
+					spoiler_text.as_deref(),
+					&media_ids,
+					content_type.as_deref(),
+				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {

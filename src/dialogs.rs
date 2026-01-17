@@ -1,3 +1,5 @@
+use std::{cell::RefCell, path::Path, rc::Rc};
+
 use url::Url;
 use wxdragon::prelude::*;
 
@@ -86,17 +88,49 @@ impl PostVisibility {
 pub struct PostResult {
 	pub content: String,
 	pub visibility: PostVisibility,
+	pub spoiler_text: Option<String>,
+	pub content_type: Option<String>,
+	pub media: Vec<PostMedia>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostMedia {
+	pub path: String,
+	pub description: Option<String>,
 }
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
 
+fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
+	media_list.clear();
+	for item in items {
+		let label = Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path);
+		media_list.append(label);
+	}
+}
+
 pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
-	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(500, 300).build();
+	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
+	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
+	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
+	let cw_text = TextCtrl::builder(&panel).build();
+	cw_label.show(false);
+	cw_text.show(false);
+	let content_type_label = StaticText::builder(&panel).with_label("Content type (if supported):").build();
+	let content_type_options = vec![
+		("Default".to_string(), None),
+		("Plain text (text/plain)".to_string(), Some("text/plain".to_string())),
+		("Markdown (text/markdown)".to_string(), Some("text/markdown".to_string())),
+		("HTML (text/html)".to_string(), Some("text/html".to_string())),
+	];
+	let content_type_labels: Vec<String> = content_type_options.iter().map(|(label, _)| label.clone()).collect();
+	let content_type_choice = Choice::builder(&panel).with_choices(content_type_labels).build();
+	content_type_choice.set_selection(0);
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
@@ -104,6 +138,23 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
+	let content_type_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
+	let media_label = StaticText::builder(&panel).with_label("Media:").build();
+	let media_list = ListBox::builder(&panel).build();
+	let media_add_button = Button::builder(&panel).with_label("Add Media...").build();
+	let media_remove_button = Button::builder(&panel).with_label("Remove Selected").build();
+	let media_desc_label = StaticText::builder(&panel).with_label("Description for selected media:").build();
+	let media_desc_text = TextCtrl::builder(&panel).build();
+	media_desc_label.enable(false);
+	media_desc_text.enable(false);
+	let media_buttons = BoxSizer::builder(Orientation::Vertical).build();
+	media_buttons.add(&media_add_button, 0, SizerFlag::Bottom, 8);
+	media_buttons.add(&media_remove_button, 0, SizerFlag::Bottom, 8);
+	let media_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	media_sizer.add(&media_list, 1, SizerFlag::Expand | SizerFlag::Right, 8);
+	media_sizer.add_sizer(&media_buttons, 0, SizerFlag::AlignLeft, 0);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_label("Post").build();
 	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
@@ -112,12 +163,111 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&content_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&content_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&cw_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&cw_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&content_type_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&media_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add_sizer(&media_sizer, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&media_desc_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&media_desc_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
+	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(Vec::new()));
+	let media_items_add = media_items.clone();
+	let media_list_add = media_list;
+	media_add_button.on_click(move |_| {
+		let file_dialog = FileDialog::builder(&panel)
+			.with_message("Select media to attach")
+			.with_wildcard("Media files|*.png;*.jpg;*.jpeg;*.gif;*.mp4;*.webm;*.mov|All files|*.*")
+			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist | FileDialogStyle::Multiple)
+			.build();
+		if file_dialog.show_modal() == ID_OK {
+			let mut paths = file_dialog.get_paths();
+			if paths.is_empty() {
+				if let Some(path) = file_dialog.get_path() {
+					paths.push(path);
+				}
+			}
+			if !paths.is_empty() {
+				let mut items = media_items_add.borrow_mut();
+				for path in paths {
+					items.push(PostMedia { path, description: None });
+				}
+				refresh_media_list(&media_list_add, &items);
+				if !items.is_empty() {
+					media_list_add.set_selection((items.len() - 1) as u32, true);
+				}
+			}
+		}
+	});
+	let media_items_remove = media_items.clone();
+	let media_list_remove = media_list_add;
+	let media_desc_label_remove = media_desc_label;
+	let media_desc_text_remove = media_desc_text;
+	media_remove_button.on_click(move |_| {
+		if let Some(selection) = media_list_remove.get_selection() {
+			let index = selection as usize;
+			let mut items = media_items_remove.borrow_mut();
+			if index < items.len() {
+				items.remove(index);
+				refresh_media_list(&media_list_remove, &items);
+			}
+			media_desc_text_remove.set_value("");
+			media_desc_label_remove.enable(false);
+			media_desc_text_remove.enable(false);
+		}
+	});
+	let media_items_select = media_items.clone();
+	let media_desc_label_select = media_desc_label_remove;
+	let media_desc_text_select = media_desc_text_remove;
+	let media_list_select = media_list_remove;
+	media_list_select.on_selection_changed(move |_| {
+		let selection = media_list_select.get_selection().map(|sel| sel as usize);
+		let items = media_items_select.borrow();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			media_desc_label_select.enable(true);
+			media_desc_text_select.enable(true);
+			media_desc_text_select.set_value(items[index].description.as_deref().unwrap_or(""));
+		} else {
+			media_desc_text_select.set_value("");
+			media_desc_label_select.enable(false);
+			media_desc_text_select.enable(false);
+		}
+	});
+	let media_items_desc = media_items.clone();
+	let media_list_desc = media_list_select;
+	media_desc_text_select.on_text_changed(move |_| {
+		let selection = media_list_desc.get_selection().map(|sel| sel as usize);
+		let mut items = media_items_desc.borrow_mut();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			let value = media_desc_text_select.get_value();
+			let trimmed = value.trim();
+			items[index].description = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+		}
+	});
+	let cw_label_toggle = cw_label;
+	let cw_text_toggle = cw_text;
+	let panel_toggle = panel;
+	let dialog_toggle = dialog;
+	cw_checkbox.on_toggled(move |event| {
+		let checked = event.is_checked();
+		cw_label_toggle.show(checked);
+		cw_text_toggle.show(checked);
+		if !checked {
+			cw_text_toggle.set_value("");
+		}
+		panel_toggle.layout();
+		dialog_toggle.layout();
+	});
 	let timer = Timer::new(&dialog);
 	timer.on_tick(move |_| {
 		let text = content_text.get_value();
@@ -145,7 +295,20 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	}
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
 	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
-	Some(PostResult { content: trimmed.to_string(), visibility })
+	let spoiler_text = if cw_checkbox.get_value() {
+		let text = cw_text.get_value();
+		let trimmed = text.trim();
+		if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+	} else {
+		None
+	};
+	let content_type_idx = content_type_choice.get_selection().unwrap_or(0) as usize;
+	let content_type = content_type_options.get(content_type_idx).and_then(|(_, value)| value.clone());
+	let media = media_items.borrow().clone();
+	if trimmed.is_empty() && media.is_empty() {
+		return None;
+	}
+	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media })
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
