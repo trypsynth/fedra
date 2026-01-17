@@ -26,6 +26,7 @@ const ID_REFRESH: i32 = 1002;
 const ID_LOCAL_TIMELINE: i32 = 1003;
 const ID_FEDERATED_TIMELINE: i32 = 1004;
 const ID_CLOSE_TIMELINE: i32 = 1005;
+const KEY_DELETE: i32 = 127;
 
 struct AppState {
 	config: Config,
@@ -117,8 +118,8 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh timeline")
 		.build();
 	let timelines_menu = Menu::builder()
-		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline", "Open local timeline")
-		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
+		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
+		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline\tCtrl+F", "Open federated timeline")
 		.append_separator()
 		.append_item(ID_CLOSE_TIMELINE, "&Close Timeline", "Close current timeline")
 		.build();
@@ -229,9 +230,15 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 						}
 					}
 				}
-				streaming::StreamEvent::Connected(_)
-				| streaming::StreamEvent::Disconnected(_)
-				| streaming::StreamEvent::Error { .. } => {}
+				streaming::StreamEvent::Connected(timeline_type) => {
+					let _ = timeline_type;
+				}
+				streaming::StreamEvent::Disconnected(timeline_type) => {
+					let _ = timeline_type;
+				}
+				streaming::StreamEvent::Error { timeline_type, message } => {
+					let _ = (timeline_type, message);
+				}
 			}
 		}
 	}
@@ -420,6 +427,26 @@ fn main() {
 						apply_timeline_selection(&timeline_list_selector, active);
 					}
 				}
+			}
+		});
+		let state_delete = state.clone();
+		let timelines_selector_delete = timelines_selector;
+		let timeline_list_delete = timeline_list_selector;
+		timelines_selector_delete.on_key_down(move |event| {
+			if let WindowEventData::Keyboard(ref key_event) = event {
+				if key_event.get_key_code() == Some(KEY_DELETE) {
+					close_timeline(
+						&mut state_delete.borrow_mut(),
+						&frame,
+						&timelines_selector_delete,
+						&timeline_list_delete,
+					);
+					event.skip(false);
+				} else {
+					event.skip(true);
+				}
+			} else {
+				event.skip(true);
 			}
 		});
 		let state_timeline_list = state.clone();

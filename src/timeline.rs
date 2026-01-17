@@ -41,14 +41,6 @@ impl TimelineType {
 	pub fn is_closeable(&self) -> bool {
 		!matches!(self, TimelineType::Home)
 	}
-
-	pub fn id(&self) -> String {
-		match self {
-			TimelineType::Home => "home".to_string(),
-			TimelineType::Local => "local".to_string(),
-			TimelineType::Federated => "federated".to_string(),
-		}
-	}
 }
 
 pub struct Timeline {
@@ -110,16 +102,8 @@ impl TimelineManager {
 		}
 	}
 
-	pub fn get(&self, timeline_type: &TimelineType) -> Option<&Timeline> {
-		self.timelines.iter().find(|t| t.timeline_type == *timeline_type)
-	}
-
 	pub fn get_mut(&mut self, timeline_type: &TimelineType) -> Option<&mut Timeline> {
 		self.timelines.iter_mut().find(|t| t.timeline_type == *timeline_type)
-	}
-
-	pub fn iter(&self) -> impl Iterator<Item = &Timeline> {
-		self.timelines.iter()
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Timeline> {
@@ -136,10 +120,6 @@ impl TimelineManager {
 
 	pub fn len(&self) -> usize {
 		self.timelines.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.timelines.is_empty()
 	}
 }
 

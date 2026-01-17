@@ -155,10 +155,6 @@ impl MastodonClient {
 		Ok(())
 	}
 
-	pub fn get_home_timeline(&self, access_token: &str, limit: Option<u32>) -> Result<Vec<Status>> {
-		self.get_timeline(access_token, &TimelineType::Home, limit)
-	}
-
 	pub fn get_timeline(
 		&self,
 		access_token: &str,
