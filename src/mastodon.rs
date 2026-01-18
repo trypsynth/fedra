@@ -67,6 +67,44 @@ impl Status {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+pub struct Notification {
+	pub id: String,
+	#[serde(rename = "type")]
+	pub kind: String,
+	pub created_at: String,
+	pub account: Account,
+	pub status: Option<Box<Status>>,
+}
+
+impl Notification {
+	pub fn timeline_display(&self) -> String {
+		let actor = self.account.display_name_or_username();
+		match self.kind.as_str() {
+			"mention" => format!("{} mentioned you: {}", actor, self.status_text()),
+			"reblog" => format!("{} boosted: {}", actor, self.status_text()),
+			"favourite" => format!("{} favourited: {}", actor, self.status_text()),
+			"follow" => format!("{} followed you", actor),
+			"follow_request" => format!("{} requested to follow you", actor),
+			"poll" => format!("{} poll ended: {}", actor, self.status_text()),
+			"status" => format!("{} posted: {}", actor, self.status_text()),
+			_ => match self.status_text_if_any() {
+				Some(text) => format!("{} {}: {}", actor, self.kind, text),
+				None => format!("{} {}", actor, self.kind),
+			},
+		}
+	}
+
+	fn status_text(&self) -> String {
+		self.status_text_if_any().unwrap_or_else(|| "No status content".to_string())
+	}
+
+	fn status_text_if_any(&self) -> Option<String> {
+		self.status.as_ref().map(|status| status.display_text())
+	}
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Account {
 	pub id: String,
 	pub username: String,
@@ -243,6 +281,26 @@ impl MastodonClient {
 			.context("Instance rejected timeline request")?;
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
 		Ok(statuses)
+	}
+
+	pub fn get_notifications(&self, access_token: &str, limit: Option<u32>) -> Result<Vec<Notification>> {
+		let mut url = self.base_url.join("api/v1/notifications")?;
+		{
+			let mut query = url.query_pairs_mut();
+			if let Some(limit) = limit {
+				query.append_pair("limit", &limit.to_string());
+			}
+		}
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch notifications")?
+			.error_for_status()
+			.context("Instance rejected notifications request")?;
+		let notifications: Vec<Notification> = response.json().context("Invalid notifications response")?;
+		Ok(notifications)
 	}
 
 	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {

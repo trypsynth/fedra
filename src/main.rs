@@ -18,8 +18,8 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{Account, Config},
 	mastodon::{MastodonClient, PollLimits, Status},
-	network::{NetworkCommand, NetworkHandle, NetworkResponse},
-	timeline::{Timeline, TimelineManager, TimelineType},
+	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
+	timeline::{Timeline, TimelineEntry, TimelineManager, TimelineType},
 };
 
 const ID_NEW_POST: i32 = 1001;
@@ -185,21 +185,21 @@ fn refresh_timeline(state: &AppState) {
 	}
 }
 
-fn update_timeline_ui(timeline_list: &ListBox, statuses: &[Status]) {
+fn update_timeline_ui(timeline_list: &ListBox, entries: &[TimelineEntry]) {
 	timeline_list.clear();
-	for status in statuses.iter().rev() {
-		timeline_list.append(&status.timeline_display());
+	for entry in entries.iter().rev() {
+		timeline_list.append(&entry.display_text());
 	}
 }
 
 fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
-	if timeline.statuses.is_empty() {
+	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
 		return;
 	}
 	let selection = match timeline.selected_index {
-		Some(sel) if sel < timeline.statuses.len() => sel,
-		_ => timeline.statuses.len() - 1,
+		Some(sel) if sel < timeline.entries.len() => sel,
+		_ => timeline.entries.len() - 1,
 	};
 	timeline.selected_index = Some(selection);
 	timeline_list.set_selection(selection as u32, true);
@@ -238,7 +238,7 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 			match event {
 				streaming::StreamEvent::Update { timeline_type, status } => {
 					if timeline.timeline_type == timeline_type {
-						timeline.statuses.insert(0, *status);
+						timeline.entries.insert(0, TimelineEntry::Status(*status));
 						if is_active {
 							active_needs_update = true;
 						}
@@ -246,7 +246,15 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 				}
 				streaming::StreamEvent::Delete { timeline_type, id } => {
 					if timeline.timeline_type == timeline_type {
-						timeline.statuses.retain(|s| s.id != id);
+						timeline.entries.retain(|entry| entry.as_status().map(|s| s.id != id).unwrap_or(true));
+						if is_active {
+							active_needs_update = true;
+						}
+					}
+				}
+				streaming::StreamEvent::Notification { timeline_type, notification } => {
+					if timeline.timeline_type == timeline_type {
+						timeline.entries.insert(0, TimelineEntry::Notification(*notification));
 						if is_active {
 							active_needs_update = true;
 						}
@@ -267,7 +275,7 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 	if active_needs_update {
 		if let Some(active) = state.timeline_manager.active_mut() {
 			active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-			update_timeline_ui(timeline_list, &active.statuses);
+			update_timeline_ui(timeline_list, &active.entries);
 			apply_timeline_selection(timeline_list, active);
 		}
 	}
@@ -281,19 +289,24 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	for response in handle.drain() {
 		match response {
-			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(statuses) } => {
-				let is_active = active_type.as_ref() == Some(&timeline_type);
-				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					if is_active {
-						timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+		NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data) } => {
+			let is_active = active_type.as_ref() == Some(&timeline_type);
+			if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+				if is_active {
+					timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+				}
+				timeline.entries = match data {
+					TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
+					TimelineData::Notifications(notifications) => {
+						notifications.into_iter().map(TimelineEntry::Notification).collect()
 					}
-					timeline.statuses = statuses;
-					if is_active {
-						update_timeline_ui(timeline_list, &timeline.statuses);
-						apply_timeline_selection(timeline_list, timeline);
-					}
+				};
+				if is_active {
+					update_timeline_ui(timeline_list, &timeline.entries);
+					apply_timeline_selection(timeline_list, timeline);
 				}
 			}
+		}
 			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
 				speech::speak(&format!("Failed to load timeline: {}", error::user_message(err)));
 			}
@@ -362,15 +375,17 @@ where
 	F: Fn(&mut Status),
 {
 	for timeline in state.timeline_manager.iter_mut() {
-		for status in &mut timeline.statuses {
-			// Check the status itself
-			if status.id == status_id {
-				updater(status);
-			}
-			// Check if it's a reblog of the target
-			if let Some(ref mut reblog) = status.reblog {
-				if reblog.id == status_id {
-					updater(reblog);
+		for entry in &mut timeline.entries {
+			if let Some(status) = entry.as_status_mut() {
+				// Check the status itself
+				if status.id == status_id {
+					updater(status);
+				}
+				// Check if it's a reblog of the target
+				if let Some(ref mut reblog) = status.reblog {
+					if reblog.id == status_id {
+						updater(reblog);
+					}
 				}
 			}
 		}
@@ -402,8 +417,8 @@ fn get_selected_status(state: &AppState) -> Option<&Status> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
 	// Timeline displays statuses in reverse order (newest at top)
-	let reverse_index = timeline.statuses.len().checked_sub(1)?.checked_sub(index)?;
-	timeline.statuses.get(reverse_index)
+	let reverse_index = timeline.entries.len().checked_sub(1)?.checked_sub(index)?;
+	timeline.entries.get(reverse_index)?.as_status()
 }
 
 fn do_favourite(state: &AppState) {
@@ -491,7 +506,7 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 		None => return,
 	};
 	if !active_type.is_closeable() {
-		speech::speak("Cannot close the Home timeline");
+		speech::speak(&format!("Cannot close the {} timeline", active_type.display_name()));
 		return;
 	}
 	if !state.timeline_manager.close(&active_type) {
@@ -504,7 +519,7 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 	let active_index = state.timeline_manager.active_index();
 	selector.set_selection(active_index as u32, true);
 	if let Some(active) = state.timeline_manager.active_mut() {
-		update_timeline_ui(timeline_list, &active.statuses);
+		update_timeline_ui(timeline_list, &active.entries);
 		apply_timeline_selection(timeline_list, active);
 	}
 }
@@ -552,6 +567,7 @@ fn main() {
 		}
 		let mut state = AppState::new(config);
 		state.timeline_manager.open(TimelineType::Home);
+		state.timeline_manager.open(TimelineType::Notifications);
 		state.timeline_manager.open(TimelineType::Local);
 		let network_info = state.active_account().and_then(|account| {
 			let url = Url::parse(&account.instance).ok()?;
@@ -571,9 +587,11 @@ fn main() {
 		}
 		if let Some(handle) = &state.network_handle {
 			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40) });
+			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Notifications, limit: Some(40) });
 			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Local, limit: Some(40) });
 		}
 		start_streaming_for_timeline(&mut state, &TimelineType::Home);
+		start_streaming_for_timeline(&mut state, &TimelineType::Notifications);
 		start_streaming_for_timeline(&mut state, &TimelineType::Local);
 		timelines_selector.clear();
 		for name in state.timeline_manager.display_names() {
@@ -603,7 +621,7 @@ fn main() {
 					}
 					state.timeline_manager.set_active(index as usize);
 					if let Some(active) = state.timeline_manager.active_mut() {
-						update_timeline_ui(&timeline_list_selector, &active.statuses);
+						update_timeline_ui(&timeline_list_selector, &active.entries);
 						apply_timeline_selection(&timeline_list_selector, active);
 					}
 				}

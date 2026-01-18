@@ -8,12 +8,16 @@ use serde::Deserialize;
 use tungstenite::{Message, connect};
 use url::Url;
 
-use crate::{mastodon::Status, timeline::TimelineType};
+use crate::{
+	mastodon::{Notification, Status},
+	timeline::TimelineType,
+};
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
 	Update { timeline_type: TimelineType, status: Box<Status> },
 	Delete { timeline_type: TimelineType, id: String },
+	Notification { timeline_type: TimelineType, notification: Box<Notification> },
 	Connected(TimelineType),
 	Disconnected(TimelineType),
 	Error { timeline_type: TimelineType, message: String },
@@ -119,13 +123,30 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 	let msg: StreamMessage = serde_json::from_str(text).ok()?;
 	match msg.event.as_str() {
 		"update" => {
+			if *timeline_type == TimelineType::Notifications {
+				return None;
+			}
 			let payload = msg.payload?;
 			let status: Status = serde_json::from_str(&payload).ok()?;
 			Some(StreamEvent::Update { timeline_type: timeline_type.clone(), status: Box::new(status) })
 		}
 		"delete" => {
+			if *timeline_type == TimelineType::Notifications {
+				return None;
+			}
 			let status_id = msg.payload?;
 			Some(StreamEvent::Delete { timeline_type: timeline_type.clone(), id: status_id })
+		}
+		"notification" => {
+			if *timeline_type != TimelineType::Notifications {
+				return None;
+			}
+			let payload = msg.payload?;
+			let notification: Notification = serde_json::from_str(&payload).ok()?;
+			Some(StreamEvent::Notification {
+				timeline_type: timeline_type.clone(),
+				notification: Box::new(notification),
+			})
 		}
 		_ => None,
 	}

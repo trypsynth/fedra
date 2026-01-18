@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{
 	error::Result,
-	mastodon::{MastodonClient, Status},
+	mastodon::{MastodonClient, Notification, Status},
 	timeline::TimelineType,
 };
 
@@ -61,13 +61,19 @@ pub struct PollData {
 
 #[derive(Debug)]
 pub enum NetworkResponse {
-	TimelineLoaded { timeline_type: TimelineType, result: Result<Vec<Status>> },
+	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData> },
 	PostComplete(Result<()>),
 	Favourited { status_id: String, result: Result<Status> },
 	Unfavourited { status_id: String, result: Result<Status> },
 	Boosted { status_id: String, result: Result<Status> },
 	Unboosted { status_id: String, result: Result<Status> },
 	Replied(Result<()>),
+}
+
+#[derive(Debug)]
+pub enum TimelineData {
+	Statuses(Vec<Status>),
+	Notifications(Vec<Notification>),
 }
 
 pub struct NetworkHandle {
@@ -123,7 +129,10 @@ fn network_loop(
 	loop {
 		match commands.recv() {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit }) => {
-				let result = client.get_timeline(&access_token, &timeline_type, limit);
+				let result = match timeline_type {
+					TimelineType::Notifications => client.get_notifications(&access_token, limit).map(TimelineData::Notifications),
+					_ => client.get_timeline(&access_token, &timeline_type, limit).map(TimelineData::Statuses),
+				};
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
 			Ok(NetworkCommand::PostStatus {
