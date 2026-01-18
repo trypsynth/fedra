@@ -130,19 +130,14 @@ fn network_loop(
 		match commands.recv() {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit }) => {
 				let result = match timeline_type {
-					TimelineType::Notifications => client.get_notifications(&access_token, limit).map(TimelineData::Notifications),
+					TimelineType::Notifications => {
+						client.get_notifications(&access_token, limit).map(TimelineData::Notifications)
+					}
 					_ => client.get_timeline(&access_token, &timeline_type, limit).map(TimelineData::Statuses),
 				};
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
-			Ok(NetworkCommand::PostStatus {
-				content,
-				visibility,
-				spoiler_text,
-				content_type,
-				media,
-				poll,
-			}) => {
+			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
 				let mut media_ids = Vec::new();
 				let mut upload_failed = None;
 				for item in media {

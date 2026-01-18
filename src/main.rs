@@ -290,24 +290,24 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	for response in handle.drain() {
 		match response {
-		NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data) } => {
-			let is_active = active_type.as_ref() == Some(&timeline_type);
-			if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-				if is_active {
-					timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-				}
-				timeline.entries = match data {
-					TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
-					TimelineData::Notifications(notifications) => {
-						notifications.into_iter().map(TimelineEntry::Notification).collect()
+			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data) } => {
+				let is_active = active_type.as_ref() == Some(&timeline_type);
+				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+					if is_active {
+						timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
 					}
-				};
-				if is_active {
-					update_timeline_ui(timeline_list, &timeline.entries);
-					apply_timeline_selection(timeline_list, timeline);
+					timeline.entries = match data {
+						TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
+						TimelineData::Notifications(notifications) => {
+							notifications.into_iter().map(TimelineEntry::Notification).collect()
+						}
+					};
+					if is_active {
+						update_timeline_ui(timeline_list, &timeline.entries);
+						apply_timeline_selection(timeline_list, timeline);
+					}
 				}
 			}
-		}
 			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
 				speech::speak(&format!("Failed to load timeline: {}", error::user_message(err)));
 			}
@@ -393,12 +393,7 @@ where
 	}
 }
 
-fn open_timeline(
-	state: &mut AppState,
-	selector: &ListBox,
-	timeline_list: &ListBox,
-	timeline_type: TimelineType,
-) {
+fn open_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, timeline_type: TimelineType) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		speech::speak("Timeline already open");
 		return;
@@ -741,7 +736,12 @@ fn main() {
 				if shutdown_menu.get() {
 					return;
 				}
-				open_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu, TimelineType::Local);
+				open_timeline(
+					&mut state_menu.borrow_mut(),
+					&timelines_selector_menu,
+					&timeline_list_menu,
+					TimelineType::Local,
+				);
 			}
 			ID_FEDERATED_TIMELINE => {
 				if shutdown_menu.get() {

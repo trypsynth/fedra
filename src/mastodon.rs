@@ -499,30 +499,23 @@ impl MastodonClient {
 		Ok(())
 	}
 
-pub fn get_instance_info(&self) -> Result<InstanceInfo> {
-	let url = self.base_url.join("api/v1/instance")?;
-	let response = self
-		.http
-		.get(url)
-		.send()
+	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
+		let url = self.base_url.join("api/v1/instance")?;
+		let response = self
+			.http
+			.get(url)
+			.send()
 			.context("Failed to fetch instance info")?
 			.error_for_status()
 			.context("Instance rejected info request")?;
 		let info: InstanceResponse = response.json().context("Invalid instance response")?;
-	let max_chars = info
-		.configuration
-		.as_ref()
-		.and_then(|c| c.statuses.as_ref())
-		.and_then(|s| s.max_characters)
-		.unwrap_or(500) as usize;
-	let poll_limits = info
-		.configuration
-		.as_ref()
-		.and_then(|c| c.polls.as_ref())
-		.map(PollLimits::from_config)
-		.unwrap_or_default();
-	Ok(InstanceInfo { max_post_chars: max_chars, poll_limits })
-}
+		let max_chars =
+			info.configuration.as_ref().and_then(|c| c.statuses.as_ref()).and_then(|s| s.max_characters).unwrap_or(500)
+				as usize;
+		let poll_limits =
+			info.configuration.as_ref().and_then(|c| c.polls.as_ref()).map(PollLimits::from_config).unwrap_or_default();
+		Ok(InstanceInfo { max_post_chars: max_chars, poll_limits })
+	}
 }
 
 #[derive(Debug, Deserialize)]

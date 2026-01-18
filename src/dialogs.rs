@@ -3,7 +3,10 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 use url::Url;
 use wxdragon::prelude::*;
 
-use crate::{error, mastodon::{PollLimits, Status}};
+use crate::{
+	error,
+	mastodon::{PollLimits, Status},
+};
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
 	let trimmed = value.trim();
@@ -130,11 +133,7 @@ enum PollDialogResult {
 	Removed,
 }
 
-fn prompt_for_poll(
-	parent: &dyn WxWidget,
-	existing: Option<PostPoll>,
-	limits: &PollLimits,
-) -> Option<PollDialogResult> {
+fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &PollLimits) -> Option<PollDialogResult> {
 	let dialog = Dialog::builder(parent, "Manage Poll").with_size(520, 420).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -183,9 +182,8 @@ fn prompt_for_poll(
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
 
-	let options: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
-		existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default(),
-	));
+	let options: Rc<RefCell<Vec<String>>> =
+		Rc::new(RefCell::new(existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default()));
 	refresh_poll_list(&poll_list, &options.borrow());
 	if !options.borrow().is_empty() {
 		poll_list.set_selection(0, true);
@@ -692,11 +690,7 @@ pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<u
 	let original_label = StaticText::builder(&panel).with_label("Replying to:").build();
 	let original_content = replying_to.reblog.as_ref().map(|r| r.content.as_str()).unwrap_or(&replying_to.content);
 	let original_text = strip_html(original_content);
-	let preview = if original_text.len() > 200 {
-		format!("{}...", &original_text[..200])
-	} else {
-		original_text
-	};
+	let preview = if original_text.len() > 200 { format!("{}...", &original_text[..200]) } else { original_text };
 	let original_preview = StaticText::builder(&panel).with_label(&format!("{}: {}", author, preview)).build();
 	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
@@ -833,13 +827,6 @@ pub fn show_error(frame: &Frame, err: &anyhow::Error) {
 	dialog.show_modal();
 }
 
-pub fn show_error_msg(frame: &Frame, message: &str) {
-	let dialog = MessageDialog::builder(frame, message, "Fedra")
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-		.build();
-	dialog.show_modal();
-}
-
 pub fn show_warning(frame: &Frame, message: &str, title: &str) {
 	let dialog = MessageDialog::builder(frame, message, title)
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
@@ -850,13 +837,6 @@ pub fn show_warning(frame: &Frame, message: &str, title: &str) {
 fn show_warning_widget(parent: &dyn WxWidget, message: &str, title: &str) {
 	let dialog = MessageDialog::builder(parent, message, title)
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
-		.build();
-	dialog.show_modal();
-}
-
-pub fn show_info(frame: &Frame, message: &str, title: &str) {
-	let dialog = MessageDialog::builder(frame, message, title)
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconInformation)
 		.build();
 	dialog.show_modal();
 }
