@@ -245,11 +245,8 @@ fn handle_ui_command(
 ) {
 	match cmd {
 		UiCommand::NewPost => {
-			let (has_account, max_post_chars, poll_limits) = (
-				state.active_account().is_some(),
-				state.max_post_chars,
-				state.poll_limits.clone(),
-			);
+			let (has_account, max_post_chars, poll_limits) =
+				(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone());
 			if !has_account {
 				speech::speak("No account configured");
 				return;
@@ -626,12 +623,7 @@ fn do_boost(state: &AppState) {
 	}
 }
 
-fn close_timeline(
-	state: &mut AppState,
-	selector: &ListBox,
-	timeline_list: &ListBox,
-	suppress_selection: &Cell<bool>,
-) {
+fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, suppress_selection: &Cell<bool>) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,

@@ -401,11 +401,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 		remove_button.enable(true);
 		desc_label.enable(true);
 		desc_text.enable(true);
-		let first_desc = items
-			.borrow()
-			.first()
-			.and_then(|media| media.description.clone())
-			.unwrap_or_default();
+		let first_desc = items.borrow().first().and_then(|media| media.description.clone()).unwrap_or_default();
 		desc_text.set_value(&first_desc);
 	}
 	if items.borrow().is_empty() {
