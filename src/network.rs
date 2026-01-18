@@ -25,6 +25,24 @@ pub enum NetworkCommand {
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
 	},
+	Favourite {
+		status_id: String,
+	},
+	Unfavourite {
+		status_id: String,
+	},
+	Boost {
+		status_id: String,
+	},
+	Unboost {
+		status_id: String,
+	},
+	Reply {
+		in_reply_to_id: String,
+		content: String,
+		visibility: String,
+		spoiler_text: Option<String>,
+	},
 	Shutdown,
 }
 
@@ -45,6 +63,11 @@ pub struct PollData {
 pub enum NetworkResponse {
 	TimelineLoaded { timeline_type: TimelineType, result: Result<Vec<Status>> },
 	PostComplete(Result<()>),
+	Favourited { status_id: String, result: Result<Status> },
+	Unfavourited { status_id: String, result: Result<Status> },
+	Boosted { status_id: String, result: Result<Status> },
+	Unboosted { status_id: String, result: Result<Status> },
+	Replied(Result<()>),
 }
 
 pub struct NetworkHandle {
@@ -136,6 +159,27 @@ fn network_loop(
 					poll.as_ref(),
 				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
+			}
+			Ok(NetworkCommand::Favourite { status_id }) => {
+				let result = client.favourite(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Favourited { status_id, result });
+			}
+			Ok(NetworkCommand::Unfavourite { status_id }) => {
+				let result = client.unfavourite(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Unfavourited { status_id, result });
+			}
+			Ok(NetworkCommand::Boost { status_id }) => {
+				let result = client.reblog(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Boosted { status_id, result });
+			}
+			Ok(NetworkCommand::Unboost { status_id }) => {
+				let result = client.unreblog(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Unboosted { status_id, result });
+			}
+			Ok(NetworkCommand::Reply { in_reply_to_id, content, visibility, spoiler_text }) => {
+				let result =
+					client.reply(&access_token, &in_reply_to_id, &content, &visibility, spoiler_text.as_deref());
+				let _ = responses.send(NetworkResponse::Replied(result));
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

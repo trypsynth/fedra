@@ -3,7 +3,7 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 use url::Url;
 use wxdragon::prelude::*;
 
-use crate::{error, mastodon::PollLimits};
+use crate::{error, mastodon::{PollLimits, Status}};
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
 	let trimmed = value.trim();
@@ -651,6 +651,144 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 		return None;
 	}
 	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media, poll })
+}
+
+pub struct ReplyResult {
+	pub content: String,
+	pub visibility: PostVisibility,
+	pub spoiler_text: Option<String>,
+}
+
+pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<usize>) -> Option<ReplyResult> {
+	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
+	let author = replying_to.account.display_name_or_username();
+	let dialog = Dialog::builder(frame, &format!("Reply to {} - 0 of {} characters", author, max_chars))
+		.with_size(600, 400)
+		.build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	// Show original post content
+	let original_label = StaticText::builder(&panel).with_label("Replying to:").build();
+	let original_content = replying_to.reblog.as_ref().map(|r| r.content.as_str()).unwrap_or(&replying_to.content);
+	let original_text = strip_html(original_content);
+	let preview = if original_text.len() > 200 {
+		format!("{}...", &original_text[..200])
+	} else {
+		original_text
+	};
+	let original_preview = StaticText::builder(&panel).with_label(&format!("{}: {}", author, preview)).build();
+	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
+	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
+	// Pre-fill with @mention
+	let mention = format!("@{} ", replying_to.account.acct);
+	content_text.set_value(&mention);
+	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
+	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
+	let cw_text = TextCtrl::builder(&panel).build();
+	cw_label.show(false);
+	cw_text.show(false);
+	// If original has CW, pre-fill it
+	if !replying_to.spoiler_text.is_empty() {
+		cw_checkbox.set_value(true);
+		cw_label.show(true);
+		cw_text.show(true);
+		cw_text.set_value(&format!("re: {}", replying_to.spoiler_text));
+	}
+	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
+	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
+	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
+	// Match original visibility by default
+	let default_visibility = match replying_to.visibility.as_str() {
+		"public" => 0,
+		"unlisted" => 1,
+		"private" => 2,
+		"direct" => 3,
+		_ => 0,
+	};
+	visibility_choice.set_selection(default_visibility);
+	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let ok_button = Button::builder(&panel).with_label("Reply").build();
+	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&original_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&original_preview, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&content_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&content_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&cw_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&cw_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	let cw_label_toggle = cw_label;
+	let cw_text_toggle = cw_text;
+	let panel_toggle = panel;
+	let dialog_toggle = dialog;
+	cw_checkbox.on_toggled(move |event| {
+		let checked = event.is_checked();
+		cw_label_toggle.show(checked);
+		cw_text_toggle.show(checked);
+		if !checked {
+			cw_text_toggle.set_value("");
+		}
+		panel_toggle.layout();
+		dialog_toggle.layout();
+	});
+	let timer = Timer::new(&dialog);
+	let author_timer = author.to_string();
+	timer.on_tick(move |_| {
+		let text = content_text.get_value();
+		let char_count = text.chars().count();
+		dialog.set_label(&format!("Reply to {} - {} of {} characters", author_timer, char_count, max_chars));
+	});
+	timer.start(100, false);
+	ok_button.on_click(move |_| {
+		dialog.end_modal(ID_OK);
+	});
+	cancel_button.on_click(move |_| {
+		dialog.end_modal(ID_CANCEL);
+	});
+	dialog.centre();
+	content_text.set_focus();
+	// Move cursor to end of pre-filled mention
+	content_text.set_insertion_point_end();
+	let result = dialog.show_modal();
+	timer.stop();
+	if result != ID_OK {
+		return None;
+	}
+	let content = content_text.get_value();
+	let trimmed = content.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
+	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
+	let spoiler_text = if cw_checkbox.get_value() {
+		let text = cw_text.get_value();
+		let trimmed = text.trim();
+		if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+	} else {
+		None
+	};
+	Some(ReplyResult { content: trimmed.to_string(), visibility, spoiler_text })
+}
+
+fn strip_html(html: &str) -> String {
+	html2text::config::plain()
+		.link_footnotes(false)
+		.string_from_read(html.as_bytes(), usize::MAX)
+		.unwrap_or_else(|_| html.to_string())
+		.trim()
+		.to_string()
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {

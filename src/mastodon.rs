@@ -36,6 +36,12 @@ pub struct Status {
 	pub reblogs_count: u64,
 	pub favourites_count: u64,
 	pub replies_count: u64,
+	#[serde(default)]
+	pub favourited: bool,
+	#[serde(default)]
+	pub reblogged: bool,
+	pub in_reply_to_id: Option<String>,
+	pub in_reply_to_account_id: Option<String>,
 }
 
 impl Status {
@@ -237,6 +243,92 @@ impl MastodonClient {
 			.context("Instance rejected timeline request")?;
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
 		Ok(statuses)
+	}
+
+	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to favourite status")?
+			.error_for_status()
+			.context("Instance rejected favourite request")?;
+		let status: Status = response.json().context("Invalid favourite response")?;
+		Ok(status)
+	}
+
+	pub fn unfavourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/unfavourite", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unfavourite status")?
+			.error_for_status()
+			.context("Instance rejected unfavourite request")?;
+		let status: Status = response.json().context("Invalid unfavourite response")?;
+		Ok(status)
+	}
+
+	pub fn reblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/reblog", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to boost status")?
+			.error_for_status()
+			.context("Instance rejected boost request")?;
+		let status: Status = response.json().context("Invalid boost response")?;
+		Ok(status)
+	}
+
+	pub fn unreblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/unreblog", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unboost status")?
+			.error_for_status()
+			.context("Instance rejected unboost request")?;
+		let status: Status = response.json().context("Invalid unboost response")?;
+		Ok(status)
+	}
+
+	pub fn reply(
+		&self,
+		access_token: &str,
+		in_reply_to_id: &str,
+		content: &str,
+		visibility: &str,
+		spoiler_text: Option<&str>,
+	) -> Result<()> {
+		let url = self.base_url.join("api/v1/statuses")?;
+		let mut params = vec![
+			("status".to_string(), content.to_string()),
+			("visibility".to_string(), visibility.to_string()),
+			("in_reply_to_id".to_string(), in_reply_to_id.to_string()),
+		];
+		if let Some(spoiler) = spoiler_text {
+			if !spoiler.trim().is_empty() {
+				params.push(("spoiler_text".to_string(), spoiler.to_string()));
+			}
+		}
+		self.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to post reply")?
+			.error_for_status()
+			.context("Instance rejected reply")?;
+		Ok(())
 	}
 
 pub fn get_instance_info(&self) -> Result<InstanceInfo> {

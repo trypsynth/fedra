@@ -6,6 +6,7 @@ mod dialogs;
 mod error;
 mod mastodon;
 mod network;
+mod speech;
 mod streaming;
 mod timeline;
 
@@ -22,10 +23,13 @@ use crate::{
 };
 
 const ID_NEW_POST: i32 = 1001;
-const ID_REFRESH: i32 = 1002;
-const ID_LOCAL_TIMELINE: i32 = 1003;
-const ID_FEDERATED_TIMELINE: i32 = 1004;
-const ID_CLOSE_TIMELINE: i32 = 1005;
+const ID_REPLY: i32 = 1002;
+const ID_FAVOURITE: i32 = 1003;
+const ID_BOOST: i32 = 1004;
+const ID_LOCAL_TIMELINE: i32 = 1005;
+const ID_FEDERATED_TIMELINE: i32 = 1006;
+const ID_CLOSE_TIMELINE: i32 = 1007;
+const ID_REFRESH: i32 = 1008;
 const KEY_DELETE: i32 = 127;
 
 struct AppState {
@@ -116,21 +120,25 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 fn build_menu_bar() -> MenuBar {
 	let post_menu = Menu::builder()
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
+		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to selected post")
 		.append_separator()
-		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh timeline")
+		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
+		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
 		.build();
 	let timelines_menu = Menu::builder()
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
-		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline\tCtrl+F", "Open federated timeline")
+		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_separator()
 		.append_item(ID_CLOSE_TIMELINE, "&Close Timeline", "Close current timeline")
+		.append_separator()
+		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
 	MenuBar::builder().append(post_menu, "&Post").append(timelines_menu, "&Timelines").build()
 }
 
 fn do_new_post(frame: &Frame, state: &AppState) {
 	if state.active_account().is_none() {
-		dialogs::show_error_msg(frame, "No account configured.");
+		speech::speak("No account configured");
 		return;
 	}
 	let post = match dialogs::prompt_for_post(frame, state.max_post_chars, &state.poll_limits) {
@@ -157,12 +165,12 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 			});
 		}
 		None => {
-			dialogs::show_error_msg(frame, "Network not available.");
+			speech::speak("Network not available");
 		}
 	}
 }
 
-fn refresh_timeline(frame: &Frame, state: &AppState) {
+fn refresh_timeline(state: &AppState) {
 	let timeline_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
@@ -172,7 +180,7 @@ fn refresh_timeline(frame: &Frame, state: &AppState) {
 			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40) });
 		}
 		None => {
-			dialogs::show_error_msg(frame, "Network not available.");
+			speech::speak("Network not available");
 		}
 	}
 }
@@ -287,13 +295,83 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 				}
 			}
 			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
-				dialogs::show_error(frame, err);
+				speech::speak(&format!("Failed to load timeline: {}", error::user_message(err)));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
-				dialogs::show_info(frame, "Your post has been published!", "Posted");
+				speech::speak("Posted");
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
-				dialogs::show_error(frame, err);
+				speech::speak(&format!("Failed to post: {}", error::user_message(err)));
+			}
+			NetworkResponse::Favourited { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.favourited = status.favourited;
+					s.favourites_count = status.favourites_count;
+				});
+				speech::speak("Favourited");
+			}
+			NetworkResponse::Favourited { result: Err(ref err), .. } => {
+				speech::speak(&format!("Failed to favourite: {}", error::user_message(err)));
+			}
+			NetworkResponse::Unfavourited { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.favourited = status.favourited;
+					s.favourites_count = status.favourites_count;
+				});
+				speech::speak("Unfavourited");
+			}
+			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
+				speech::speak(&format!("Failed to unfavourite: {}", error::user_message(err)));
+			}
+			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
+				// The returned status is the reblog wrapper, get the inner status
+				if let Some(inner) = &status.reblog {
+					update_status_in_timelines(state, &status_id, |s| {
+						s.reblogged = inner.reblogged;
+						s.reblogs_count = inner.reblogs_count;
+					});
+				}
+				speech::speak("Boosted");
+			}
+			NetworkResponse::Boosted { result: Err(ref err), .. } => {
+				speech::speak(&format!("Failed to boost: {}", error::user_message(err)));
+			}
+			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.reblogged = status.reblogged;
+					s.reblogs_count = status.reblogs_count;
+				});
+				speech::speak("Unboosted");
+			}
+			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
+				speech::speak(&format!("Failed to unboost: {}", error::user_message(err)));
+			}
+			NetworkResponse::Replied(Ok(())) => {
+				speech::speak("Reply sent");
+			}
+			NetworkResponse::Replied(Err(ref err)) => {
+				speech::speak(&format!("Failed to reply: {}", error::user_message(err)));
+			}
+		}
+	}
+	let _ = frame;
+}
+
+fn update_status_in_timelines<F>(state: &mut AppState, status_id: &str, updater: F)
+where
+	F: Fn(&mut Status),
+{
+	for timeline in state.timeline_manager.iter_mut() {
+		for status in &mut timeline.statuses {
+			// Check the status itself
+			if status.id == status_id {
+				updater(status);
+			}
+			// Check if it's a reblog of the target
+			if let Some(ref mut reblog) = status.reblog {
+				if reblog.id == status_id {
+					updater(reblog);
+				}
 			}
 		}
 	}
@@ -301,13 +379,12 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 
 fn open_timeline(
 	state: &mut AppState,
-	frame: &Frame,
 	selector: &ListBox,
 	timeline_list: &ListBox,
 	timeline_type: TimelineType,
 ) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
-		dialogs::show_error_msg(frame, "That timeline is already open.");
+		speech::speak("Timeline already open");
 		return;
 	}
 	selector.append(timeline_type.display_name());
@@ -321,13 +398,100 @@ fn open_timeline(
 	timeline_list.clear();
 }
 
-fn close_timeline(state: &mut AppState, frame: &Frame, selector: &ListBox, timeline_list: &ListBox) {
+fn get_selected_status(state: &AppState) -> Option<&Status> {
+	let timeline = state.timeline_manager.active()?;
+	let index = timeline.selected_index?;
+	// Timeline displays statuses in reverse order (newest at top)
+	let reverse_index = timeline.statuses.len().checked_sub(1)?.checked_sub(index)?;
+	timeline.statuses.get(reverse_index)
+}
+
+fn do_favourite(state: &AppState) {
+	let status = match get_selected_status(state) {
+		Some(s) => s,
+		None => {
+			speech::speak("No post selected");
+			return;
+		}
+	};
+	let handle = match &state.network_handle {
+		Some(h) => h,
+		None => {
+			speech::speak("Network not available");
+			return;
+		}
+	};
+	// Get the actual status to interact with (unwrap reblog if present)
+	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let status_id = target.id.clone();
+	if target.favourited {
+		handle.send(NetworkCommand::Unfavourite { status_id });
+	} else {
+		handle.send(NetworkCommand::Favourite { status_id });
+	}
+}
+
+fn do_boost(state: &AppState) {
+	let status = match get_selected_status(state) {
+		Some(s) => s,
+		None => {
+			speech::speak("No post selected");
+			return;
+		}
+	};
+	let handle = match &state.network_handle {
+		Some(h) => h,
+		None => {
+			speech::speak("Network not available");
+			return;
+		}
+	};
+	// Get the actual status to interact with (unwrap reblog if present)
+	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let status_id = target.id.clone();
+	if target.reblogged {
+		handle.send(NetworkCommand::Unboost { status_id });
+	} else {
+		handle.send(NetworkCommand::Boost { status_id });
+	}
+}
+
+fn do_reply(frame: &Frame, state: &AppState) {
+	let status = match get_selected_status(state) {
+		Some(s) => s,
+		None => {
+			speech::speak("No post selected");
+			return;
+		}
+	};
+	let handle = match &state.network_handle {
+		Some(h) => h,
+		None => {
+			speech::speak("Network not available");
+			return;
+		}
+	};
+	// Get the actual status to reply to (unwrap reblog if present)
+	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let reply = match dialogs::prompt_for_reply(frame, target, state.max_post_chars) {
+		Some(r) => r,
+		None => return,
+	};
+	handle.send(NetworkCommand::Reply {
+		in_reply_to_id: target.id.clone(),
+		content: reply.content,
+		visibility: reply.visibility.as_api_str().to_string(),
+		spoiler_text: reply.spoiler_text,
+	});
+}
+
+fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
 	};
 	if !active_type.is_closeable() {
-		dialogs::show_error_msg(frame, "Cannot close the Home timeline.");
+		speech::speak("Cannot close the Home timeline");
 		return;
 	}
 	if !state.timeline_manager.close(&active_type) {
@@ -347,6 +511,7 @@ fn close_timeline(state: &mut AppState, frame: &Frame, selector: &ListBox, timel
 
 fn main() {
 	let _ = wxdragon::main(|_| {
+		speech::init();
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
 		let menu_bar = build_menu_bar();
@@ -450,12 +615,7 @@ fn main() {
 		timelines_selector_delete.on_key_down(move |event| {
 			if let WindowEventData::Keyboard(ref key_event) = event {
 				if key_event.get_key_code() == Some(KEY_DELETE) {
-					close_timeline(
-						&mut state_delete.borrow_mut(),
-						&frame,
-						&timelines_selector_delete,
-						&timeline_list_delete,
-					);
+					close_timeline(&mut state_delete.borrow_mut(), &timelines_selector_delete, &timeline_list_delete);
 					event.skip(false);
 				} else {
 					event.skip(true);
@@ -483,29 +643,31 @@ fn main() {
 			ID_NEW_POST => {
 				do_new_post(&frame, &state_menu.borrow());
 			}
+			ID_REPLY => {
+				do_reply(&frame, &state_menu.borrow());
+			}
+			ID_FAVOURITE => {
+				do_favourite(&state_menu.borrow());
+			}
+			ID_BOOST => {
+				do_boost(&state_menu.borrow());
+			}
 			ID_REFRESH => {
-				refresh_timeline(&frame, &state_menu.borrow());
+				refresh_timeline(&state_menu.borrow());
 			}
 			ID_LOCAL_TIMELINE => {
-				open_timeline(
-					&mut state_menu.borrow_mut(),
-					&frame,
-					&timelines_selector_menu,
-					&timeline_list_menu,
-					TimelineType::Local,
-				);
+				open_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu, TimelineType::Local);
 			}
 			ID_FEDERATED_TIMELINE => {
 				open_timeline(
 					&mut state_menu.borrow_mut(),
-					&frame,
 					&timelines_selector_menu,
 					&timeline_list_menu,
 					TimelineType::Federated,
 				);
 			}
 			ID_CLOSE_TIMELINE => {
-				close_timeline(&mut state_menu.borrow_mut(), &frame, &timelines_selector_menu, &timeline_list_menu);
+				close_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu);
 			}
 			_ => {}
 		});
