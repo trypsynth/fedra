@@ -70,6 +70,7 @@ impl Status {
 		let author = self.account.display_name_or_username();
 		let mut parts = Vec::new();
 		parts.push(author.to_string());
+		parts.push(": ".to_string());
 		let content = self.content_with_cw();
 		if !content.is_empty() {
 			parts.push(content);
@@ -81,7 +82,7 @@ impl Status {
 			parts.push(when);
 		}
 		if let Some(client) = self.client_name() {
-			parts.push(format!("via {}", client));
+			parts.push(format!("from {}", client));
 		}
 		parts.join(" | ")
 	}
@@ -91,9 +92,9 @@ impl Status {
 		if self.spoiler_text.trim().is_empty() {
 			content
 		} else if content.is_empty() {
-			format!("CW: {}", self.spoiler_text.trim())
+			format!("Content warning: {}", self.spoiler_text.trim())
 		} else {
-			format!("CW: {} - {}", self.spoiler_text.trim(), content)
+			format!("Content warning: {} - {}", self.spoiler_text.trim(), content)
 		}
 	}
 
