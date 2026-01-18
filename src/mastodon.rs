@@ -224,7 +224,20 @@ fn strip_html(html: &str) -> String {
 			parts.push(trimmed);
 		}
 	}
-	parts.join(" ")
+	let mut output = String::new();
+	for part in parts {
+		if output.is_empty() {
+			output.push_str(part);
+			continue;
+		}
+		if output.ends_with('@') {
+			output.push_str(part);
+		} else {
+			output.push(' ');
+			output.push_str(part);
+		}
+	}
+	output
 }
 
 fn friendly_time(iso_time: &str) -> Option<String> {

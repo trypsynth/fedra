@@ -16,11 +16,14 @@ A native Mastodon desktop client for Windows, built with Rust and wxWidgets via 
 src/
 ├── main.rs      # Application entry, UI construction, event handling
 ├── error.rs     # Simplified error handling with anyhow
-├── dialogs.rs   # UI dialogs (prompts, messages, errors)
+├── dialogs.rs   # UI dialogs (post, reply, prompts, messages)
 ├── auth.rs      # OAuth authentication (local listener + OOB fallback)
 ├── config.rs    # Configuration persistence (JSON in APPDATA)
 ├── mastodon.rs  # Mastodon API client (HTTP, status types)
-└── streaming.rs # WebSocket streaming for real-time updates
+├── network.rs   # Background network thread for async operations
+├── speech.rs    # Screen reader / speech synthesis integration
+├── streaming.rs # WebSocket streaming for real-time updates
+└── timeline.rs  # Timeline state management
 ```
 
 ### Key Dependencies
@@ -34,6 +37,7 @@ src/
 | `serde` / `serde_json` | Configuration and API response serialization |
 | `url` | URL parsing and manipulation |
 | `webbrowser` | Open authorization URLs in default browser |
+| `scraper` | HTML parsing for stripping tags from post content |
 
 ### Error Handling
 
@@ -59,10 +63,10 @@ let listener = TcpListener::bind("127.0.0.1:0")
 
 The app prefers WebSocket streaming over polling to reduce server load:
 
-1. On startup, fetch initial timeline via REST API (`GET /api/v1/timelines/home`)
-2. Connect to streaming API (`wss://instance/api/v1/streaming?stream=user`)
-3. Background thread processes WebSocket messages
-4. Timer polls the channel every 100ms to update UI
+1. On startup, fetch initial timelines via REST API
+2. Connect to streaming API for each timeline type
+3. Background threads process WebSocket messages
+4. Timer polls channels every 100ms to update UI
 5. Automatic reconnection with exponential backoff on disconnect
 
 ### Configuration
@@ -100,26 +104,58 @@ Configured in `rustfmt.toml`:
 - Common controls v6 for modern theming
 - UTF-8 code page
 
-## Current Status
+## Current Features
 
-Early development. Features implemented:
-- OAuth authentication with local callback listener
-- Account persistence in JSON config
-- Home timeline display with real-time streaming updates
-- Basic posting via menu (Ctrl+N)
-- Manual refresh (F5)
+### Timelines
+- **Home timeline** - Posts from accounts you follow (opens by default)
+- **Notifications** - Mentions, follows, favourites, boosts (opens by default)
+- **Local timeline** - Posts from your instance (opens by default)
+- **Federated timeline** - Posts from all known instances
+- Real-time streaming updates for all timelines
+- Switch between open timelines with the timeline selector
+
+### Posting
+- New post dialog with live character count in title bar
+- Visibility options: Public, Unlisted, Followers only, Mentioned only
+- Content warnings (spoiler text)
+- Content type selection: Default, Plain text, Markdown, HTML (for instances that support it)
+- Media attachments with alt text descriptions
+- Polls with configurable options, duration, and multiple-choice setting
+- **Enter** sends the post, **Shift+Enter** or **Ctrl+Enter** inserts a newline
+
+### Replying
+- Reply dialog shows original post preview
+- Auto-fills @mention of the author
+- Inherits content warning from original post (prefixed with "re: ")
+- Matches visibility of original post by default
+- **Enter** sends the reply, **Shift+Enter** or **Ctrl+Enter** inserts a newline
+
+### Interactions
+- Favourite/unfavourite posts
+- Boost/unboost posts
+- Speech feedback for all actions
+
+### Accessibility
+- Native wxWidgets controls for screen reader compatibility
+- Speech synthesis feedback for actions (posted, favourited, boosted, errors)
+- Full keyboard navigation
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+N | New Post |
-| F5 | Refresh Timeline |
+| Ctrl+R | Reply to selected post |
+| Ctrl+Shift+F | Favourite/Unfavourite selected post |
+| Ctrl+Shift+B | Boost/Unboost selected post |
+| Ctrl+L | Open Local Timeline |
+| F5 | Refresh current timeline |
+| Delete | Close current timeline (except Home) |
 
 ## Next Steps
 
-- Expand post dialog with character count and visibility options
-- Support multiple accounts switching
-- Display post details (CW, boosts, favorites)
-- Local and Federated timelines
-- Notifications
+- Settings dialog for configuring behavior
+- Multiple account switching
+- Thread/conversation view
+- Profile viewing
+- Search

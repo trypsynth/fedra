@@ -111,6 +111,7 @@ pub struct PostPoll {
 }
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
+const KEY_RETURN: i32 = 13;
 
 fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	media_list.clear();
@@ -631,6 +632,22 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 		panel_toggle.layout();
 		dialog_toggle.layout();
 	});
+	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
+	content_text.on_key_down(move |event| {
+		if let WindowEventData::Keyboard(ref key_event) = event {
+			if key_event.get_key_code() == Some(KEY_RETURN)
+				&& !key_event.shift_down()
+				&& !key_event.control_down()
+			{
+				dialog.end_modal(ID_OK);
+				event.skip(false);
+			} else {
+				event.skip(true);
+			}
+		} else {
+			event.skip(true);
+		}
+	});
 	let timer = Timer::new(&dialog);
 	timer.on_tick(move |_| {
 		let text = content_text.get_value();
@@ -757,6 +774,22 @@ pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<u
 		panel_toggle.layout();
 		dialog_toggle.layout();
 	});
+	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
+	content_text.on_key_down(move |event| {
+		if let WindowEventData::Keyboard(ref key_event) = event {
+			if key_event.get_key_code() == Some(KEY_RETURN)
+				&& !key_event.shift_down()
+				&& !key_event.control_down()
+			{
+				dialog.end_modal(ID_OK);
+				event.skip(false);
+			} else {
+				event.skip(true);
+			}
+		} else {
+			event.skip(true);
+		}
+	});
 	let timer = Timer::new(&dialog);
 	let author_timer = author.to_string();
 	timer.on_tick(move |_| {
@@ -806,7 +839,20 @@ fn strip_html(html: &str) -> String {
 			parts.push(trimmed);
 		}
 	}
-	parts.join(" ")
+	let mut output = String::new();
+	for part in parts {
+		if output.is_empty() {
+			output.push_str(part);
+			continue;
+		}
+		if output.ends_with('@') {
+			output.push_str(part);
+		} else {
+			output.push(' ');
+			output.push_str(part);
+		}
+	}
+	output
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
