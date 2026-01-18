@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use reqwest::{
 	Url,
 	blocking::{Client, multipart},
@@ -80,13 +78,30 @@ impl Status {
 		if let Some(media) = self.media_summary() {
 			out.push_str(&media);
 		}
+		// Metadata line: time, visibility, client
+		let mut meta = Vec::new();
 		if let Some(when) = friendly_time(&self.created_at) {
-			out.push_str(&when);
+			meta.push(when);
 		}
+		meta.push(self.visibility_display());
 		if let Some(client) = self.client_name() {
-			let _ = write!(out, "from {}", client).unwrap();
+			meta.push(format!("via {}", client));
+		}
+		if !meta.is_empty() {
+			out.push_str(" - ");
+			out.push_str(&meta.join(", "));
 		}
 		out
+	}
+
+	fn visibility_display(&self) -> String {
+		match self.visibility.as_str() {
+			"public" => "public".to_string(),
+			"unlisted" => "unlisted".to_string(),
+			"private" => "followers only".to_string(),
+			"direct" => "direct".to_string(),
+			other => other.to_string(),
+		}
 	}
 
 	fn content_with_cw(&self) -> String {
@@ -245,6 +260,11 @@ fn friendly_time(iso_time: &str) -> Option<String> {
 	if trimmed.is_empty() {
 		return None;
 	}
+	// Try to parse and show relative time
+	if let Some(seconds_ago) = parse_iso_to_seconds_ago(trimmed) {
+		return Some(format_relative_time(seconds_ago));
+	}
+	// Fallback to simple date/time extraction
 	if let Some((date, time_with_zone)) = trimmed.split_once('T') {
 		let time_part = time_with_zone.trim_end_matches('Z');
 		let time_part = time_part.split('.').next().unwrap_or(time_part);
@@ -255,6 +275,83 @@ fn friendly_time(iso_time: &str) -> Option<String> {
 		return Some(format!("{} {}", date, hm));
 	}
 	Some(trimmed.to_string())
+}
+
+fn parse_iso_to_seconds_ago(iso_time: &str) -> Option<i64> {
+	use std::time::{SystemTime, UNIX_EPOCH};
+
+	// Parse ISO 8601 format: 2024-01-15T14:30:00.000Z or 2024-01-15T14:30:00Z
+	let trimmed = iso_time.trim().trim_end_matches('Z');
+	let (date_part, time_part) = trimmed.split_once('T')?;
+
+	let mut date_iter = date_part.split('-');
+	let year: i64 = date_iter.next()?.parse().ok()?;
+	let month: i64 = date_iter.next()?.parse().ok()?;
+	let day: i64 = date_iter.next()?.parse().ok()?;
+
+	let time_part = time_part.split('.').next().unwrap_or(time_part);
+	let mut time_iter = time_part.split(':');
+	let hour: i64 = time_iter.next()?.parse().ok()?;
+	let minute: i64 = time_iter.next()?.parse().ok()?;
+	let second: i64 = time_iter.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+
+	// Calculate days since epoch (simplified, assumes UTC)
+	let days_since_epoch = (year - 1970) * 365
+		+ (year - 1969) / 4  // leap years
+		- (year - 1901) / 100
+		+ (year - 1601) / 400
+		+ days_before_month(month, is_leap_year(year))
+		+ day
+		- 1;
+
+	let post_timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
+	let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+
+	Some(now - post_timestamp)
+}
+
+fn is_leap_year(year: i64) -> bool {
+	(year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+fn days_before_month(month: i64, leap: bool) -> i64 {
+	const DAYS: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+	let base = DAYS.get((month - 1) as usize).copied().unwrap_or(0);
+	if leap && month > 2 { base + 1 } else { base }
+}
+
+fn format_relative_time(seconds_ago: i64) -> String {
+	if seconds_ago < 0 {
+		return "in the future".to_string();
+	}
+	if seconds_ago < 60 {
+		return "just now".to_string();
+	}
+	let minutes = seconds_ago / 60;
+	if minutes < 60 {
+		return if minutes == 1 { "1 minute ago".to_string() } else { format!("{} minutes ago", minutes) };
+	}
+	let hours = minutes / 60;
+	if hours < 24 {
+		return if hours == 1 { "1 hour ago".to_string() } else { format!("{} hours ago", hours) };
+	}
+	let days = hours / 24;
+	if days == 1 {
+		return "yesterday".to_string();
+	}
+	if days < 7 {
+		return format!("{} days ago", days);
+	}
+	let weeks = days / 7;
+	if weeks < 4 {
+		return if weeks == 1 { "1 week ago".to_string() } else { format!("{} weeks ago", weeks) };
+	}
+	let months = days / 30;
+	if months < 12 {
+		return if months == 1 { "1 month ago".to_string() } else { format!("{} months ago", months) };
+	}
+	let years = days / 365;
+	if years == 1 { "1 year ago".to_string() } else { format!("{} years ago", years) }
 }
 
 impl MastodonClient {
