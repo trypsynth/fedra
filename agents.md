@@ -69,6 +69,12 @@ The app prefers WebSocket streaming over polling to reduce server load:
 4. Timer polls channels every 100ms to update UI
 5. Automatic reconnection with exponential backoff on disconnect
 
+### UI State Model
+
+- UI event handlers enqueue `UiCommand`s and do not mutate `AppState` directly.
+- The main timer tick owns `AppState` and drains queued commands plus network/stream responses.
+- This keeps state mutations centralized and avoids re-entrant UI borrows.
+
 ### Configuration
 
 - Stored in `%APPDATA%\Fedra\config.json` on Windows
