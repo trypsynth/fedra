@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use reqwest::{
 	Url,
 	blocking::{Client, multipart},
@@ -67,24 +69,24 @@ impl Status {
 	}
 
 	fn base_display(&self) -> String {
+		let mut out = String::new();
 		let author = self.account.display_name_or_username();
-		let mut parts = Vec::new();
-		parts.push(author.to_string());
-		parts.push(": ".to_string());
+		out.push_str(author);
+		out.push_str(": ");
 		let content = self.content_with_cw();
 		if !content.is_empty() {
-			parts.push(content);
+			out.push_str(&content);
 		}
 		if let Some(media) = self.media_summary() {
-			parts.push(media);
+			out.push_str(&media);
 		}
 		if let Some(when) = friendly_time(&self.created_at) {
-			parts.push(when);
+			out.push_str(&when);
 		}
 		if let Some(client) = self.client_name() {
-			parts.push(format!("from {}", client));
+			let _ = write!(out, "from {}", client).unwrap();
 		}
-		parts.join(" | ")
+		out
 	}
 
 	fn content_with_cw(&self) -> String {
@@ -214,7 +216,7 @@ impl Account {
 }
 
 fn strip_html(html: &str) -> String {
-	html2text::config::plain()
+	html2text::config::plain_no_decorate()
 		.link_footnotes(false)
 		.string_from_read(html.as_bytes(), usize::MAX)
 		.unwrap_or_else(|_| html.to_string())
