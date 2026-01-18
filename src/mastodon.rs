@@ -191,13 +191,12 @@ impl Notification {
 	pub fn timeline_display(&self) -> String {
 		let actor = self.account.display_name_or_username();
 		match self.kind.as_str() {
-			"mention" => format!("{} mentioned you: {}", actor, self.status_text()),
-			"reblog" => format!("{} boosted: {}", actor, self.status_text()),
-			"favourite" => format!("{} favourited: {}", actor, self.status_text()),
+			"mention" | "status" => format!("{}", self.status_text()),
+			"reblog" => format!("{} boosted {}", actor, self.status_text()),
+			"favourite" => format!("{} favourited {}", actor, self.status_text()),
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
-			"poll" => format!("{} poll ended: {}", actor, self.status_text()),
-			"status" => format!("{} posted: {}", actor, self.status_text()),
+			"poll" => format!("Poll ended: {}", actor, self.status_text()),
 			_ => match self.status_text_if_any() {
 				Some(text) => format!("{} {}: {}", actor, self.kind, text),
 				None => format!("{} {}", actor, self.kind),
