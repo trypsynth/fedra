@@ -11,10 +11,10 @@ mod streaming;
 mod timeline;
 
 use std::{
+	backtrace::Backtrace,
 	cell::Cell,
 	fs::OpenOptions,
 	io::Write,
-	mem,
 	path::PathBuf,
 	rc::Rc,
 	sync::mpsc,
@@ -58,6 +58,22 @@ fn log_event(message: &str) {
 	if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
 		let _ = writeln!(file, "[{}] {}", millis, message);
 	}
+}
+
+fn reset_log() {
+	let path = log_path();
+	if let Some(parent) = path.parent() {
+		let _ = std::fs::create_dir_all(parent);
+	}
+	let _ = OpenOptions::new().create(true).write(true).truncate(true).open(path);
+}
+
+fn install_panic_hook() {
+	std::panic::set_hook(Box::new(|info| {
+		log_event(&format!("panic: {}", info));
+		let backtrace = Backtrace::force_capture();
+		log_event(&format!("backtrace: {backtrace}"));
+	}));
 }
 
 struct AppState {
@@ -641,6 +657,8 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 
 fn main() {
 	let _ = wxdragon::main(|_| {
+		reset_log();
+		install_panic_hook();
 		log_event("app_start");
 		speech::init();
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
@@ -718,7 +736,7 @@ fn main() {
 		let is_shutting_down = Rc::new(Cell::new(false));
 		let suppress_selection = Rc::new(Cell::new(false));
 		let timer_busy = Rc::new(Cell::new(false));
-		let timer = Timer::new(&frame);
+		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
 		let busy_timer = timer_busy.clone();
@@ -726,7 +744,8 @@ fn main() {
 		let timelines_selector_timer = timelines_selector;
 		let timeline_list_timer = timeline_list;
 		let mut state = state;
-		timer.on_tick(move |_| {
+		let timer_tick = timer.clone();
+		timer_tick.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
 			}
@@ -747,8 +766,6 @@ fn main() {
 			busy_timer.set(false);
 		});
 		timer.start(100, false); // Check every 100ms
-		// Keep timer alive, it would be dropped at end of scope otherwise
-		mem::forget(timer);
 		let ui_tx_selector = ui_tx.clone();
 		let shutdown_selector = is_shutting_down.clone();
 		let suppress_selector = suppress_selection.clone();
@@ -860,10 +877,12 @@ fn main() {
 			_ => {}
 		});
 		let shutdown_close = is_shutting_down.clone();
+		let timer_close = timer.clone();
 		frame.on_close(move |event| {
 			if !shutdown_close.get() {
 				log_event("app_close_requested");
 				shutdown_close.set(true);
+				timer_close.stop();
 			}
 			event.skip(true);
 		});

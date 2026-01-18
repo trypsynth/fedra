@@ -393,7 +393,6 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-
 	let items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial));
 	refresh_media_list(&media_list, &items.borrow());
 	if !items.borrow().is_empty() {
@@ -409,7 +408,6 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 		desc_label.enable(false);
 		desc_text.enable(false);
 	}
-
 	let items_add = items.clone();
 	let media_list_add = media_list;
 	let remove_button_add = remove_button;
@@ -554,7 +552,7 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
-	visibility_choice.set_selection(0); // Default to Public
+	visibility_choice.set_selection(0);
 	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
@@ -652,7 +650,6 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 		panel_toggle.layout();
 		dialog_toggle.layout();
 	});
-	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
@@ -734,7 +731,6 @@ pub fn prompt_for_reply(
 		.build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	// Show original post content
 	let original_label = StaticText::builder(&panel).with_label("Replying to:").build();
 	let original_content = replying_to.reblog.as_ref().map(|r| r.content.as_str()).unwrap_or(&replying_to.content);
 	let original_text = strip_html(original_content);
@@ -742,7 +738,6 @@ pub fn prompt_for_reply(
 	let original_preview = StaticText::builder(&panel).with_label(&format!("{}: {}", author, preview)).build();
 	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
-	// Pre-fill with @mentions
 	let mention = if reply_all {
 		// Include author and all mentioned accounts (deduplicated)
 		let mut accts = vec![replying_to.account.acct.clone()];
@@ -761,7 +756,6 @@ pub fn prompt_for_reply(
 	let cw_text = TextCtrl::builder(&panel).build();
 	cw_label.show(false);
 	cw_text.show(false);
-	// If original has CW, pre-fill it
 	if !replying_to.spoiler_text.is_empty() {
 		cw_checkbox.set_value(true);
 		cw_label.show(true);
