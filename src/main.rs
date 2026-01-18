@@ -39,6 +39,7 @@ const ID_LOCAL_TIMELINE: i32 = 1005;
 const ID_FEDERATED_TIMELINE: i32 = 1006;
 const ID_CLOSE_TIMELINE: i32 = 1007;
 const ID_REFRESH: i32 = 1008;
+const ID_REPLY_AUTHOR: i32 = 1009;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -155,7 +156,8 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 fn build_menu_bar() -> MenuBar {
 	let post_menu = Menu::builder()
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
-		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to selected post")
+		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
+		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
 		.append_separator()
 		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
 		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
@@ -699,7 +701,38 @@ fn main() {
 					}
 				};
 				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
-				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars) {
+				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars, true) {
+					Some(r) => r,
+					None => return,
+				};
+				if let Some(handle) = &state_menu.borrow().network_handle {
+					handle.send(NetworkCommand::Reply {
+						in_reply_to_id: target.id.clone(),
+						content: reply.content,
+						visibility: reply.visibility.as_api_str().to_string(),
+						spoiler_text: reply.spoiler_text,
+					});
+				} else {
+					speech::speak("Network not available");
+				}
+			}
+			ID_REPLY_AUTHOR => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let (status, max_post_chars) = {
+					let state = state_menu.borrow();
+					(get_selected_status(&state).cloned(), state.max_post_chars)
+				};
+				let status = match status {
+					Some(s) => s,
+					None => {
+						speech::speak("No post selected");
+						return;
+					}
+				};
+				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars, false) {
 					Some(r) => r,
 					None => return,
 				};

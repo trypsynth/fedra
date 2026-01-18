@@ -145,7 +145,8 @@ Configured in `rustfmt.toml`:
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+N | New Post |
-| Ctrl+R | Reply to selected post |
+| Ctrl+R | Reply to all (includes all mentioned users) |
+| Ctrl+Shift+R | Reply to author only |
 | Ctrl+Shift+F | Favourite/Unfavourite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
 | Ctrl+L | Open Local Timeline |

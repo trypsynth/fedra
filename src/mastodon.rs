@@ -45,6 +45,17 @@ pub struct Status {
 	pub reblogged: bool,
 	pub in_reply_to_id: Option<String>,
 	pub in_reply_to_account_id: Option<String>,
+	#[serde(default)]
+	pub mentions: Vec<Mention>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Mention {
+	pub id: String,
+	pub username: String,
+	pub acct: String,
+	pub url: String,
 }
 
 impl Status {
@@ -196,7 +207,7 @@ impl Notification {
 			"favourite" => format!("{} favourited {}", actor, self.status_text()),
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
-			"poll" => format!("Poll ended: {}", actor, self.status_text()),
+			"poll" => format!("Poll ended: {}", self.status_text()),
 			_ => match self.status_text_if_any() {
 				Some(text) => format!("{} {}: {}", actor, self.kind, text),
 				None => format!("{} {}", actor, self.kind),

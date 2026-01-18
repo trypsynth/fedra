@@ -692,7 +692,12 @@ pub struct ReplyResult {
 	pub spoiler_text: Option<String>,
 }
 
-pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<usize>) -> Option<ReplyResult> {
+pub fn prompt_for_reply(
+	frame: &Frame,
+	replying_to: &Status,
+	max_chars: Option<usize>,
+	reply_all: bool,
+) -> Option<ReplyResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let author = replying_to.account.display_name_or_username();
 	let dialog = Dialog::builder(frame, &format!("Reply to {} - 0 of {} characters", author, max_chars))
@@ -708,8 +713,19 @@ pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<u
 	let original_preview = StaticText::builder(&panel).with_label(&format!("{}: {}", author, preview)).build();
 	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
-	// Pre-fill with @mention
-	let mention = format!("@{} ", replying_to.account.acct);
+	// Pre-fill with @mentions
+	let mention = if reply_all {
+		// Include author and all mentioned accounts (deduplicated)
+		let mut accts = vec![replying_to.account.acct.clone()];
+		for m in &replying_to.mentions {
+			if !accts.iter().any(|a| a == &m.acct) {
+				accts.push(m.acct.clone());
+			}
+		}
+		accts.iter().map(|a| format!("@{}", a)).collect::<Vec<_>>().join(" ") + " "
+	} else {
+		format!("@{} ", replying_to.account.acct)
+	};
 	content_text.set_value(&mention);
 	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
 	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
