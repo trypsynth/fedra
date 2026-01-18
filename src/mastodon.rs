@@ -300,8 +300,7 @@ fn parse_iso_to_seconds_ago(iso_time: &str) -> Option<i64> {
 		- (year - 1901) / 100
 		+ (year - 1601) / 400
 		+ days_before_month(month, is_leap_year(year))
-		+ day
-		- 1;
+		+ day - 1;
 
 	let post_timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
 	let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;

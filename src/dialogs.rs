@@ -635,10 +635,7 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(KEY_RETURN)
-				&& !key_event.shift_down()
-				&& !key_event.control_down()
-			{
+			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
 				dialog.end_modal(ID_OK);
 				event.skip(false);
 			} else {
@@ -777,10 +774,7 @@ pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<u
 	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(KEY_RETURN)
-				&& !key_event.shift_down()
-				&& !key_event.control_down()
-			{
+			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
 				dialog.end_modal(ID_OK);
 				event.skip(false);
 			} else {
