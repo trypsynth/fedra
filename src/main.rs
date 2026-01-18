@@ -11,7 +11,6 @@ mod streaming;
 mod timeline;
 
 use std::{
-	backtrace::Backtrace,
 	cell::Cell,
 	fs::OpenOptions,
 	io::Write,
@@ -59,14 +58,6 @@ fn log_event(message: &str) {
 	if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
 		let _ = writeln!(file, "[{}] {}", millis, message);
 	}
-}
-
-fn install_panic_hook() {
-	std::panic::set_hook(Box::new(|info| {
-		log_event(&format!("panic: {}", info));
-		let backtrace = Backtrace::force_capture();
-		log_event(&format!("backtrace: {backtrace}"));
-	}));
 }
 
 struct AppState {
@@ -650,7 +641,6 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 
 fn main() {
 	let _ = wxdragon::main(|_| {
-		install_panic_hook();
 		log_event("app_start");
 		speech::init();
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
