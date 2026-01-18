@@ -153,6 +153,7 @@ impl MastodonClient {
 		spoiler_text: Option<&str>,
 		media_ids: &[String],
 		content_type: Option<&str>,
+		poll: Option<&crate::network::PollData>,
 	) -> Result<()> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
@@ -169,6 +170,13 @@ impl MastodonClient {
 		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));
+		}
+		if let Some(poll) = poll {
+			for option in &poll.options {
+				params.push(("poll[options][]".to_string(), option.clone()));
+			}
+			params.push(("poll[expires_in]".to_string(), poll.expires_in.to_string()));
+			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
 		}
 		self.http
 			.post(url)
@@ -231,20 +239,30 @@ impl MastodonClient {
 		Ok(statuses)
 	}
 
-	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
-		let url = self.base_url.join("api/v1/instance")?;
-		let response = self
-			.http
-			.get(url)
-			.send()
+pub fn get_instance_info(&self) -> Result<InstanceInfo> {
+	let url = self.base_url.join("api/v1/instance")?;
+	let response = self
+		.http
+		.get(url)
+		.send()
 			.context("Failed to fetch instance info")?
 			.error_for_status()
 			.context("Instance rejected info request")?;
 		let info: InstanceResponse = response.json().context("Invalid instance response")?;
-		let max_chars =
-			info.configuration.and_then(|c| c.statuses).and_then(|s| s.max_characters).unwrap_or(500) as usize;
-		Ok(InstanceInfo { max_post_chars: max_chars })
-	}
+	let max_chars = info
+		.configuration
+		.as_ref()
+		.and_then(|c| c.statuses.as_ref())
+		.and_then(|s| s.max_characters)
+		.unwrap_or(500) as usize;
+	let poll_limits = info
+		.configuration
+		.as_ref()
+		.and_then(|c| c.polls.as_ref())
+		.map(PollLimits::from_config)
+		.unwrap_or_default();
+	Ok(InstanceInfo { max_post_chars: max_chars, poll_limits })
+}
 }
 
 #[derive(Debug, Deserialize)]
@@ -273,6 +291,8 @@ struct InstanceResponse {
 struct InstanceConfiguration {
 	#[serde(default)]
 	statuses: Option<StatusConfiguration>,
+	#[serde(default)]
+	polls: Option<PollConfiguration>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,13 +301,51 @@ struct StatusConfiguration {
 	max_characters: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PollConfiguration {
+	#[serde(default)]
+	max_options: Option<u32>,
+	#[serde(default)]
+	max_option_chars: Option<u32>,
+	#[serde(default)]
+	min_expiration: Option<u32>,
+	#[serde(default)]
+	max_expiration: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PollLimits {
+	pub max_options: usize,
+	pub max_option_chars: usize,
+	pub min_expiration: u32,
+	pub max_expiration: u32,
+}
+
+impl PollLimits {
+	fn from_config(config: &PollConfiguration) -> Self {
+		Self {
+			max_options: config.max_options.unwrap_or(4) as usize,
+			max_option_chars: config.max_option_chars.unwrap_or(50) as usize,
+			min_expiration: config.min_expiration.unwrap_or(300),
+			max_expiration: config.max_expiration.unwrap_or(2_629_746),
+		}
+	}
+}
+
+impl Default for PollLimits {
+	fn default() -> Self {
+		Self { max_options: 4, max_option_chars: 50, min_expiration: 300, max_expiration: 2_629_746 }
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct InstanceInfo {
 	pub max_post_chars: usize,
+	pub poll_limits: PollLimits,
 }
 
 impl Default for InstanceInfo {
 	fn default() -> Self {
-		Self { max_post_chars: 500 }
+		Self { max_post_chars: 500, poll_limits: PollLimits::default() }
 	}
 }

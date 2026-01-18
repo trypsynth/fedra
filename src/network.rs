@@ -23,6 +23,7 @@ pub enum NetworkCommand {
 		spoiler_text: Option<String>,
 		content_type: Option<String>,
 		media: Vec<MediaUpload>,
+		poll: Option<PollData>,
 	},
 	Shutdown,
 }
@@ -31,6 +32,13 @@ pub enum NetworkCommand {
 pub struct MediaUpload {
 	pub path: String,
 	pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PollData {
+	pub options: Vec<String>,
+	pub expires_in: u32,
+	pub multiple: bool,
 }
 
 #[derive(Debug)]
@@ -95,7 +103,14 @@ fn network_loop(
 				let result = client.get_timeline(&access_token, &timeline_type, limit);
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
-			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media }) => {
+			Ok(NetworkCommand::PostStatus {
+				content,
+				visibility,
+				spoiler_text,
+				content_type,
+				media,
+				poll,
+			}) => {
 				let mut media_ids = Vec::new();
 				let mut upload_failed = None;
 				for item in media {
@@ -118,6 +133,7 @@ fn network_loop(
 					spoiler_text.as_deref(),
 					&media_ids,
 					content_type.as_deref(),
+					poll.as_ref(),
 				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
 			}

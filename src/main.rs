@@ -16,7 +16,7 @@ use wxdragon::prelude::*;
 
 use crate::{
 	config::{Account, Config},
-	mastodon::{MastodonClient, Status},
+	mastodon::{MastodonClient, PollLimits, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse},
 	timeline::{Timeline, TimelineManager, TimelineType},
 };
@@ -35,6 +35,7 @@ struct AppState {
 	streaming_url: Option<Url>,
 	access_token: Option<String>,
 	max_post_chars: Option<usize>,
+	poll_limits: PollLimits,
 }
 
 impl AppState {
@@ -46,6 +47,7 @@ impl AppState {
 			streaming_url: None,
 			access_token: None,
 			max_post_chars: None,
+			poll_limits: PollLimits::default(),
 		}
 	}
 
@@ -131,7 +133,7 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 		dialogs::show_error_msg(frame, "No account configured.");
 		return;
 	}
-	let post = match dialogs::prompt_for_post(frame, state.max_post_chars) {
+	let post = match dialogs::prompt_for_post(frame, state.max_post_chars, &state.poll_limits) {
 		Some(p) => p,
 		None => return,
 	};
@@ -147,6 +149,11 @@ fn do_new_post(frame: &Frame, state: &AppState) {
 					.into_iter()
 					.map(|item| network::MediaUpload { path: item.path, description: item.description })
 					.collect(),
+				poll: post.poll.map(|poll| network::PollData {
+					options: poll.options,
+					expires_in: poll.expires_in,
+					multiple: poll.multiple,
+				}),
 			});
 		}
 		None => {
@@ -390,6 +397,7 @@ fn main() {
 			if let Ok(client) = MastodonClient::new(url.clone()) {
 				if let Ok(info) = client.get_instance_info() {
 					state.max_post_chars = Some(info.max_post_chars);
+					state.poll_limits = info.poll_limits;
 				}
 			}
 			state.streaming_url = Some(url.clone());

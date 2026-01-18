@@ -3,7 +3,7 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 use url::Url;
 use wxdragon::prelude::*;
 
-use crate::error;
+use crate::{error, mastodon::PollLimits};
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
 	let trimmed = value.trim();
@@ -91,12 +91,20 @@ pub struct PostResult {
 	pub spoiler_text: Option<String>,
 	pub content_type: Option<String>,
 	pub media: Vec<PostMedia>,
+	pub poll: Option<PostPoll>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PostMedia {
 	pub path: String,
 	pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostPoll {
+	pub options: Vec<String>,
+	pub expires_in: u32,
+	pub multiple: bool,
 }
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
@@ -107,6 +115,224 @@ fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 		let label = Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path);
 		media_list.append(label);
 	}
+}
+
+fn refresh_poll_list(poll_list: &ListBox, items: &[String]) {
+	poll_list.clear();
+	for item in items {
+		let label = if item.is_empty() { "(empty option)" } else { item.as_str() };
+		poll_list.append(label);
+	}
+}
+
+enum PollDialogResult {
+	Updated(PostPoll),
+	Removed,
+}
+
+fn prompt_for_poll(
+	parent: &dyn WxWidget,
+	existing: Option<PostPoll>,
+	limits: &PollLimits,
+) -> Option<PollDialogResult> {
+	let dialog = Dialog::builder(parent, "Manage Poll").with_size(520, 420).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let list_label = StaticText::builder(&panel).with_label("Options:").build();
+	let poll_list = ListBox::builder(&panel).build();
+	let add_button = Button::builder(&panel).with_label("Add Option").build();
+	let remove_button = Button::builder(&panel).with_label("Remove Option").build();
+	let option_label = StaticText::builder(&panel).with_label("Selected option text:").build();
+	let option_text = TextCtrl::builder(&panel).build();
+	let limits = limits.clone();
+	let duration_label = StaticText::builder(&panel)
+		.with_label(&format!(
+			"Duration in minutes (min {}, max {}):",
+			limits.min_expiration / 60,
+			limits.max_expiration / 60
+		))
+		.build();
+	let min_minutes = (limits.min_expiration / 60).max(1) as i32;
+	let max_minutes = (limits.max_expiration / 60).max(min_minutes as u32) as i32;
+	let duration_spin = SpinCtrl::builder(&panel).with_range(min_minutes, max_minutes).build();
+	let multiple_checkbox = CheckBox::builder(&panel).with_label("Allow multiple selections").build();
+	let remove_poll_button = Button::builder(&panel).with_label("Remove Poll").build();
+	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let ok_button = Button::builder(&panel).with_label("Done").build();
+	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
+	list_buttons.add(&add_button, 0, SizerFlag::Bottom, 8);
+	list_buttons.add(&remove_button, 0, SizerFlag::Bottom, 8);
+	list_sizer.add(&poll_list, 1, SizerFlag::Expand | SizerFlag::Right, 8);
+	list_sizer.add_sizer(&list_buttons, 0, SizerFlag::AlignLeft, 0);
+	buttons_sizer.add(&remove_poll_button, 0, SizerFlag::Right, 8);
+	buttons_sizer.add_stretch_spacer(1);
+	buttons_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
+	buttons_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&list_sizer, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&option_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&option_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&duration_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&duration_spin, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&multiple_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+
+	let options: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
+		existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default(),
+	));
+	refresh_poll_list(&poll_list, &options.borrow());
+	if !options.borrow().is_empty() {
+		poll_list.set_selection(0, true);
+		remove_button.enable(true);
+		option_label.enable(true);
+		option_text.enable(true);
+		if let Some(first) = options.borrow().first() {
+			option_text.set_value(first);
+		}
+	} else {
+		remove_button.enable(false);
+		option_label.enable(false);
+		option_text.enable(false);
+	}
+
+	let default_minutes = existing.as_ref().map(|poll| poll.expires_in / 60).unwrap_or(min_minutes as u32) as i32;
+	duration_spin.set_value(default_minutes.clamp(min_minutes, max_minutes));
+	if let Some(existing) = existing.as_ref() {
+		multiple_checkbox.set_value(existing.multiple);
+	}
+	remove_poll_button.enable(existing.is_some());
+
+	let options_add = options.clone();
+	let poll_list_add = poll_list;
+	let add_button_add = add_button;
+	let remove_button_add = remove_button;
+	let option_label_add = option_label;
+	let option_text_add = option_text;
+	add_button.on_click(move |_| {
+		let mut items = options_add.borrow_mut();
+		if items.len() >= limits.max_options {
+			return;
+		}
+		items.push(String::new());
+		refresh_poll_list(&poll_list_add, &items);
+		poll_list_add.set_selection((items.len() - 1) as u32, true);
+		remove_button_add.enable(true);
+		option_label_add.enable(true);
+		option_text_add.set_value("");
+		option_text_add.enable(true);
+		if items.len() >= limits.max_options {
+			add_button_add.enable(false);
+		}
+	});
+	if options.borrow().len() >= limits.max_options {
+		add_button.enable(false);
+	}
+
+	let options_remove = options.clone();
+	let poll_list_remove = poll_list_add;
+	let option_text_remove = option_text;
+	let remove_button_remove = remove_button;
+	let add_button_remove = add_button;
+	let option_label_remove = option_label;
+	remove_button.on_click(move |_| {
+		if let Some(selection) = poll_list_remove.get_selection() {
+			let index = selection as usize;
+			let mut items = options_remove.borrow_mut();
+			if index < items.len() {
+				items.remove(index);
+				refresh_poll_list(&poll_list_remove, &items);
+				if items.is_empty() {
+					remove_button_remove.enable(false);
+					option_text_remove.set_value("");
+					option_text_remove.enable(false);
+					option_label_remove.enable(false);
+				} else {
+					let next = index.min(items.len() - 1);
+					poll_list_remove.set_selection(next as u32, true);
+					remove_button_remove.enable(true);
+					option_label_remove.enable(true);
+					option_text_remove.enable(true);
+				}
+			}
+		}
+		if options_remove.borrow().len() < limits.max_options {
+			add_button_remove.enable(true);
+		}
+	});
+
+	let options_select = options.clone();
+	let poll_list_select = poll_list_remove;
+	let option_text_select = option_text_remove;
+	poll_list_select.on_selection_changed(move |_| {
+		let selection = poll_list_select.get_selection().map(|sel| sel as usize);
+		let items = options_select.borrow();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			option_text_select.set_value(&items[index]);
+		}
+	});
+
+	let options_edit = options.clone();
+	let poll_list_edit = poll_list_select;
+	option_text_select.on_text_changed(move |_| {
+		let selection = poll_list_edit.get_selection().map(|sel| sel as usize);
+		let mut items = options_edit.borrow_mut();
+		if let Some(index) = selection
+			&& index < items.len()
+		{
+			let value = option_text_select.get_value();
+			let trimmed = value.trim().to_string();
+			if trimmed.chars().count() > limits.max_option_chars {
+				return;
+			}
+			items[index] = trimmed;
+			refresh_poll_list(&poll_list_edit, &items);
+			poll_list_edit.set_selection(index as u32, true);
+		}
+	});
+
+	const ID_REMOVE_POLL: i32 = 20_001;
+	remove_poll_button.on_click(move |_| {
+		dialog.end_modal(ID_REMOVE_POLL);
+	});
+	ok_button.on_click(move |_| {
+		dialog.end_modal(ID_OK);
+	});
+	cancel_button.on_click(move |_| {
+		dialog.end_modal(ID_CANCEL);
+	});
+	dialog.centre();
+	let result = dialog.show_modal();
+	if result == ID_CANCEL {
+		return None;
+	}
+	if result == ID_REMOVE_POLL {
+		return Some(PollDialogResult::Removed);
+	}
+	let mut options = options.borrow().clone();
+	options.retain(|option| !option.trim().is_empty());
+	if options.len() < 2 {
+		show_warning_widget(parent, "Polls need at least two options.", "Poll");
+		return None;
+	}
+	if options.len() > limits.max_options {
+		show_warning_widget(parent, "Too many poll options for this instance.", "Poll");
+		return None;
+	}
+	let minutes = duration_spin.value().max(min_minutes) as u32;
+	let expires_in = minutes.saturating_mul(60);
+	if expires_in < limits.min_expiration || expires_in > limits.max_expiration {
+		show_warning_widget(parent, "Poll duration is outside this instance's limits.", "Poll");
+		return None;
+	}
+	Some(PollDialogResult::Updated(PostPoll { options, expires_in, multiple: multiple_checkbox.get_value() }))
 }
 
 fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Vec<PostMedia>> {
@@ -263,7 +489,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	Some(items.borrow().clone())
 }
 
-pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostResult> {
+pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &PollLimits) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
@@ -298,6 +524,9 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	let media_label = StaticText::builder(&panel).with_label("Media:").build();
 	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
 	let media_count_label = StaticText::builder(&panel).with_label("No media attached.").build();
+	let poll_label = StaticText::builder(&panel).with_label("Poll:").build();
+	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
+	let poll_summary_label = StaticText::builder(&panel).with_label("No poll attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_label("Post").build();
 	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
@@ -314,6 +543,9 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	main_sizer.add(&media_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&media_count_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&poll_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&poll_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&poll_summary_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -336,6 +568,34 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 				format!("{} items attached.", count)
 			};
 			media_count_update.set_label(&label);
+		}
+	});
+	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(None));
+	let poll_state_manage = poll_state.clone();
+	let poll_summary_update = poll_summary_label;
+	let poll_button_update = poll_button;
+	let poll_parent = dialog;
+	let poll_limits = poll_limits.clone();
+	poll_button_update.on_click(move |_| {
+		let current = poll_state_manage.borrow().clone();
+		match prompt_for_poll(&poll_parent, current, &poll_limits) {
+			Some(PollDialogResult::Updated(poll)) => {
+				let option_count = poll.options.len();
+				*poll_state_manage.borrow_mut() = Some(poll);
+				poll_button_update.set_label("Edit Poll...");
+				let label = if option_count == 1 {
+					"Poll with 1 option.".to_string()
+				} else {
+					format!("Poll with {} options.", option_count)
+				};
+				poll_summary_update.set_label(&label);
+			}
+			Some(PollDialogResult::Removed) => {
+				*poll_state_manage.borrow_mut() = None;
+				poll_button_update.set_label("Add Poll...");
+				poll_summary_update.set_label("No poll attached.");
+			}
+			None => {}
 		}
 	});
 	let cw_label_toggle = cw_label;
@@ -386,10 +646,11 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>) -> Option<PostRe
 	let content_type_idx = content_type_choice.get_selection().unwrap_or(0) as usize;
 	let content_type = content_type_options.get(content_type_idx).and_then(|(_, value)| value.clone());
 	let media = media_items.borrow().clone();
-	if trimmed.is_empty() && media.is_empty() {
+	let poll = poll_state.borrow().clone();
+	if trimmed.is_empty() && media.is_empty() && poll.is_none() {
 		return None;
 	}
-	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media })
+	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media, poll })
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
@@ -422,6 +683,13 @@ pub fn show_error_msg(frame: &Frame, message: &str) {
 
 pub fn show_warning(frame: &Frame, message: &str, title: &str) {
 	let dialog = MessageDialog::builder(frame, message, title)
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
+		.build();
+	dialog.show_modal();
+}
+
+fn show_warning_widget(parent: &dyn WxWidget, message: &str, title: &str) {
+	let dialog = MessageDialog::builder(parent, message, title)
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
 		.build();
 	dialog.show_modal();
