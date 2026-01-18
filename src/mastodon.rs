@@ -216,12 +216,15 @@ impl Account {
 }
 
 fn strip_html(html: &str) -> String {
-	html2text::config::plain_no_decorate()
-		.link_footnotes(false)
-		.string_from_read(html.as_bytes(), usize::MAX)
-		.unwrap_or_else(|_| html.to_string())
-		.trim()
-		.to_string()
+	let fragment = scraper::Html::parse_fragment(html);
+	let mut parts = Vec::new();
+	for text in fragment.root_element().text() {
+		let trimmed = text.trim();
+		if !trimmed.is_empty() {
+			parts.push(trimmed);
+		}
+	}
+	parts.join(" ")
 }
 
 fn friendly_time(iso_time: &str) -> Option<String> {

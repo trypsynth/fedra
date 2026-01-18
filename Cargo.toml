@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
-html2text = "0.16.5"
 reqwest = { version = "0.13.1", features = ["blocking", "form", "json", "multipart", "rustls"] }
+scraper = "0.19.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tts = { version = "0.26.3", features = ["tolk"] }

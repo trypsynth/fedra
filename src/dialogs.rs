@@ -798,12 +798,15 @@ pub fn prompt_for_reply(frame: &Frame, replying_to: &Status, max_chars: Option<u
 }
 
 fn strip_html(html: &str) -> String {
-	html2text::config::plain()
-		.link_footnotes(false)
-		.string_from_read(html.as_bytes(), usize::MAX)
-		.unwrap_or_else(|_| html.to_string())
-		.trim()
-		.to_string()
+	let fragment = scraper::Html::parse_fragment(html);
+	let mut parts = Vec::new();
+	for text in fragment.root_element().text() {
+		let trimmed = text.trim();
+		if !trimmed.is_empty() {
+			parts.push(trimmed);
+		}
+	}
+	parts.join(" ")
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
