@@ -191,8 +191,9 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 		remove_button.enable(true);
 		option_label.enable(true);
 		option_text.enable(true);
-		if let Some(first) = options.borrow().first() {
-			option_text.set_value(first);
+		let first_option = options.borrow().first().cloned();
+		if let Some(first) = first_option {
+			option_text.set_value(&first);
 		}
 	} else {
 		remove_button.enable(false);
@@ -278,7 +279,10 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	poll_list_select.on_selection_changed(move |_| {
 		let selection = poll_list_select.get_selection().map(|sel| sel as usize);
 		let item_value = {
-			let items = options_select.borrow();
+			let items = match options_select.try_borrow() {
+				Ok(items) => items,
+				Err(_) => return,
+			};
 			if let Some(index) = selection
 				&& index < items.len()
 			{
@@ -302,7 +306,10 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			if trimmed.chars().count() > limits.max_option_chars {
 				return;
 			}
-			let mut items = options_edit.borrow_mut();
+			let mut items = match options_edit.try_borrow_mut() {
+				Ok(items) => items,
+				Err(_) => return,
+			};
 			if index < items.len() {
 				items[index] = trimmed;
 				Some((items.clone(), index))
@@ -394,9 +401,12 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 		remove_button.enable(true);
 		desc_label.enable(true);
 		desc_text.enable(true);
-		if let Some(first) = items.borrow().first() {
-			desc_text.set_value(first.description.as_deref().unwrap_or(""));
-		}
+		let first_desc = items
+			.borrow()
+			.first()
+			.and_then(|media| media.description.clone())
+			.unwrap_or_default();
+		desc_text.set_value(&first_desc);
 	}
 	if items.borrow().is_empty() {
 		remove_button.enable(false);
@@ -421,13 +431,18 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 				}
 			}
 			if !paths.is_empty() {
-				let mut items = items_add.borrow_mut();
-				for path in paths {
-					items.push(PostMedia { path, description: None });
+				let new_len = {
+					let mut items = items_add.borrow_mut();
+					for path in paths {
+						items.push(PostMedia { path, description: None });
+					}
+					refresh_media_list(&media_list_add, &items);
+					items.len()
+				};
+				if new_len > 0 {
+					media_list_add.set_selection((new_len - 1) as u32, true);
+					remove_button_add.enable(true);
 				}
-				refresh_media_list(&media_list_add, &items);
-				media_list_add.set_selection((items.len() - 1) as u32, true);
-				remove_button_add.enable(true);
 			}
 		}
 	});
@@ -440,17 +455,19 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	remove_button.on_click(move |_| {
 		if let Some(selection) = media_list_remove.get_selection() {
 			let index = selection as usize;
-			let mut items = items_remove.borrow_mut();
-			if index < items.len() {
-				items.remove(index);
-				refresh_media_list(&media_list_remove, &items);
-				if !items.is_empty() {
-					let next = index.min(items.len() - 1);
-					media_list_remove.set_selection(next as u32, true);
-					remove_button_remove.enable(true);
-				} else {
-					remove_button_remove.enable(false);
+			let (items_len, next_index) = {
+				let mut items = items_remove.borrow_mut();
+				if index < items.len() {
+					items.remove(index);
 				}
+				refresh_media_list(&media_list_remove, &items);
+				(items.len(), index.min(items.len().saturating_sub(1)))
+			};
+			if items_len > 0 {
+				media_list_remove.set_selection(next_index as u32, true);
+				remove_button_remove.enable(true);
+			} else {
+				remove_button_remove.enable(false);
 			}
 		}
 		desc_text_remove.set_value("");
@@ -465,13 +482,20 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let media_list_select = media_list_remove;
 	media_list_select.on_selection_changed(move |_| {
 		let selection = media_list_select.get_selection().map(|sel| sel as usize);
-		let items = items_select.borrow();
-		if let Some(index) = selection
-			&& index < items.len()
-		{
+		let selected_desc = {
+			let items = items_select.borrow();
+			if let Some(index) = selection
+				&& index < items.len()
+			{
+				Some(items[index].description.clone())
+			} else {
+				None
+			}
+		};
+		if let Some(desc) = selected_desc {
 			desc_label_select.enable(true);
 			desc_text_select.enable(true);
-			desc_text_select.set_value(items[index].description.as_deref().unwrap_or(""));
+			desc_text_select.set_value(desc.as_deref().unwrap_or(""));
 			remove_button_select.enable(true);
 		} else {
 			desc_text_select.set_value("");
@@ -667,6 +691,15 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	}
 	let content = content_text.get_value();
 	let trimmed = content.trim();
+	let char_count = trimmed.chars().count();
+	if char_count > max_chars {
+		show_warning_widget(
+			frame,
+			&format!("Post is {} characters, which exceeds the {} character limit.", char_count, max_chars),
+			"Post",
+		);
+		return None;
+	}
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
 	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
 	let spoiler_text = if cw_checkbox.get_value() {
@@ -826,6 +859,15 @@ pub fn prompt_for_reply(
 	let content = content_text.get_value();
 	let trimmed = content.trim();
 	if trimmed.is_empty() {
+		return None;
+	}
+	let char_count = trimmed.chars().count();
+	if char_count > max_chars {
+		show_warning_widget(
+			frame,
+			&format!("Reply is {} characters, which exceeds the {} character limit.", char_count, max_chars),
+			"Reply",
+		);
 		return None;
 	}
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;

@@ -12,12 +12,13 @@ mod timeline;
 
 use std::{
 	backtrace::Backtrace,
-	cell::{Cell, RefCell},
+	cell::Cell,
 	fs::OpenOptions,
 	io::Write,
 	mem,
 	path::PathBuf,
 	rc::Rc,
+	sync::mpsc,
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -94,6 +95,18 @@ impl AppState {
 	fn active_account(&self) -> Option<&config::Account> {
 		self.config.accounts.first()
 	}
+}
+
+enum UiCommand {
+	NewPost,
+	Reply { reply_all: bool },
+	Favourite,
+	Boost,
+	Refresh,
+	OpenTimeline(TimelineType),
+	CloseTimeline,
+	TimelineSelectionChanged(usize),
+	TimelineEntrySelectionChanged(usize),
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -195,6 +208,13 @@ fn update_timeline_ui(timeline_list: &ListBox, entries: &[TimelineEntry]) {
 	}
 }
 
+fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnOnce() -> T) -> T {
+	suppress_selection.set(true);
+	let result = f();
+	suppress_selection.set(false);
+	result
+}
+
 fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
 	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
@@ -206,6 +226,130 @@ fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
 	};
 	timeline.selected_index = Some(selection);
 	timeline_list.set_selection(selection as u32, true);
+}
+
+fn update_active_timeline_ui(timeline_list: &ListBox, timeline: &mut Timeline, suppress_selection: &Cell<bool>) {
+	with_suppressed_selection(suppress_selection, || {
+		update_timeline_ui(timeline_list, &timeline.entries);
+		apply_timeline_selection(timeline_list, timeline);
+	});
+}
+
+fn handle_ui_command(
+	cmd: UiCommand,
+	state: &mut AppState,
+	frame: &Frame,
+	timelines_selector: &ListBox,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+) {
+	match cmd {
+		UiCommand::NewPost => {
+			let (has_account, max_post_chars, poll_limits) = (
+				state.active_account().is_some(),
+				state.max_post_chars,
+				state.poll_limits.clone(),
+			);
+			if !has_account {
+				speech::speak("No account configured");
+				return;
+			}
+			log_event("new_post: open dialog");
+			let post = match dialogs::prompt_for_post(frame, max_post_chars, &poll_limits) {
+				Some(p) => p,
+				None => return,
+			};
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::PostStatus {
+					content: post.content,
+					visibility: post.visibility.as_api_str().to_string(),
+					spoiler_text: post.spoiler_text,
+					content_type: post.content_type,
+					media: post
+						.media
+						.into_iter()
+						.map(|item| network::MediaUpload { path: item.path, description: item.description })
+						.collect(),
+					poll: post.poll.map(|poll| network::PollData {
+						options: poll.options,
+						expires_in: poll.expires_in,
+						multiple: poll.multiple,
+					}),
+				});
+			} else {
+				speech::speak("Network not available");
+			}
+		}
+		UiCommand::Reply { reply_all } => {
+			let (status, max_post_chars) = (get_selected_status(state).cloned(), state.max_post_chars);
+			let status = match status {
+				Some(s) => s,
+				None => {
+					speech::speak("No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+			let reply = match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all) {
+				Some(r) => r,
+				None => return,
+			};
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::Reply {
+					in_reply_to_id: target.id.clone(),
+					content: reply.content,
+					visibility: reply.visibility.as_api_str().to_string(),
+					spoiler_text: reply.spoiler_text,
+				});
+			} else {
+				speech::speak("Network not available");
+			}
+		}
+		UiCommand::Favourite => {
+			do_favourite(state);
+		}
+		UiCommand::Boost => {
+			do_boost(state);
+		}
+		UiCommand::Refresh => {
+			refresh_timeline(state);
+		}
+		UiCommand::OpenTimeline(timeline_type) => {
+			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection);
+		}
+		UiCommand::CloseTimeline => {
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection);
+		}
+		UiCommand::TimelineSelectionChanged(index) => {
+			if index < state.timeline_manager.len() {
+				if let Some(active) = state.timeline_manager.active_mut() {
+					active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+				}
+				state.timeline_manager.set_active(index);
+				if let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(timeline_list, active, suppress_selection);
+				}
+			}
+		}
+		UiCommand::TimelineEntrySelectionChanged(index) => {
+			if let Some(active) = state.timeline_manager.active_mut() {
+				active.selected_index = Some(index);
+			}
+		}
+	}
+}
+
+fn drain_ui_commands(
+	ui_rx: &mpsc::Receiver<UiCommand>,
+	state: &mut AppState,
+	frame: &Frame,
+	timelines_selector: &ListBox,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+) {
+	while let Ok(cmd) = ui_rx.try_recv() {
+		handle_ui_command(cmd, state, frame, timelines_selector, timeline_list, suppress_selection);
+	}
 }
 
 fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineType) {
@@ -227,7 +371,7 @@ fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineTy
 	timeline.stream_handle = streaming::start_streaming(base_url, access_token, timeline_type.clone());
 }
 
-fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
+fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress_selection: &Cell<bool>) {
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	let mut active_needs_update = false;
 	for timeline in state.timeline_manager.iter_mut() {
@@ -278,13 +422,17 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox) {
 	if active_needs_update {
 		if let Some(active) = state.timeline_manager.active_mut() {
 			active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-			update_timeline_ui(timeline_list, &active.entries);
-			apply_timeline_selection(timeline_list, active);
+			update_active_timeline_ui(timeline_list, active, suppress_selection);
 		}
 	}
 }
 
-fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list: &ListBox) {
+fn process_network_responses(
+	frame: &Frame,
+	state: &mut AppState,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+) {
 	let handle = match &state.network_handle {
 		Some(h) => h,
 		None => return,
@@ -305,8 +453,7 @@ fn process_network_responses(frame: &Frame, state: &mut AppState, timeline_list:
 						}
 					};
 					if is_active {
-						update_timeline_ui(timeline_list, &timeline.entries);
-						apply_timeline_selection(timeline_list, timeline);
+						update_active_timeline_ui(timeline_list, timeline, suppress_selection);
 					}
 				}
 			}
@@ -395,7 +542,13 @@ where
 	}
 }
 
-fn open_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, timeline_type: TimelineType) {
+fn open_timeline(
+	state: &mut AppState,
+	selector: &ListBox,
+	timeline_list: &ListBox,
+	timeline_type: TimelineType,
+	suppress_selection: &Cell<bool>,
+) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		speech::speak("Timeline already open");
 		return;
@@ -403,12 +556,16 @@ fn open_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListB
 	selector.append(timeline_type.display_name());
 	let new_index = state.timeline_manager.len() - 1;
 	state.timeline_manager.set_active(new_index);
-	selector.set_selection(new_index as u32, true);
+	with_suppressed_selection(suppress_selection, || {
+		selector.set_selection(new_index as u32, true);
+	});
 	if let Some(handle) = &state.network_handle {
 		handle.send(NetworkCommand::FetchTimeline { timeline_type: timeline_type.clone(), limit: Some(40) });
 	}
 	start_streaming_for_timeline(state, &timeline_type);
-	timeline_list.clear();
+	with_suppressed_selection(suppress_selection, || {
+		timeline_list.clear();
+	});
 }
 
 fn get_selected_status(state: &AppState) -> Option<&Status> {
@@ -469,7 +626,12 @@ fn do_boost(state: &AppState) {
 	}
 }
 
-fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox) {
+fn close_timeline(
+	state: &mut AppState,
+	selector: &ListBox,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
@@ -486,10 +648,11 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 		selector.append(&name);
 	}
 	let active_index = state.timeline_manager.active_index();
-	selector.set_selection(active_index as u32, true);
+	with_suppressed_selection(suppress_selection, || {
+		selector.set_selection(active_index as u32, true);
+	});
 	if let Some(active) = state.timeline_manager.active_mut() {
-		update_timeline_ui(timeline_list, &active.entries);
-		apply_timeline_selection(timeline_list, active);
+		update_active_timeline_ui(timeline_list, active, suppress_selection);
 	}
 }
 
@@ -569,55 +732,67 @@ fn main() {
 			timelines_selector.append(&name);
 		}
 		timelines_selector.set_selection(0_u32, true);
-		let state = Rc::new(RefCell::new(state));
+		let (ui_tx, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
+		let suppress_selection = Rc::new(Cell::new(false));
+		let timer_busy = Rc::new(Cell::new(false));
 		let timer = Timer::new(&frame);
-		let state_timer = state.clone();
 		let shutdown_timer = is_shutting_down.clone();
+		let suppress_timer = suppress_selection.clone();
+		let busy_timer = timer_busy.clone();
 		let frame_timer = frame;
+		let timelines_selector_timer = timelines_selector;
+		let timeline_list_timer = timeline_list;
+		let mut state = state;
 		timer.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
 			}
-			let mut state = state_timer.borrow_mut();
-			process_stream_events(&mut state, &timeline_list);
-			process_network_responses(&frame_timer, &mut state, &timeline_list);
+			if busy_timer.get() {
+				return;
+			}
+			busy_timer.set(true);
+			drain_ui_commands(
+				&ui_rx,
+				&mut state,
+				&frame_timer,
+				&timelines_selector_timer,
+				&timeline_list_timer,
+				&suppress_timer,
+			);
+			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
+			process_network_responses(&frame_timer, &mut state, &timeline_list_timer, &suppress_timer);
+			busy_timer.set(false);
 		});
 		timer.start(100, false); // Check every 100ms
 		// Keep timer alive, it would be dropped at end of scope otherwise
 		mem::forget(timer);
-		let state_selector = state.clone();
+		let ui_tx_selector = ui_tx.clone();
 		let shutdown_selector = is_shutting_down.clone();
-		let timeline_list_selector = timeline_list;
+		let suppress_selector = suppress_selection.clone();
 		timelines_selector.on_selection_changed(move |event| {
 			if shutdown_selector.get() {
 				return;
 			}
+			if suppress_selector.get() {
+				return;
+			}
 			if let Some(index) = event.get_selection() {
 				if index >= 0 {
-					let mut state = state_selector.borrow_mut();
-					if let Some(active) = state.timeline_manager.active_mut() {
-						active.selected_index = timeline_list_selector.get_selection().map(|sel| sel as usize);
-					}
-					state.timeline_manager.set_active(index as usize);
-					if let Some(active) = state.timeline_manager.active_mut() {
-						update_timeline_ui(&timeline_list_selector, &active.entries);
-						apply_timeline_selection(&timeline_list_selector, active);
-					}
+					let _ = ui_tx_selector.send(UiCommand::TimelineSelectionChanged(index as usize));
 				}
 			}
 		});
-		let state_delete = state.clone();
+		let ui_tx_delete = ui_tx.clone();
 		let shutdown_delete = is_shutting_down.clone();
 		let timelines_selector_delete = timelines_selector;
-		let timeline_list_delete = timeline_list_selector;
 		timelines_selector_delete.on_key_down(move |event| {
 			if shutdown_delete.get() {
 				return;
 			}
 			if let WindowEventData::Keyboard(ref key_event) = event {
 				if key_event.get_key_code() == Some(KEY_DELETE) {
-					close_timeline(&mut state_delete.borrow_mut(), &timelines_selector_delete, &timeline_list_delete);
+					let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
 					event.skip(false);
 				} else {
 					event.skip(true);
@@ -626,172 +801,79 @@ fn main() {
 				event.skip(true);
 			}
 		});
-		let state_timeline_list = state.clone();
+		let ui_tx_list = ui_tx.clone();
 		let shutdown_list = is_shutting_down.clone();
-		let timeline_list_state = timeline_list_selector;
+		let suppress_list = suppress_selection.clone();
+		let timeline_list_state = timeline_list;
 		timeline_list_state.on_selection_changed(move |event| {
 			if shutdown_list.get() {
 				return;
 			}
+			if suppress_list.get() {
+				return;
+			}
 			if let Some(selection) = event.get_selection() {
 				if selection >= 0 {
-					let mut state = state_timeline_list.borrow_mut();
-					if let Some(active) = state.timeline_manager.active_mut() {
-						active.selected_index = Some(selection as usize);
-					}
+					let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection as usize));
 				}
 			}
 		});
-		let state_menu = state.clone();
+		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
-		let timelines_selector_menu = timelines_selector;
-		let timeline_list_menu = timeline_list_selector;
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_NEW_POST => {
 				if shutdown_menu.get() {
 					return;
 				}
-				let (has_account, max_post_chars, poll_limits) = {
-					let state = state_menu.borrow();
-					(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone())
-				};
-				if !has_account {
-					speech::speak("No account configured");
-					return;
-				}
-				log_event("new_post: open dialog");
-				let post = match dialogs::prompt_for_post(&frame, max_post_chars, &poll_limits) {
-					Some(p) => p,
-					None => return,
-				};
-				if let Some(handle) = &state_menu.borrow().network_handle {
-					handle.send(NetworkCommand::PostStatus {
-						content: post.content,
-						visibility: post.visibility.as_api_str().to_string(),
-						spoiler_text: post.spoiler_text,
-						content_type: post.content_type,
-						media: post
-							.media
-							.into_iter()
-							.map(|item| network::MediaUpload { path: item.path, description: item.description })
-							.collect(),
-						poll: post.poll.map(|poll| network::PollData {
-							options: poll.options,
-							expires_in: poll.expires_in,
-							multiple: poll.multiple,
-						}),
-					});
-				} else {
-					speech::speak("Network not available");
-				}
+				let _ = ui_tx_menu.send(UiCommand::NewPost);
 			}
 			ID_REPLY => {
 				if shutdown_menu.get() {
 					return;
 				}
-				let (status, max_post_chars) = {
-					let state = state_menu.borrow();
-					(get_selected_status(&state).cloned(), state.max_post_chars)
-				};
-				let status = match status {
-					Some(s) => s,
-					None => {
-						speech::speak("No post selected");
-						return;
-					}
-				};
-				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
-				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars, true) {
-					Some(r) => r,
-					None => return,
-				};
-				if let Some(handle) = &state_menu.borrow().network_handle {
-					handle.send(NetworkCommand::Reply {
-						in_reply_to_id: target.id.clone(),
-						content: reply.content,
-						visibility: reply.visibility.as_api_str().to_string(),
-						spoiler_text: reply.spoiler_text,
-					});
-				} else {
-					speech::speak("Network not available");
-				}
+				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: true });
 			}
 			ID_REPLY_AUTHOR => {
 				if shutdown_menu.get() {
 					return;
 				}
-				let (status, max_post_chars) = {
-					let state = state_menu.borrow();
-					(get_selected_status(&state).cloned(), state.max_post_chars)
-				};
-				let status = match status {
-					Some(s) => s,
-					None => {
-						speech::speak("No post selected");
-						return;
-					}
-				};
-				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
-				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars, false) {
-					Some(r) => r,
-					None => return,
-				};
-				if let Some(handle) = &state_menu.borrow().network_handle {
-					handle.send(NetworkCommand::Reply {
-						in_reply_to_id: target.id.clone(),
-						content: reply.content,
-						visibility: reply.visibility.as_api_str().to_string(),
-						spoiler_text: reply.spoiler_text,
-					});
-				} else {
-					speech::speak("Network not available");
-				}
+				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: false });
 			}
 			ID_FAVOURITE => {
 				if shutdown_menu.get() {
 					return;
 				}
-				do_favourite(&state_menu.borrow());
+				let _ = ui_tx_menu.send(UiCommand::Favourite);
 			}
 			ID_BOOST => {
 				if shutdown_menu.get() {
 					return;
 				}
-				do_boost(&state_menu.borrow());
+				let _ = ui_tx_menu.send(UiCommand::Boost);
 			}
 			ID_REFRESH => {
 				if shutdown_menu.get() {
 					return;
 				}
-				refresh_timeline(&state_menu.borrow());
+				let _ = ui_tx_menu.send(UiCommand::Refresh);
 			}
 			ID_LOCAL_TIMELINE => {
 				if shutdown_menu.get() {
 					return;
 				}
-				open_timeline(
-					&mut state_menu.borrow_mut(),
-					&timelines_selector_menu,
-					&timeline_list_menu,
-					TimelineType::Local,
-				);
+				let _ = ui_tx_menu.send(UiCommand::OpenTimeline(TimelineType::Local));
 			}
 			ID_FEDERATED_TIMELINE => {
 				if shutdown_menu.get() {
 					return;
 				}
-				open_timeline(
-					&mut state_menu.borrow_mut(),
-					&timelines_selector_menu,
-					&timeline_list_menu,
-					TimelineType::Federated,
-				);
+				let _ = ui_tx_menu.send(UiCommand::OpenTimeline(TimelineType::Federated));
 			}
 			ID_CLOSE_TIMELINE => {
 				if shutdown_menu.get() {
 					return;
 				}
-				close_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu);
+				let _ = ui_tx_menu.send(UiCommand::CloseTimeline);
 			}
 			_ => {}
 		});
