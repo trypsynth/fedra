@@ -215,18 +215,22 @@ fn prompt_for_poll(
 	let option_label_add = option_label;
 	let option_text_add = option_text;
 	add_button.on_click(move |_| {
-		let mut items = options_add.borrow_mut();
-		if items.len() >= limits.max_options {
-			return;
-		}
-		items.push(String::new());
-		refresh_poll_list(&poll_list_add, &items);
-		poll_list_add.set_selection((items.len() - 1) as u32, true);
+		let (new_len, can_add_more) = {
+			let mut items = options_add.borrow_mut();
+			if items.len() >= limits.max_options {
+				return;
+			}
+			items.push(String::new());
+			(items.len(), items.len() < limits.max_options)
+		};
+		let items_snapshot = options_add.borrow().clone();
+		refresh_poll_list(&poll_list_add, &items_snapshot);
+		poll_list_add.set_selection((new_len - 1) as u32, true);
 		remove_button_add.enable(true);
 		option_label_add.enable(true);
 		option_text_add.set_value("");
 		option_text_add.enable(true);
-		if items.len() >= limits.max_options {
+		if !can_add_more {
 			add_button_add.enable(false);
 		}
 	});
@@ -243,22 +247,25 @@ fn prompt_for_poll(
 	remove_button.on_click(move |_| {
 		if let Some(selection) = poll_list_remove.get_selection() {
 			let index = selection as usize;
-			let mut items = options_remove.borrow_mut();
-			if index < items.len() {
-				items.remove(index);
-				refresh_poll_list(&poll_list_remove, &items);
-				if items.is_empty() {
-					remove_button_remove.enable(false);
-					option_text_remove.set_value("");
-					option_text_remove.enable(false);
-					option_label_remove.enable(false);
-				} else {
-					let next = index.min(items.len() - 1);
-					poll_list_remove.set_selection(next as u32, true);
-					remove_button_remove.enable(true);
-					option_label_remove.enable(true);
-					option_text_remove.enable(true);
+			let items_snapshot = {
+				let mut items = options_remove.borrow_mut();
+				if index < items.len() {
+					items.remove(index);
 				}
+				items.clone()
+			};
+			refresh_poll_list(&poll_list_remove, &items_snapshot);
+			if items_snapshot.is_empty() {
+				remove_button_remove.enable(false);
+				option_text_remove.set_value("");
+				option_text_remove.enable(false);
+				option_label_remove.enable(false);
+			} else {
+				let next = index.min(items_snapshot.len() - 1);
+				poll_list_remove.set_selection(next as u32, true);
+				remove_button_remove.enable(true);
+				option_label_remove.enable(true);
+				option_text_remove.enable(true);
 			}
 		}
 		if options_remove.borrow().len() < limits.max_options {
@@ -271,11 +278,18 @@ fn prompt_for_poll(
 	let option_text_select = option_text_remove;
 	poll_list_select.on_selection_changed(move |_| {
 		let selection = poll_list_select.get_selection().map(|sel| sel as usize);
-		let items = options_select.borrow();
-		if let Some(index) = selection
-			&& index < items.len()
-		{
-			option_text_select.set_value(&items[index]);
+		let item_value = {
+			let items = options_select.borrow();
+			if let Some(index) = selection
+				&& index < items.len()
+			{
+				Some(items[index].clone())
+			} else {
+				None
+			}
+		};
+		if let Some(value) = item_value {
+			option_text_select.set_value(&value);
 		}
 	});
 
@@ -283,17 +297,24 @@ fn prompt_for_poll(
 	let poll_list_edit = poll_list_select;
 	option_text_select.on_text_changed(move |_| {
 		let selection = poll_list_edit.get_selection().map(|sel| sel as usize);
-		let mut items = options_edit.borrow_mut();
-		if let Some(index) = selection
-			&& index < items.len()
-		{
+		let updated = if let Some(index) = selection {
 			let value = option_text_select.get_value();
 			let trimmed = value.trim().to_string();
 			if trimmed.chars().count() > limits.max_option_chars {
 				return;
 			}
-			items[index] = trimmed;
-			refresh_poll_list(&poll_list_edit, &items);
+			let mut items = options_edit.borrow_mut();
+			if index < items.len() {
+				items[index] = trimmed;
+				Some((items.clone(), index))
+			} else {
+				None
+			}
+		} else {
+			None
+		};
+		if let Some((items_snapshot, index)) = updated {
+			refresh_poll_list(&poll_list_edit, &items_snapshot);
 			poll_list_edit.set_selection(index as u32, true);
 		}
 	});

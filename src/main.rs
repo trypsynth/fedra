@@ -10,7 +10,16 @@ mod speech;
 mod streaming;
 mod timeline;
 
-use std::{cell::RefCell, mem, rc::Rc};
+use std::{
+	backtrace::Backtrace,
+	cell::{Cell, RefCell},
+	fs::OpenOptions,
+	io::Write,
+	mem,
+	path::PathBuf,
+	rc::Rc,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -31,6 +40,32 @@ const ID_FEDERATED_TIMELINE: i32 = 1006;
 const ID_CLOSE_TIMELINE: i32 = 1007;
 const ID_REFRESH: i32 = 1008;
 const KEY_DELETE: i32 = 127;
+
+fn log_path() -> PathBuf {
+	if let Ok(appdata) = std::env::var("APPDATA") {
+		return PathBuf::from(appdata).join("Fedra").join("crash.log");
+	}
+	std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("crash.log")
+}
+
+fn log_event(message: &str) {
+	let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+	let path = log_path();
+	if let Some(parent) = path.parent() {
+		let _ = std::fs::create_dir_all(parent);
+	}
+	if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+		let _ = writeln!(file, "[{}] {}", millis, message);
+	}
+}
+
+fn install_panic_hook() {
+	std::panic::set_hook(Box::new(|info| {
+		log_event(&format!("panic: {}", info));
+		let backtrace = Backtrace::force_capture();
+		log_event(&format!("backtrace: {backtrace}"));
+	}));
+}
 
 struct AppState {
 	config: Config,
@@ -134,40 +169,6 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
 	MenuBar::builder().append(post_menu, "&Post").append(timelines_menu, "&Timelines").build()
-}
-
-fn do_new_post(frame: &Frame, state: &AppState) {
-	if state.active_account().is_none() {
-		speech::speak("No account configured");
-		return;
-	}
-	let post = match dialogs::prompt_for_post(frame, state.max_post_chars, &state.poll_limits) {
-		Some(p) => p,
-		None => return,
-	};
-	match &state.network_handle {
-		Some(handle) => {
-			handle.send(NetworkCommand::PostStatus {
-				content: post.content,
-				visibility: post.visibility.as_api_str().to_string(),
-				spoiler_text: post.spoiler_text,
-				content_type: post.content_type,
-				media: post
-					.media
-					.into_iter()
-					.map(|item| network::MediaUpload { path: item.path, description: item.description })
-					.collect(),
-				poll: post.poll.map(|poll| network::PollData {
-					options: poll.options,
-					expires_in: poll.expires_in,
-					multiple: poll.multiple,
-				}),
-			});
-		}
-		None => {
-			speech::speak("Network not available");
-		}
-	}
 }
 
 fn refresh_timeline(state: &AppState) {
@@ -471,35 +472,6 @@ fn do_boost(state: &AppState) {
 	}
 }
 
-fn do_reply(frame: &Frame, state: &AppState) {
-	let status = match get_selected_status(state) {
-		Some(s) => s,
-		None => {
-			speech::speak("No post selected");
-			return;
-		}
-	};
-	let handle = match &state.network_handle {
-		Some(h) => h,
-		None => {
-			speech::speak("Network not available");
-			return;
-		}
-	};
-	// Get the actual status to reply to (unwrap reblog if present)
-	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
-	let reply = match dialogs::prompt_for_reply(frame, target, state.max_post_chars) {
-		Some(r) => r,
-		None => return,
-	};
-	handle.send(NetworkCommand::Reply {
-		in_reply_to_id: target.id.clone(),
-		content: reply.content,
-		visibility: reply.visibility.as_api_str().to_string(),
-		spoiler_text: reply.spoiler_text,
-	});
-}
-
 fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
@@ -526,6 +498,8 @@ fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &List
 
 fn main() {
 	let _ = wxdragon::main(|_| {
+		install_panic_hook();
+		log_event("app_start");
 		speech::init();
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
@@ -599,10 +573,15 @@ fn main() {
 		}
 		timelines_selector.set_selection(0_u32, true);
 		let state = Rc::new(RefCell::new(state));
+		let is_shutting_down = Rc::new(Cell::new(false));
 		let timer = Timer::new(&frame);
 		let state_timer = state.clone();
+		let shutdown_timer = is_shutting_down.clone();
 		let frame_timer = frame;
 		timer.on_tick(move |_| {
+			if shutdown_timer.get() {
+				return;
+			}
 			let mut state = state_timer.borrow_mut();
 			process_stream_events(&mut state, &timeline_list);
 			process_network_responses(&frame_timer, &mut state, &timeline_list);
@@ -611,8 +590,12 @@ fn main() {
 		// Keep timer alive, it would be dropped at end of scope otherwise
 		mem::forget(timer);
 		let state_selector = state.clone();
+		let shutdown_selector = is_shutting_down.clone();
 		let timeline_list_selector = timeline_list;
 		timelines_selector.on_selection_changed(move |event| {
+			if shutdown_selector.get() {
+				return;
+			}
 			if let Some(index) = event.get_selection() {
 				if index >= 0 {
 					let mut state = state_selector.borrow_mut();
@@ -628,9 +611,13 @@ fn main() {
 			}
 		});
 		let state_delete = state.clone();
+		let shutdown_delete = is_shutting_down.clone();
 		let timelines_selector_delete = timelines_selector;
 		let timeline_list_delete = timeline_list_selector;
 		timelines_selector_delete.on_key_down(move |event| {
+			if shutdown_delete.get() {
+				return;
+			}
 			if let WindowEventData::Keyboard(ref key_event) = event {
 				if key_event.get_key_code() == Some(KEY_DELETE) {
 					close_timeline(&mut state_delete.borrow_mut(), &timelines_selector_delete, &timeline_list_delete);
@@ -643,8 +630,12 @@ fn main() {
 			}
 		});
 		let state_timeline_list = state.clone();
+		let shutdown_list = is_shutting_down.clone();
 		let timeline_list_state = timeline_list_selector;
 		timeline_list_state.on_selection_changed(move |event| {
+			if shutdown_list.get() {
+				return;
+			}
 			if let Some(selection) = event.get_selection() {
 				if selection >= 0 {
 					let mut state = state_timeline_list.borrow_mut();
@@ -655,28 +646,107 @@ fn main() {
 			}
 		});
 		let state_menu = state.clone();
+		let shutdown_menu = is_shutting_down.clone();
 		let timelines_selector_menu = timelines_selector;
 		let timeline_list_menu = timeline_list_selector;
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_NEW_POST => {
-				do_new_post(&frame, &state_menu.borrow());
+				if shutdown_menu.get() {
+					return;
+				}
+				let (has_account, max_post_chars, poll_limits) = {
+					let state = state_menu.borrow();
+					(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone())
+				};
+				if !has_account {
+					speech::speak("No account configured");
+					return;
+				}
+				log_event("new_post: open dialog");
+				let post = match dialogs::prompt_for_post(&frame, max_post_chars, &poll_limits) {
+					Some(p) => p,
+					None => return,
+				};
+				if let Some(handle) = &state_menu.borrow().network_handle {
+					handle.send(NetworkCommand::PostStatus {
+						content: post.content,
+						visibility: post.visibility.as_api_str().to_string(),
+						spoiler_text: post.spoiler_text,
+						content_type: post.content_type,
+						media: post
+							.media
+							.into_iter()
+							.map(|item| network::MediaUpload { path: item.path, description: item.description })
+							.collect(),
+						poll: post.poll.map(|poll| network::PollData {
+							options: poll.options,
+							expires_in: poll.expires_in,
+							multiple: poll.multiple,
+						}),
+					});
+				} else {
+					speech::speak("Network not available");
+				}
 			}
 			ID_REPLY => {
-				do_reply(&frame, &state_menu.borrow());
+				if shutdown_menu.get() {
+					return;
+				}
+				let (status, max_post_chars) = {
+					let state = state_menu.borrow();
+					(get_selected_status(&state).cloned(), state.max_post_chars)
+				};
+				let status = match status {
+					Some(s) => s,
+					None => {
+						speech::speak("No post selected");
+						return;
+					}
+				};
+				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+				let reply = match dialogs::prompt_for_reply(&frame, target, max_post_chars) {
+					Some(r) => r,
+					None => return,
+				};
+				if let Some(handle) = &state_menu.borrow().network_handle {
+					handle.send(NetworkCommand::Reply {
+						in_reply_to_id: target.id.clone(),
+						content: reply.content,
+						visibility: reply.visibility.as_api_str().to_string(),
+						spoiler_text: reply.spoiler_text,
+					});
+				} else {
+					speech::speak("Network not available");
+				}
 			}
 			ID_FAVOURITE => {
+				if shutdown_menu.get() {
+					return;
+				}
 				do_favourite(&state_menu.borrow());
 			}
 			ID_BOOST => {
+				if shutdown_menu.get() {
+					return;
+				}
 				do_boost(&state_menu.borrow());
 			}
 			ID_REFRESH => {
+				if shutdown_menu.get() {
+					return;
+				}
 				refresh_timeline(&state_menu.borrow());
 			}
 			ID_LOCAL_TIMELINE => {
+				if shutdown_menu.get() {
+					return;
+				}
 				open_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu, TimelineType::Local);
 			}
 			ID_FEDERATED_TIMELINE => {
+				if shutdown_menu.get() {
+					return;
+				}
 				open_timeline(
 					&mut state_menu.borrow_mut(),
 					&timelines_selector_menu,
@@ -685,9 +755,20 @@ fn main() {
 				);
 			}
 			ID_CLOSE_TIMELINE => {
+				if shutdown_menu.get() {
+					return;
+				}
 				close_timeline(&mut state_menu.borrow_mut(), &timelines_selector_menu, &timeline_list_menu);
 			}
 			_ => {}
+		});
+		let shutdown_close = is_shutting_down.clone();
+		frame.on_close(move |event| {
+			if !shutdown_close.get() {
+				log_event("app_close_requested");
+				shutdown_close.set(true);
+			}
+			event.skip(true);
 		});
 		frame.show(true);
 		frame.centre();
