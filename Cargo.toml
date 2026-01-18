@@ -17,3 +17,10 @@ wxdragon = "0.9.7"
 
 [build-dependencies]
 embed-manifest = "1.5.0"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

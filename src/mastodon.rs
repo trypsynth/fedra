@@ -32,6 +32,9 @@ pub struct Status {
 	pub account: Account,
 	pub spoiler_text: String,
 	pub reblog: Option<Box<Status>>,
+	#[serde(default)]
+	pub media_attachments: Vec<MediaAttachment>,
+	pub application: Option<Application>,
 	pub visibility: String,
 	pub reblogs_count: u64,
 	pub favourites_count: u64,
@@ -53,16 +56,106 @@ impl Status {
 		match &self.reblog {
 			Some(boosted) => {
 				let booster = self.account.display_name_or_username();
-				let author = boosted.account.display_name_or_username();
-				let content = strip_html(&boosted.content);
-				format!("{} boosted {}: {}", booster, author, content)
+				format!("{} boosted {}", booster, boosted.base_display())
 			}
-			None => {
-				let author = self.account.display_name_or_username();
-				format!("{}: {}", author, self.display_text())
-			}
+			None => self.base_display(),
 		}
 	}
+
+	pub fn details_display(&self) -> String {
+		self.base_display()
+	}
+
+	fn base_display(&self) -> String {
+		let author = self.account.display_name_or_username();
+		let mut parts = Vec::new();
+		parts.push(author.to_string());
+		let content = self.content_with_cw();
+		if !content.is_empty() {
+			parts.push(content);
+		}
+		if let Some(media) = self.media_summary() {
+			parts.push(media);
+		}
+		if let Some(when) = friendly_time(&self.created_at) {
+			parts.push(when);
+		}
+		if let Some(client) = self.client_name() {
+			parts.push(format!("via {}", client));
+		}
+		parts.join(" | ")
+	}
+
+	fn content_with_cw(&self) -> String {
+		let content = self.display_text();
+		if self.spoiler_text.trim().is_empty() {
+			content
+		} else if content.is_empty() {
+			format!("CW: {}", self.spoiler_text.trim())
+		} else {
+			format!("CW: {} - {}", self.spoiler_text.trim(), content)
+		}
+	}
+
+	fn client_name(&self) -> Option<String> {
+		self.application
+			.as_ref()
+			.map(|app| app.name.as_str())
+			.filter(|name| !name.trim().is_empty())
+			.map(|name| name.to_string())
+	}
+
+	fn media_summary(&self) -> Option<String> {
+		if self.media_attachments.is_empty() {
+			return None;
+		}
+		let count = self.media_attachments.len();
+		let types = self
+			.media_attachments
+			.iter()
+			.map(|media| media.kind.as_str())
+			.filter(|kind| !kind.trim().is_empty())
+			.collect::<Vec<_>>()
+			.join(", ");
+		let alt_texts = self
+			.media_attachments
+			.iter()
+			.enumerate()
+			.map(|(index, media)| match media.description.as_deref().map(str::trim) {
+				Some(text) if !text.is_empty() => format!("alt {}: {}", index + 1, text),
+				_ => format!("alt {}: (missing)", index + 1),
+			})
+			.collect::<Vec<_>>()
+			.join("; ");
+		let mut summary = format!("media {}", count);
+		if !types.is_empty() {
+			summary.push_str(&format!(" ({})", types));
+		}
+		if !alt_texts.is_empty() {
+			summary.push_str(&format!(" [{}]", alt_texts));
+		}
+		Some(summary)
+	}
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Application {
+	pub name: String,
+	pub website: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct MediaAttachment {
+	pub id: String,
+	#[serde(rename = "type")]
+	pub kind: String,
+	pub url: String,
+	#[serde(default)]
+	pub preview_url: Option<String>,
+	#[serde(default)]
+	pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -99,7 +192,7 @@ impl Notification {
 	}
 
 	fn status_text_if_any(&self) -> Option<String> {
-		self.status.as_ref().map(|status| status.display_text())
+		self.status.as_ref().map(|status| status.details_display())
 	}
 }
 
@@ -126,6 +219,23 @@ fn strip_html(html: &str) -> String {
 		.unwrap_or_else(|_| html.to_string())
 		.trim()
 		.to_string()
+}
+
+fn friendly_time(iso_time: &str) -> Option<String> {
+	let trimmed = iso_time.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	if let Some((date, time_with_zone)) = trimmed.split_once('T') {
+		let time_part = time_with_zone.trim_end_matches('Z');
+		let time_part = time_part.split('.').next().unwrap_or(time_part);
+		let hm = time_part.get(0..5).unwrap_or(time_part);
+		if date.is_empty() || hm.is_empty() {
+			return Some(trimmed.to_string());
+		}
+		return Some(format!("{} {}", date, hm));
+	}
+	Some(trimmed.to_string())
 }
 
 impl MastodonClient {
