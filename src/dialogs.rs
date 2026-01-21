@@ -158,8 +158,8 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	let multiple_checkbox = CheckBox::builder(&panel).with_label("Allow multiple selections").build();
 	let remove_poll_button = Button::builder(&panel).with_label("Remove Poll").build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_label("Done").build();
-	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Done").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
 	list_buttons.add(&add_button, 0, SizerFlag::Bottom, 8);
@@ -182,6 +182,8 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
 
 	let options: Rc<RefCell<Vec<String>>> =
 		Rc::new(RefCell::new(existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default()));
@@ -329,12 +331,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	remove_poll_button.on_click(move |_| {
 		dialog.end_modal(ID_REMOVE_POLL);
 	});
-	ok_button.on_click(move |_| {
-		dialog.end_modal(ID_OK);
-	});
-	cancel_button.on_click(move |_| {
-		dialog.end_modal(ID_CANCEL);
-	});
 	dialog.centre();
 	let result = dialog.show_modal();
 	if result == ID_CANCEL {
@@ -373,8 +369,8 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let desc_label = StaticText::builder(&panel).with_label("Description for selected media:").build();
 	let desc_text = TextCtrl::builder(&panel).build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_label("Done").build();
-	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Done").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
 	list_buttons.add(&add_button, 0, SizerFlag::Bottom, 8);
@@ -393,6 +389,8 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
 	let items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial));
 	refresh_media_list(&media_list, &items.borrow());
 	if !items.borrow().is_empty() {
@@ -513,12 +511,6 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 		}
 	});
 
-	ok_button.on_click(move |_| {
-		dialog.end_modal(ID_OK);
-	});
-	cancel_button.on_click(move |_| {
-		dialog.end_modal(ID_CANCEL);
-	});
 	dialog.centre();
 	let result = dialog.show_modal();
 	if result != ID_OK {
@@ -566,8 +558,8 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
 	let poll_summary_label = StaticText::builder(&panel).with_label("No poll attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_label("Post").build();
-	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Post").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
@@ -589,6 +581,8 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(Vec::new()));
 	let media_items_manage = media_items.clone();
 	let media_count_update = media_count_label;
@@ -669,12 +663,6 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 		dialog.set_label(&format!("Post - {} of {} characters", char_count, max_chars));
 	});
 	timer.start(100, false);
-	ok_button.on_click(move |_| {
-		dialog.end_modal(ID_OK);
-	});
-	cancel_button.on_click(move |_| {
-		dialog.end_modal(ID_CANCEL);
-	});
 	dialog.centre();
 	content_text.set_focus();
 	let result = dialog.show_modal();
@@ -778,8 +766,8 @@ pub fn prompt_for_reply(
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_label("Reply").build();
-	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Reply").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
@@ -796,6 +784,8 @@ pub fn prompt_for_reply(
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
 	let cw_label_toggle = cw_label;
 	let cw_text_toggle = cw_text;
 	let panel_toggle = panel;
@@ -831,12 +821,6 @@ pub fn prompt_for_reply(
 		dialog.set_label(&format!("Reply to {} - {} of {} characters", author_timer, char_count, max_chars));
 	});
 	timer.start(100, false);
-	ok_button.on_click(move |_| {
-		dialog.end_modal(ID_OK);
-	});
-	cancel_button.on_click(move |_| {
-		dialog.end_modal(ID_CANCEL);
-	});
 	dialog.centre();
 	content_text.set_focus();
 	// Move cursor to end of pre-filled mention
