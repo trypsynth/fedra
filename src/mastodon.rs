@@ -202,7 +202,7 @@ impl Notification {
 	pub fn timeline_display(&self) -> String {
 		let actor = self.account.display_name_or_username();
 		match self.kind.as_str() {
-			"mention" | "status" => format!("{}", self.status_text()),
+			"mention" | "status" => self.status_text().to_string(),
 			"reblog" => format!("{} boosted {}", actor, self.status_text()),
 			"favourite" => format!("{} favourited {}", actor, self.status_text()),
 			"follow" => format!("{} followed you", actor),
@@ -437,15 +437,15 @@ impl MastodonClient {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
 			vec![("status".to_string(), status.to_string()), ("visibility".to_string(), visibility.to_string())];
-		if let Some(spoiler) = spoiler_text {
-			if !spoiler.trim().is_empty() {
-				params.push(("spoiler_text".to_string(), spoiler.to_string()));
-			}
+		if let Some(spoiler) = spoiler_text
+			&& !spoiler.trim().is_empty()
+		{
+			params.push(("spoiler_text".to_string(), spoiler.to_string()));
 		}
-		if let Some(content_type) = content_type {
-			if !content_type.trim().is_empty() {
-				params.push(("content_type".to_string(), content_type.to_string()));
-			}
+		if let Some(content_type) = content_type
+			&& !content_type.trim().is_empty()
+		{
+			params.push(("content_type".to_string(), content_type.to_string()));
 		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));
@@ -472,10 +472,10 @@ impl MastodonClient {
 		let url = self.base_url.join("api/v2/media")?;
 		let part = multipart::Part::file(path).context("Failed to read media file")?;
 		let mut form = multipart::Form::new().part("file", part);
-		if let Some(description) = description {
-			if !description.trim().is_empty() {
-				form = form.text("description", description.to_string());
-			}
+		if let Some(description) = description
+			&& !description.trim().is_empty()
+		{
+			form = form.text("description", description.to_string());
 		}
 		let response = self
 			.http
@@ -622,10 +622,10 @@ impl MastodonClient {
 			("visibility".to_string(), visibility.to_string()),
 			("in_reply_to_id".to_string(), in_reply_to_id.to_string()),
 		];
-		if let Some(spoiler) = spoiler_text {
-			if !spoiler.trim().is_empty() {
-				params.push(("spoiler_text".to_string(), spoiler.to_string()));
-			}
+		if let Some(spoiler) = spoiler_text
+			&& !spoiler.trim().is_empty()
+		{
+			params.push(("spoiler_text".to_string(), spoiler.to_string()));
 		}
 		self.http
 			.post(url)

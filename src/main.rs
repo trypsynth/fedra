@@ -424,11 +424,9 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 			}
 		}
 	}
-	if active_needs_update {
-		if let Some(active) = state.timeline_manager.active_mut() {
-			active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-			update_active_timeline_ui(timeline_list, active, suppress_selection);
-		}
+	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
+		active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+		update_active_timeline_ui(timeline_list, active, suppress_selection);
 	}
 }
 
@@ -537,10 +535,10 @@ where
 					updater(status);
 				}
 				// Check if it's a reblog of the target
-				if let Some(ref mut reblog) = status.reblog {
-					if reblog.id == status_id {
-						updater(reblog);
-					}
+				if let Some(ref mut reblog) = status.reblog
+					&& reblog.id == status_id
+				{
+					updater(reblog);
 				}
 			}
 		}
@@ -715,13 +713,12 @@ fn main() {
 					state.max_post_chars = Some(info.max_post_chars);
 					state.poll_limits = info.poll_limits;
 				}
-				if state.active_account().and_then(|account| account.acct.as_deref()).is_none() {
-					if let Ok(account) = client.verify_credentials(&token) {
-						if let Some(active) = state.config.accounts.first_mut() {
-							active.acct = Some(account.acct);
-							let _ = store.save(&state.config);
-						}
-					}
+				if state.active_account().and_then(|account| account.acct.as_deref()).is_none()
+					&& let Ok(account) = client.verify_credentials(&token)
+					&& let Some(active) = state.config.accounts.first_mut()
+				{
+					active.acct = Some(account.acct);
+					let _ = store.save(&state.config);
 				}
 			}
 			state.streaming_url = Some(url.clone());
@@ -785,10 +782,10 @@ fn main() {
 			if suppress_selector.get() {
 				return;
 			}
-			if let Some(index) = event.get_selection() {
-				if index >= 0 {
-					let _ = ui_tx_selector.send(UiCommand::TimelineSelectionChanged(index as usize));
-				}
+			if let Some(index) = event.get_selection()
+				&& index >= 0
+			{
+				let _ = ui_tx_selector.send(UiCommand::TimelineSelectionChanged(index as usize));
 			}
 		});
 		let ui_tx_delete = ui_tx.clone();
@@ -820,10 +817,10 @@ fn main() {
 			if suppress_list.get() {
 				return;
 			}
-			if let Some(selection) = event.get_selection() {
-				if selection >= 0 {
-					let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection as usize));
-				}
+			if let Some(selection) = event.get_selection()
+				&& selection >= 0
+			{
+				let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection as usize));
 			}
 		});
 		let ui_tx_menu = ui_tx.clone();

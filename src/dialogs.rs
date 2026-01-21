@@ -410,10 +410,10 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 			.build();
 		if file_dialog.show_modal() == ID_OK {
 			let mut paths = file_dialog.get_paths();
-			if paths.is_empty() {
-				if let Some(path) = file_dialog.get_path() {
-					paths.push(path);
-				}
+			if paths.is_empty()
+				&& let Some(path) = file_dialog.get_path()
+			{
+				paths.push(path);
 			}
 			if !paths.is_empty() {
 				let new_len = {
@@ -525,7 +525,7 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	cw_label.show(false);
 	cw_text.show(false);
 	let content_type_label = StaticText::builder(&panel).with_label("Content type (if supported):").build();
-	let content_type_options = vec![
+	let content_type_options = [
 		("Default".to_string(), None),
 		("Plain text (text/plain)".to_string(), Some("text/plain".to_string())),
 		("Markdown (text/markdown)".to_string(), Some("text/markdown".to_string())),
@@ -721,7 +721,6 @@ pub fn prompt_for_reply(
 	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
 	let mention = if reply_all {
-		// Include author and all mentioned accounts (deduplicated)
 		let mut accts = Vec::new();
 		let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
 		if let Some(self_acct) = self_acct {
@@ -732,15 +731,15 @@ pub fn prompt_for_reply(
 			accts.push(replying_to.account.acct.clone());
 		}
 		for m in &replying_to.mentions {
-			if let Some(target_id) = replying_to.in_reply_to_account_id.as_deref() {
-				if m.id == target_id {
-					continue;
-				}
+			if let Some(target_id) = replying_to.in_reply_to_account_id.as_deref()
+				&& m.id == target_id
+			{
+				continue;
 			}
-			if let Some(self_acct) = self_acct {
-				if is_self_mention(self_acct, m) {
-					continue;
-				}
+			if let Some(self_acct) = self_acct
+				&& is_self_mention(self_acct, m)
+			{
+				continue;
 			}
 			if !accts.iter().any(|a| a == &m.acct) {
 				accts.push(m.acct.clone());
@@ -765,7 +764,6 @@ pub fn prompt_for_reply(
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
-	// Match original visibility by default
 	let default_visibility = match replying_to.visibility.as_str() {
 		"public" => 0,
 		"unlisted" => 1,
@@ -812,7 +810,6 @@ pub fn prompt_for_reply(
 		panel_toggle.layout();
 		dialog_toggle.layout();
 	});
-	// Enter sends, Shift+Enter or Ctrl+Enter inserts newline
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
@@ -835,7 +832,6 @@ pub fn prompt_for_reply(
 	timer.start(100, false);
 	dialog.centre();
 	content_text.set_focus();
-	// Move cursor to end of pre-filled mention
 	content_text.set_insertion_point_end();
 	let result = dialog.show_modal();
 	timer.stop();

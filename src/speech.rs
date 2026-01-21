@@ -6,10 +6,10 @@ static TTS: Mutex<Option<Tts>> = Mutex::new(None);
 
 pub fn init() {
 	let mut guard = TTS.lock().unwrap();
-	if guard.is_none() {
-		if let Ok(tts) = Tts::default() {
-			*guard = Some(tts);
-		}
+	if guard.is_none()
+		&& let Ok(tts) = Tts::default()
+	{
+		*guard = Some(tts);
 	}
 }
 
