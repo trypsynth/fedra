@@ -107,10 +107,10 @@ impl Status {
 
 	fn visibility_display(&self) -> String {
 		match self.visibility.as_str() {
-			"public" => "public".to_string(),
-			"unlisted" => "unlisted".to_string(),
-			"private" => "followers only".to_string(),
-			"direct" => "direct".to_string(),
+			"public" => "Public".to_string(),
+			"unlisted" => "Unlisted".to_string(),
+			"private" => "Followers only".to_string(),
+			"direct" => "Mentioned only".to_string(),
 			other => other.to_string(),
 		}
 	}
