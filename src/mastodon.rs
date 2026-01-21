@@ -538,6 +538,20 @@ impl MastodonClient {
 		Ok(notifications)
 	}
 
+	pub fn verify_credentials(&self, access_token: &str) -> Result<Account> {
+		let url = self.base_url.join("api/v1/accounts/verify_credentials")?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to verify credentials")?
+			.error_for_status()
+			.context("Instance rejected credential verification")?;
+		let account: Account = response.json().context("Invalid credentials response")?;
+		Ok(account)
+	}
+
 	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
 		let response = self

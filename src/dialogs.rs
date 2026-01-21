@@ -184,7 +184,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-
 	let options: Rc<RefCell<Vec<String>>> =
 		Rc::new(RefCell::new(existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default()));
 	refresh_poll_list(&poll_list, &options.borrow());
@@ -202,14 +201,12 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 		option_label.enable(false);
 		option_text.enable(false);
 	}
-
 	let default_minutes = existing.as_ref().map(|poll| poll.expires_in / 60).unwrap_or(min_minutes as u32) as i32;
 	duration_spin.set_value(default_minutes.clamp(min_minutes, max_minutes));
 	if let Some(existing) = existing.as_ref() {
 		multiple_checkbox.set_value(existing.multiple);
 	}
 	remove_poll_button.enable(existing.is_some());
-
 	let options_add = options.clone();
 	let poll_list_add = poll_list;
 	let add_button_add = add_button;
@@ -239,7 +236,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	if options.borrow().len() >= limits.max_options {
 		add_button.enable(false);
 	}
-
 	let options_remove = options.clone();
 	let poll_list_remove = poll_list_add;
 	let option_text_remove = option_text;
@@ -274,7 +270,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			add_button_remove.enable(true);
 		}
 	});
-
 	let options_select = options.clone();
 	let poll_list_select = poll_list_remove;
 	let option_text_select = option_text_remove;
@@ -297,7 +292,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			option_text_select.set_value(&value);
 		}
 	});
-
 	let options_edit = options.clone();
 	let poll_list_edit = poll_list_select;
 	option_text_select.on_text_changed(move |_| {
@@ -326,7 +320,6 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			poll_list_edit.set_selection(index as u32, true);
 		}
 	});
-
 	const ID_REMOVE_POLL: i32 = 20_001;
 	remove_poll_button.on_click(move |_| {
 		dialog.end_modal(ID_REMOVE_POLL);
@@ -711,6 +704,7 @@ pub fn prompt_for_reply(
 	replying_to: &Status,
 	max_chars: Option<usize>,
 	reply_all: bool,
+	self_acct: Option<&str>,
 ) -> Option<ReplyResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let author = replying_to.account.display_name_or_username();
@@ -728,8 +722,26 @@ pub fn prompt_for_reply(
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
 	let mention = if reply_all {
 		// Include author and all mentioned accounts (deduplicated)
-		let mut accts = vec![replying_to.account.acct.clone()];
+		let mut accts = Vec::new();
+		let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
+		if let Some(self_acct) = self_acct {
+			if !self_acct.eq_ignore_ascii_case(replying_to.account.acct.trim().trim_start_matches('@')) {
+				accts.push(replying_to.account.acct.clone());
+			}
+		} else {
+			accts.push(replying_to.account.acct.clone());
+		}
 		for m in &replying_to.mentions {
+			if let Some(target_id) = replying_to.in_reply_to_account_id.as_deref() {
+				if m.id == target_id {
+					continue;
+				}
+			}
+			if let Some(self_acct) = self_acct {
+				if is_self_mention(self_acct, m) {
+					continue;
+				}
+			}
 			if !accts.iter().any(|a| a == &m.acct) {
 				accts.push(m.acct.clone());
 			}
@@ -879,6 +891,17 @@ fn strip_html(html: &str) -> String {
 		}
 	}
 	output
+}
+
+fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool {
+	let mention_acct = mention.acct.trim().trim_start_matches('@');
+	if self_acct.eq_ignore_ascii_case(mention_acct) {
+		return true;
+	}
+	if self_acct.contains('@') {
+		return false;
+	}
+	self_acct.eq_ignore_ascii_case(mention.username.trim().trim_start_matches('@'))
 }
 
 pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {

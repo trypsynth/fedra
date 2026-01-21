@@ -294,7 +294,8 @@ fn handle_ui_command(
 				}
 			};
 			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
-			let reply = match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all) {
+			let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
+			let reply = match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all, self_acct) {
 				Some(r) => r,
 				None => return,
 			};
@@ -713,6 +714,14 @@ fn main() {
 				if let Ok(info) = client.get_instance_info() {
 					state.max_post_chars = Some(info.max_post_chars);
 					state.poll_limits = info.poll_limits;
+				}
+				if state.active_account().and_then(|account| account.acct.as_deref()).is_none() {
+					if let Ok(account) = client.verify_credentials(&token) {
+						if let Some(active) = state.config.accounts.first_mut() {
+							active.acct = Some(account.acct);
+							let _ = store.save(&state.config);
+						}
+					}
 				}
 			}
 			state.streaming_url = Some(url.clone());
