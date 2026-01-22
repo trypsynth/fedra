@@ -4,6 +4,7 @@ mod auth;
 mod config;
 mod dialogs;
 mod error;
+mod html;
 mod mastodon;
 mod network;
 mod speech;
