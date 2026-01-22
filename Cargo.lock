@@ -446,6 +446,7 @@ name = "fedra"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ego-tree",
  "embed-manifest",
  "reqwest 0.13.1",
  "scraper",

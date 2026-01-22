@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+ego-tree = "0.6.3"
 reqwest = { version = "0.13.1", features = ["blocking", "form", "json", "multipart", "rustls"] }
 scraper = "0.19.1"
 serde = { version = "1.0.228", features = ["derive"] }
