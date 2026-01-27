@@ -522,23 +522,15 @@ pub fn prompt_for_options(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 ) -> Option<(bool, SortOrder, TimestampFormat)> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 350).build();
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 300).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let enter_checkbox = CheckBox::builder(&panel).with_label("Enter to send").build();
 	enter_checkbox.set_value(enter_to_send);
-	let sort_label = StaticText::builder(&panel).with_label("Timeline Sort Order:").build();
-	let sort_combo = ComboBox::builder(&panel)
-		.with_string_choices(&["Newest to Oldest", "Oldest to Newest"])
-		.with_style(ComboBoxStyle::ReadOnly)
-		.build();
-	let selection = match sort_order {
-		SortOrder::NewestToOldest => 0,
-		SortOrder::OldestToNewest => 1,
-	};
-	sort_combo.set_selection(selection);
 	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
+	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
+	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
 	ok_button.set_default();
@@ -548,8 +540,7 @@ pub fn prompt_for_options(
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&sort_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
-	main_sizer.add(&sort_combo, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_stretch_spacer(1);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
@@ -564,7 +555,7 @@ pub fn prompt_for_options(
 		return None;
 	}
 	let new_sort =
-		if sort_combo.get_selection() == Some(1) { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
+		if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
 	Some((enter_checkbox.get_value(), new_sort, new_timestamp))

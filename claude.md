@@ -118,6 +118,8 @@ Configured in `rustfmt.toml`:
 - **Federated timeline** - Posts from all known instances
 - Real-time streaming updates for all timelines
 - Switch between open timelines with the timeline selector
+- Configurable sort order (newest first or oldest first)
+- Toggle between relative and absolute timestamps
 
 ### Posting
 - New post dialog with live character count in title bar
@@ -126,19 +128,24 @@ Configured in `rustfmt.toml`:
 - Content type selection: Default, Plain text, Markdown, HTML (for instances that support it)
 - Media attachments with alt text descriptions
 - Polls with configurable options, duration, and multiple-choice setting
-- **Enter** sends the post, **Shift+Enter** or **Ctrl+Enter** inserts a newline
+- Configurable send behavior: Enter to send (default) or Ctrl+Enter to send
 
 ### Replying
 - Reply dialog shows original post preview
 - Auto-fills @mention of the author
 - Inherits content warning from original post (prefixed with "re: ")
 - Matches visibility of original post by default
-- **Enter** sends the reply, **Shift+Enter** or **Ctrl+Enter** inserts a newline
+- Same send behavior as posting (Enter or Ctrl+Enter based on settings)
 
 ### Interactions
 - Favourite/unfavourite posts
 - Boost/unboost posts
 - Speech feedback for all actions
+
+### Options (Ctrl+O)
+- **Enter to send** - When enabled, Enter sends posts; when disabled, Ctrl+Enter sends
+- **Show relative timestamps** - Toggle between "2 hours ago" and "2025-01-27 14:30"
+- **Show oldest first** - Reverses timeline order to show oldest posts at the top
 
 ### Accessibility
 - Native wxWidgets controls for screen reader compatibility
@@ -155,12 +162,12 @@ Configured in `rustfmt.toml`:
 | Ctrl+Shift+F | Favourite/Unfavourite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
 | Ctrl+L | Open Local Timeline |
+| Ctrl+O | Open Options dialog |
 | F5 | Refresh current timeline |
 | Delete | Close current timeline (except Home) |
 
 ## Next Steps
 
-- Settings dialog for configuring behavior
 - Multiple account switching
 - Thread/conversation view
 - Profile viewing
