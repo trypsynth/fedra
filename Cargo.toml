@@ -10,9 +10,9 @@ reqwest = { version = "0.13.1", features = ["blocking", "form", "json", "multipa
 scraper = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-tts = { version = "0.26.3", features = ["tolk"] }
 tungstenite = { version = "0.28.0", features = ["native-tls"] }
 url = "2.5.8"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
 wxdragon = { git = "https://github.com/AllenDang/wxDragon", branch = "main", version = "0.9.8" }
 
 [build-dependencies]

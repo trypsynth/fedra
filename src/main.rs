@@ -5,9 +5,9 @@ mod config;
 mod dialogs;
 mod error;
 mod html;
+mod live_region;
 mod mastodon;
 mod network;
-mod speech;
 mod streaming;
 mod timeline;
 
@@ -194,7 +194,7 @@ fn build_menu_bar() -> MenuBar {
 	MenuBar::builder().append(post_menu, "&Post").append(timelines_menu, "&Timelines").build()
 }
 
-fn refresh_timeline(state: &AppState) {
+fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 	let timeline_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
@@ -204,7 +204,7 @@ fn refresh_timeline(state: &AppState) {
 			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40) });
 		}
 		None => {
-			speech::speak("Network not available");
+			live_region::announce(live_region, "Network not available");
 		}
 	}
 }
@@ -250,13 +250,14 @@ fn handle_ui_command(
 	timelines_selector: &ListBox,
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
 ) {
 	match cmd {
 		UiCommand::NewPost => {
 			let (has_account, max_post_chars, poll_limits) =
 				(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone());
 			if !has_account {
-				speech::speak("No account configured");
+				live_region::announce(live_region, "No account configured");
 				return;
 			}
 			log_event("new_post: open dialog");
@@ -282,7 +283,7 @@ fn handle_ui_command(
 					}),
 				});
 			} else {
-				speech::speak("Network not available");
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 		UiCommand::Reply { reply_all } => {
@@ -290,7 +291,7 @@ fn handle_ui_command(
 			let status = match status {
 				Some(s) => s,
 				None => {
-					speech::speak("No post selected");
+					live_region::announce(live_region, "No post selected");
 					return;
 				}
 			};
@@ -308,23 +309,23 @@ fn handle_ui_command(
 					spoiler_text: reply.spoiler_text,
 				});
 			} else {
-				speech::speak("Network not available");
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 		UiCommand::Favourite => {
-			do_favourite(state);
+			do_favourite(state, live_region);
 		}
 		UiCommand::Boost => {
-			do_boost(state);
+			do_boost(state, live_region);
 		}
 		UiCommand::Refresh => {
-			refresh_timeline(state);
+			refresh_timeline(state, live_region);
 		}
 		UiCommand::OpenTimeline(timeline_type) => {
-			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection);
+			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
 		}
 		UiCommand::CloseTimeline => {
-			close_timeline(state, timelines_selector, timeline_list, suppress_selection);
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region);
 		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
@@ -352,9 +353,10 @@ fn drain_ui_commands(
 	timelines_selector: &ListBox,
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
-		handle_ui_command(cmd, state, frame, timelines_selector, timeline_list, suppress_selection);
+		handle_ui_command(cmd, state, frame, timelines_selector, timeline_list, suppress_selection, live_region);
 	}
 }
 
@@ -436,6 +438,7 @@ fn process_network_responses(
 	state: &mut AppState,
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
 ) {
 	let handle = match &state.network_handle {
 		Some(h) => h,
@@ -462,33 +465,33 @@ fn process_network_responses(
 				}
 			}
 			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
-				speech::speak(&format!("Failed to load timeline: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to load timeline: {}", error::user_message(err)));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
-				speech::speak("Posted");
+				live_region::announce(live_region, "Posted");
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
-				speech::speak(&format!("Failed to post: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to post: {}", error::user_message(err)));
 			}
 			NetworkResponse::Favourited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
-				speech::speak("Favourited");
+				live_region::announce(live_region, "Favourited");
 			}
 			NetworkResponse::Favourited { result: Err(ref err), .. } => {
-				speech::speak(&format!("Failed to favourite: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to favourite: {}", error::user_message(err)));
 			}
 			NetworkResponse::Unfavourited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
-				speech::speak("Unfavourited");
+				live_region::announce(live_region, "Unfavourited");
 			}
 			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
-				speech::speak(&format!("Failed to unfavourite: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to unfavourite: {}", error::user_message(err)));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -498,26 +501,26 @@ fn process_network_responses(
 						s.reblogs_count = inner.reblogs_count;
 					});
 				}
-				speech::speak("Boosted");
+				live_region::announce(live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				speech::speak(&format!("Failed to boost: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to boost: {}", error::user_message(err)));
 			}
 			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.reblogged = status.reblogged;
 					s.reblogs_count = status.reblogs_count;
 				});
-				speech::speak("Unboosted");
+				live_region::announce(live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				speech::speak(&format!("Failed to unboost: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to unboost: {}", error::user_message(err)));
 			}
 			NetworkResponse::Replied(Ok(())) => {
-				speech::speak("Reply sent");
+				live_region::announce(live_region, "Reply sent");
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
-				speech::speak(&format!("Failed to reply: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to reply: {}", error::user_message(err)));
 			}
 		}
 	}
@@ -552,9 +555,10 @@ fn open_timeline(
 	timeline_list: &ListBox,
 	timeline_type: TimelineType,
 	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
 ) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
-		speech::speak("Timeline already open");
+		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
 	selector.append(timeline_type.display_name());
@@ -580,18 +584,18 @@ fn get_selected_status(state: &AppState) -> Option<&Status> {
 	timeline.entries.get(reverse_index)?.as_status()
 }
 
-fn do_favourite(state: &AppState) {
+fn do_favourite(state: &AppState, live_region: &StaticText) {
 	let status = match get_selected_status(state) {
 		Some(s) => s,
 		None => {
-			speech::speak("No post selected");
+			live_region::announce(live_region, "No post selected");
 			return;
 		}
 	};
 	let handle = match &state.network_handle {
 		Some(h) => h,
 		None => {
-			speech::speak("Network not available");
+			live_region::announce(live_region, "Network not available");
 			return;
 		}
 	};
@@ -605,18 +609,18 @@ fn do_favourite(state: &AppState) {
 	}
 }
 
-fn do_boost(state: &AppState) {
+fn do_boost(state: &AppState, live_region: &StaticText) {
 	let status = match get_selected_status(state) {
 		Some(s) => s,
 		None => {
-			speech::speak("No post selected");
+			live_region::announce(live_region, "No post selected");
 			return;
 		}
 	};
 	let handle = match &state.network_handle {
 		Some(h) => h,
 		None => {
-			speech::speak("Network not available");
+			live_region::announce(live_region, "Network not available");
 			return;
 		}
 	};
@@ -630,13 +634,19 @@ fn do_boost(state: &AppState) {
 	}
 }
 
-fn close_timeline(state: &mut AppState, selector: &ListBox, timeline_list: &ListBox, suppress_selection: &Cell<bool>) {
+fn close_timeline(
+	state: &mut AppState,
+	selector: &ListBox,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
+) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
 	};
 	if !active_type.is_closeable() {
-		speech::speak(&format!("Cannot close the {} timeline", active_type.display_name()));
+		live_region::announce(live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
 		return;
 	}
 	if !state.timeline_manager.close(&active_type) {
@@ -660,12 +670,15 @@ fn main() {
 		reset_log();
 		install_panic_hook();
 		log_event("app_start");
-		speech::init();
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
 		let menu_bar = build_menu_bar();
 		frame.set_menu_bar(menu_bar);
 		let panel = Panel::builder(&frame).build();
+		// live region
+		let live_region_label = StaticText::builder(&panel).with_size(Size::new(1, 1)).build();
+		live_region_label.show(false);
+		live_region::set_live_region(&live_region_label);
 		let sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
 		let timelines_selector = ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
@@ -750,6 +763,7 @@ fn main() {
 		let frame_timer = frame;
 		let timelines_selector_timer = timelines_selector;
 		let timeline_list_timer = timeline_list;
+		let live_region_timer = live_region_label;
 		let mut state = state;
 		let timer_tick = timer.clone();
 		timer_tick.on_tick(move |_| {
@@ -767,9 +781,16 @@ fn main() {
 				&timelines_selector_timer,
 				&timeline_list_timer,
 				&suppress_timer,
+				&live_region_timer,
 			);
 			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
-			process_network_responses(&frame_timer, &mut state, &timeline_list_timer, &suppress_timer);
+			process_network_responses(
+				&frame_timer,
+				&mut state,
+				&timeline_list_timer,
+				&suppress_timer,
+				&live_region_timer,
+			);
 			busy_timer.set(false);
 		});
 		timer.start(100, false); // Check every 100ms
