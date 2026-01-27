@@ -10,7 +10,7 @@ pub fn strip_html(html: &str) -> String {
 fn append_text(node: ego_tree::NodeRef<scraper::node::Node>, output: &mut String) {
 	match node.value() {
 		scraper::node::Node::Text(text) => {
-			output.push_str(&text);
+			output.push_str(text);
 		}
 		scraper::node::Node::Element(element) => {
 			let name = element.name();
@@ -87,10 +87,8 @@ fn normalize_text(input: String) -> String {
 	for line in cleaned.split('\n') {
 		if line.is_empty() {
 			blank_run += 1;
-			if blank_run <= 2 {
-				if !final_out.is_empty() {
-					final_out.push('\n');
-				}
+			if blank_run <= 2 && !final_out.is_empty() {
+				final_out.push('\n');
 			}
 		} else {
 			blank_run = 0;

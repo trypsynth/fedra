@@ -26,7 +26,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, Config},
+	config::{Account, Config, SortOrder},
 	mastodon::{MastodonClient, PollLimits, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
 	timeline::{Timeline, TimelineEntry, TimelineManager, TimelineType},
@@ -41,6 +41,7 @@ const ID_FEDERATED_TIMELINE: i32 = 1006;
 const ID_CLOSE_TIMELINE: i32 = 1007;
 const ID_REFRESH: i32 = 1008;
 const ID_REPLY_AUTHOR: i32 = 1009;
+const ID_OPTIONS: i32 = 1010;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -115,6 +116,7 @@ enum UiCommand {
 	CloseTimeline,
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
+	ShowOptions,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -175,6 +177,8 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 }
 
 fn build_menu_bar() -> MenuBar {
+	let file_menu =
+		Menu::builder().append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings").build();
 	let post_menu = Menu::builder()
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
 		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
@@ -191,7 +195,11 @@ fn build_menu_bar() -> MenuBar {
 		.append_separator()
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
-	MenuBar::builder().append(post_menu, "&Post").append(timelines_menu, "&Timelines").build()
+	MenuBar::builder()
+		.append(file_menu, "&File")
+		.append(post_menu, "&Post")
+		.append(timelines_menu, "&Timelines")
+		.build()
 }
 
 fn refresh_timeline(state: &AppState, live_region: &StaticText) {
@@ -209,9 +217,13 @@ fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 	}
 }
 
-fn update_timeline_ui(timeline_list: &ListBox, entries: &[TimelineEntry]) {
+fn update_timeline_ui(timeline_list: &ListBox, entries: &[TimelineEntry], sort_order: SortOrder) {
 	timeline_list.clear();
-	for entry in entries.iter().rev() {
+	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
+		SortOrder::NewestToOldest => Box::new(entries.iter()),
+		SortOrder::OldestToNewest => Box::new(entries.iter().rev()),
+	};
+	for entry in iter {
 		timeline_list.append(&entry.display_text());
 	}
 }
@@ -236,9 +248,14 @@ fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
 	timeline_list.set_selection(selection as u32, true);
 }
 
-fn update_active_timeline_ui(timeline_list: &ListBox, timeline: &mut Timeline, suppress_selection: &Cell<bool>) {
+fn update_active_timeline_ui(
+	timeline_list: &ListBox,
+	timeline: &mut Timeline,
+	suppress_selection: &Cell<bool>,
+	sort_order: SortOrder,
+) {
 	with_suppressed_selection(suppress_selection, || {
-		update_timeline_ui(timeline_list, &timeline.entries);
+		update_timeline_ui(timeline_list, &timeline.entries, sort_order);
 		apply_timeline_selection(timeline_list, timeline);
 	});
 }
@@ -254,14 +271,18 @@ fn handle_ui_command(
 ) {
 	match cmd {
 		UiCommand::NewPost => {
-			let (has_account, max_post_chars, poll_limits) =
-				(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone());
+			let (has_account, max_post_chars, poll_limits, enter_to_send) = (
+				state.active_account().is_some(),
+				state.max_post_chars,
+				state.poll_limits.clone(),
+				state.config.enter_to_send,
+			);
 			if !has_account {
 				live_region::announce(live_region, "No account configured");
 				return;
 			}
 			log_event("new_post: open dialog");
-			let post = match dialogs::prompt_for_post(frame, max_post_chars, &poll_limits) {
+			let post = match dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send) {
 				Some(p) => p,
 				None => return,
 			};
@@ -287,7 +308,8 @@ fn handle_ui_command(
 			}
 		}
 		UiCommand::Reply { reply_all } => {
-			let (status, max_post_chars) = (get_selected_status(state).cloned(), state.max_post_chars);
+			let (status, max_post_chars, enter_to_send) =
+				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
 			let status = match status {
 				Some(s) => s,
 				None => {
@@ -297,10 +319,11 @@ fn handle_ui_command(
 			};
 			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
 			let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
-			let reply = match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all, self_acct) {
-				Some(r) => r,
-				None => return,
-			};
+			let reply =
+				match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all, self_acct, enter_to_send) {
+					Some(r) => r,
+					None => return,
+				};
 			if let Some(handle) = &state.network_handle {
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: target.id.clone(),
@@ -334,13 +357,29 @@ fn handle_ui_command(
 				}
 				state.timeline_manager.set_active(index);
 				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(timeline_list, active, suppress_selection);
+					update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
 				}
 			}
 		}
 		UiCommand::TimelineEntrySelectionChanged(index) => {
 			if let Some(active) = state.timeline_manager.active_mut() {
 				active.selected_index = Some(index);
+			}
+		}
+		UiCommand::ShowOptions => {
+			if let Some((enter_to_send, sort_order)) =
+				dialogs::prompt_for_options(frame, state.config.enter_to_send, state.config.sort_order)
+			{
+				let sort_changed = state.config.sort_order != sort_order;
+				state.config.enter_to_send = enter_to_send;
+				state.config.sort_order = sort_order;
+				let store = config::ConfigStore::new();
+				if let Err(err) = store.save(&state.config) {
+					dialogs::show_error(frame, &err);
+				}
+				if sort_changed && let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
+				}
 			}
 		}
 	}
@@ -429,7 +468,7 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 	}
 	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
 		active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-		update_active_timeline_ui(timeline_list, active, suppress_selection);
+		update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
 	}
 }
 
@@ -460,7 +499,7 @@ fn process_network_responses(
 						}
 					};
 					if is_active {
-						update_active_timeline_ui(timeline_list, timeline, suppress_selection);
+						update_active_timeline_ui(timeline_list, timeline, suppress_selection, state.config.sort_order);
 					}
 				}
 			}
@@ -661,7 +700,7 @@ fn close_timeline(
 		selector.set_selection(active_index as u32, true);
 	});
 	if let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(timeline_list, active, suppress_selection);
+		update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
 	}
 }
 
@@ -848,6 +887,12 @@ fn main() {
 		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
+			ID_OPTIONS => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ShowOptions);
+			}
 			ID_NEW_POST => {
 				if shutdown_menu.get() {
 					return;

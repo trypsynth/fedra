@@ -18,7 +18,7 @@ mod windows_impl {
 	use wxdragon::prelude::WxWidget;
 
 	thread_local! {
-		static ACC_PROP_SERVICES: RefCell<Option<IAccPropServices>> = RefCell::new(None);
+		static ACC_PROP_SERVICES: RefCell<Option<IAccPropServices>> = const { RefCell::new(None) };
 	}
 
 	const LIVE_REGION_POLITE: u32 = 1;
@@ -61,10 +61,10 @@ mod windows_impl {
 
 	fn acc_prop_services() -> Option<IAccPropServices> {
 		ACC_PROP_SERVICES.with(|cell| {
-			if cell.borrow().is_none() {
-				if let Some(service) = init_acc_prop_services() {
-					*cell.borrow_mut() = Some(service);
-				}
+			if cell.borrow().is_none()
+				&& let Some(service) = init_acc_prop_services()
+			{
+				*cell.borrow_mut() = Some(service);
 			}
 			cell.borrow().clone()
 		})

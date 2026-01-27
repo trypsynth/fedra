@@ -4,6 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
+	config::SortOrder,
 	error,
 	html::strip_html,
 	mastodon::{PollLimits, Status},
@@ -160,6 +161,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	let remove_poll_button = Button::builder(&panel).with_label("Remove Poll").build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Done").build();
+	ok_button.set_default();
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
@@ -364,6 +366,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let desc_text = TextCtrl::builder(&panel).build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Done").build();
+	ok_button.set_default();
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	let list_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let list_buttons = BoxSizer::builder(Orientation::Vertical).build();
@@ -513,7 +516,66 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	Some(items.borrow().clone())
 }
 
-pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &PollLimits) -> Option<PostResult> {
+pub fn prompt_for_options(frame: &Frame, enter_to_send: bool, sort_order: SortOrder) -> Option<(bool, SortOrder)> {
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 350).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let enter_checkbox = CheckBox::builder(&panel).with_label("Enter to send").build();
+	enter_checkbox.set_value(enter_to_send);
+
+	let sort_label = StaticText::builder(&panel).with_label("Timeline Sort Order:").build();
+	let sort_combo = ComboBox::builder(&panel)
+		.with_string_choices(&["Newest to Oldest", "Oldest to Newest"])
+		.with_style(ComboBoxStyle::ReadOnly)
+		.build();
+
+	let selection = match sort_order {
+		SortOrder::NewestToOldest => 0,
+		SortOrder::OldestToNewest => 1,
+	};
+	sort_combo.set_selection(selection);
+
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
+	ok_button.set_default();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+
+	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&sort_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&sort_combo, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_stretch_spacer(1);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+
+	dialog.centre();
+	let result = dialog.show_modal();
+	if result != ID_OK {
+		return None;
+	}
+
+	let new_sort =
+		if sort_combo.get_selection() == Some(1) { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
+
+	Some((enter_checkbox.get_value(), new_sort))
+}
+
+pub fn prompt_for_post(
+	frame: &Frame,
+	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
+	enter_to_send: bool,
+) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
@@ -553,6 +615,9 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	let poll_summary_label = StaticText::builder(&panel).with_label("No poll attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Post").build();
+	if enter_to_send {
+		ok_button.set_default();
+	}
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
@@ -640,7 +705,16 @@ pub fn prompt_for_post(frame: &Frame, max_chars: Option<usize>, poll_limits: &Po
 	});
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
+			let key = key_event.get_key_code();
+			let shift = key_event.shift_down();
+			let ctrl = key_event.control_down();
+			let should_submit = if enter_to_send {
+				key == Some(KEY_RETURN) && !shift && !ctrl
+			} else {
+				key == Some(KEY_RETURN) && ctrl
+			};
+
+			if should_submit {
 				dialog.end_modal(ID_OK);
 				event.skip(false);
 			} else {
@@ -706,6 +780,7 @@ pub fn prompt_for_reply(
 	max_chars: Option<usize>,
 	reply_all: bool,
 	self_acct: Option<&str>,
+	enter_to_send: bool,
 ) -> Option<ReplyResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let author = replying_to.account.display_name_or_username();
@@ -778,6 +853,9 @@ pub fn prompt_for_reply(
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Reply").build();
+	if enter_to_send {
+		ok_button.set_default();
+	}
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
@@ -813,7 +891,16 @@ pub fn prompt_for_reply(
 	});
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
+			let key = key_event.get_key_code();
+			let shift = key_event.shift_down();
+			let ctrl = key_event.control_down();
+			let should_submit = if enter_to_send {
+				key == Some(KEY_RETURN) && !shift && !ctrl
+			} else {
+				key == Some(KEY_RETURN) && ctrl
+			};
+
+			if should_submit {
 				dialog.end_modal(ID_OK);
 				event.skip(false);
 			} else {

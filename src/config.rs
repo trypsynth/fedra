@@ -17,11 +17,32 @@ pub struct Config {
 	pub version: u32,
 	pub accounts: Vec<Account>,
 	pub active_account_id: Option<String>,
+	#[serde(default = "default_enter_to_send")]
+	pub enter_to_send: bool,
+	#[serde(default)]
+	pub sort_order: SortOrder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SortOrder {
+	#[default]
+	NewestToOldest,
+	OldestToNewest,
+}
+
+fn default_enter_to_send() -> bool {
+	true
 }
 
 impl Default for Config {
 	fn default() -> Self {
-		Self { version: CONFIG_VERSION, accounts: Vec::new(), active_account_id: None }
+		Self {
+			version: CONFIG_VERSION,
+			accounts: Vec::new(),
+			active_account_id: None,
+			enter_to_send: true,
+			sort_order: SortOrder::default(),
+		}
 	}
 }
 
