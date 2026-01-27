@@ -36,7 +36,6 @@ src/
 | `anyhow` | Ergonomic error handling with context |
 | `serde` / `serde_json` | Configuration and API response serialization |
 | `url` | URL parsing and manipulation |
-| `webbrowser` | Open authorization URLs in default browser |
 | `scraper` | HTML parsing for stripping tags from post content |
 
 ### Error Handling
