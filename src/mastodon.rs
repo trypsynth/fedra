@@ -1,3 +1,5 @@
+use chrono::{DateTime, Local, Utc};
+use chrono_humanize::HumanTime;
 use reqwest::{
 	Url,
 	blocking::{Client, multipart},
@@ -5,6 +7,7 @@ use reqwest::{
 use serde::Deserialize;
 
 use crate::{
+	config::TimestampFormat,
 	error::{Context, Result},
 	html::strip_html,
 	timeline::TimelineType,
@@ -64,21 +67,21 @@ impl Status {
 		strip_html(&self.content)
 	}
 
-	pub fn timeline_display(&self) -> String {
+	pub fn timeline_display(&self, timestamp_format: TimestampFormat) -> String {
 		match &self.reblog {
 			Some(boosted) => {
 				let booster = self.account.display_name_or_username();
-				format!("{} boosted {}", booster, boosted.base_display())
+				format!("{} boosted {}", booster, boosted.base_display(timestamp_format))
 			}
-			None => self.base_display(),
+			None => self.base_display(timestamp_format),
 		}
 	}
 
-	pub fn details_display(&self) -> String {
-		self.base_display()
+	pub fn details_display(&self, timestamp_format: TimestampFormat) -> String {
+		self.base_display(timestamp_format)
 	}
 
-	fn base_display(&self) -> String {
+	fn base_display(&self, timestamp_format: TimestampFormat) -> String {
 		let mut out = String::new();
 		let author = self.account.display_name_or_username();
 		out.push_str(author);
@@ -92,7 +95,7 @@ impl Status {
 		}
 		// Metadata line: time, visibility, client
 		let mut meta = Vec::new();
-		if let Some(when) = friendly_time(&self.created_at) {
+		if let Some(when) = friendly_time(&self.created_at, timestamp_format) {
 			meta.push(when);
 		}
 		meta.push(self.visibility_display());
@@ -200,28 +203,28 @@ pub struct Notification {
 }
 
 impl Notification {
-	pub fn timeline_display(&self) -> String {
+	pub fn timeline_display(&self, timestamp_format: TimestampFormat) -> String {
 		let actor = self.account.display_name_or_username();
 		match self.kind.as_str() {
-			"mention" | "status" => self.status_text().to_string(),
-			"reblog" => format!("{} boosted {}", actor, self.status_text()),
-			"favourite" => format!("{} favourited {}", actor, self.status_text()),
+			"mention" | "status" => self.status_text(timestamp_format).to_string(),
+			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format)),
+			"favourite" => format!("{} favourited {}", actor, self.status_text(timestamp_format)),
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
-			"poll" => format!("Poll ended: {}", self.status_text()),
-			_ => match self.status_text_if_any() {
+			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format)),
+			_ => match self.status_text_if_any(timestamp_format) {
 				Some(text) => format!("{} {}: {}", actor, self.kind, text),
 				None => format!("{} {}", actor, self.kind),
 			},
 		}
 	}
 
-	fn status_text(&self) -> String {
-		self.status_text_if_any().unwrap_or_else(|| "No status content".to_string())
+	fn status_text(&self, timestamp_format: TimestampFormat) -> String {
+		self.status_text_if_any(timestamp_format).unwrap_or_else(|| "No status content".to_string())
 	}
 
-	fn status_text_if_any(&self) -> Option<String> {
-		self.status.as_ref().map(|status| status.details_display())
+	fn status_text_if_any(&self, timestamp_format: TimestampFormat) -> Option<String> {
+		self.status.as_ref().map(|status| status.details_display(timestamp_format))
 	}
 }
 
@@ -241,102 +244,22 @@ impl Account {
 	}
 }
 
-fn friendly_time(iso_time: &str) -> Option<String> {
+fn friendly_time(iso_time: &str, format: TimestampFormat) -> Option<String> {
 	let trimmed = iso_time.trim();
 	if trimmed.is_empty() {
 		return None;
 	}
-	// Try to parse and show relative time
-	if let Some(seconds_ago) = parse_iso_to_seconds_ago(trimmed) {
-		return Some(format_relative_time(seconds_ago));
-	}
-	// Fallback to simple date/time extraction
-	if let Some((date, time_with_zone)) = trimmed.split_once('T') {
-		let time_part = time_with_zone.trim_end_matches('Z');
-		let time_part = time_part.split('.').next().unwrap_or(time_part);
-		let hm = time_part.get(0..5).unwrap_or(time_part);
-		if date.is_empty() || hm.is_empty() {
-			return Some(trimmed.to_string());
+	let parsed: DateTime<Utc> = trimmed.parse().ok()?;
+	match format {
+		TimestampFormat::Relative => {
+			let human = HumanTime::from(parsed);
+			Some(human.to_string())
 		}
-		return Some(format!("{} {}", date, hm));
+		TimestampFormat::Absolute => {
+			let local: DateTime<Local> = parsed.into();
+			Some(local.format("%b %d, %Y at %l:%M %p").to_string())
+		}
 	}
-	Some(trimmed.to_string())
-}
-
-fn parse_iso_to_seconds_ago(iso_time: &str) -> Option<i64> {
-	use std::time::{SystemTime, UNIX_EPOCH};
-
-	// Parse ISO 8601 format: 2024-01-15T14:30:00.000Z or 2024-01-15T14:30:00Z
-	let trimmed = iso_time.trim().trim_end_matches('Z');
-	let (date_part, time_part) = trimmed.split_once('T')?;
-
-	let mut date_iter = date_part.split('-');
-	let year: i64 = date_iter.next()?.parse().ok()?;
-	let month: i64 = date_iter.next()?.parse().ok()?;
-	let day: i64 = date_iter.next()?.parse().ok()?;
-
-	let time_part = time_part.split('.').next().unwrap_or(time_part);
-	let mut time_iter = time_part.split(':');
-	let hour: i64 = time_iter.next()?.parse().ok()?;
-	let minute: i64 = time_iter.next()?.parse().ok()?;
-	let second: i64 = time_iter.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-
-	// Calculate days since epoch (simplified, assumes UTC)
-	let days_since_epoch = (year - 1970) * 365
-		+ (year - 1969) / 4  // leap years
-		- (year - 1901) / 100
-		+ (year - 1601) / 400
-		+ days_before_month(month, is_leap_year(year))
-		+ day - 1;
-
-	let post_timestamp = days_since_epoch * 86400 + hour * 3600 + minute * 60 + second;
-	let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
-
-	Some(now - post_timestamp)
-}
-
-fn is_leap_year(year: i64) -> bool {
-	(year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
-
-fn days_before_month(month: i64, leap: bool) -> i64 {
-	const DAYS: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-	let base = DAYS.get((month - 1) as usize).copied().unwrap_or(0);
-	if leap && month > 2 { base + 1 } else { base }
-}
-
-fn format_relative_time(seconds_ago: i64) -> String {
-	if seconds_ago < 0 {
-		return "in the future".to_string();
-	}
-	if seconds_ago < 60 {
-		return "just now".to_string();
-	}
-	let minutes = seconds_ago / 60;
-	if minutes < 60 {
-		return if minutes == 1 { "1 minute ago".to_string() } else { format!("{} minutes ago", minutes) };
-	}
-	let hours = minutes / 60;
-	if hours < 24 {
-		return if hours == 1 { "1 hour ago".to_string() } else { format!("{} hours ago", hours) };
-	}
-	let days = hours / 24;
-	if days == 1 {
-		return "yesterday".to_string();
-	}
-	if days < 7 {
-		return format!("{} days ago", days);
-	}
-	let weeks = days / 7;
-	if weeks < 4 {
-		return if weeks == 1 { "1 week ago".to_string() } else { format!("{} weeks ago", weeks) };
-	}
-	let months = days / 30;
-	if months < 12 {
-		return if months == 1 { "1 month ago".to_string() } else { format!("{} months ago", months) };
-	}
-	let years = days / 365;
-	if years == 1 { "1 year ago".to_string() } else { format!("{} years ago", years) }
 }
 
 impl MastodonClient {

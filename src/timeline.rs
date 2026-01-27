@@ -1,4 +1,5 @@
 use crate::{
+	config::TimestampFormat,
 	mastodon::{Notification, Status},
 	streaming::StreamHandle,
 };
@@ -57,10 +58,10 @@ pub enum TimelineEntry {
 }
 
 impl TimelineEntry {
-	pub fn display_text(&self) -> String {
+	pub fn display_text(&self, timestamp_format: TimestampFormat) -> String {
 		match self {
-			TimelineEntry::Status(status) => status.timeline_display(),
-			TimelineEntry::Notification(notification) => notification.timeline_display(),
+			TimelineEntry::Status(status) => status.timeline_display(timestamp_format),
+			TimelineEntry::Notification(notification) => notification.timeline_display(timestamp_format),
 		}
 	}
 

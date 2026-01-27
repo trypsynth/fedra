@@ -4,7 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::SortOrder,
+	config::{SortOrder, TimestampFormat},
 	error,
 	html::strip_html,
 	mastodon::{PollLimits, Status},
@@ -516,58 +516,58 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	Some(items.borrow().clone())
 }
 
-pub fn prompt_for_options(frame: &Frame, enter_to_send: bool, sort_order: SortOrder) -> Option<(bool, SortOrder)> {
+pub fn prompt_for_options(
+	frame: &Frame,
+	enter_to_send: bool,
+	sort_order: SortOrder,
+	timestamp_format: TimestampFormat,
+) -> Option<(bool, SortOrder, TimestampFormat)> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 350).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-
 	let enter_checkbox = CheckBox::builder(&panel).with_label("Enter to send").build();
 	enter_checkbox.set_value(enter_to_send);
-
 	let sort_label = StaticText::builder(&panel).with_label("Timeline Sort Order:").build();
 	let sort_combo = ComboBox::builder(&panel)
 		.with_string_choices(&["Newest to Oldest", "Oldest to Newest"])
 		.with_style(ComboBoxStyle::ReadOnly)
 		.build();
-
 	let selection = match sort_order {
 		SortOrder::NewestToOldest => 0,
 		SortOrder::OldestToNewest => 1,
 	};
 	sort_combo.set_selection(selection);
-
+	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
+	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
 	ok_button.set_default();
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-
 	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&sort_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&sort_combo, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_stretch_spacer(1);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-
 	dialog.centre();
 	let result = dialog.show_modal();
 	if result != ID_OK {
 		return None;
 	}
-
 	let new_sort =
 		if sort_combo.get_selection() == Some(1) { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
-
-	Some((enter_checkbox.get_value(), new_sort))
+	let new_timestamp =
+		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
+	Some((enter_checkbox.get_value(), new_sort, new_timestamp))
 }
 
 pub fn prompt_for_post(

@@ -21,6 +21,8 @@ pub struct Config {
 	pub enter_to_send: bool,
 	#[serde(default)]
 	pub sort_order: SortOrder,
+	#[serde(default)]
+	pub timestamp_format: TimestampFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -28,6 +30,13 @@ pub enum SortOrder {
 	#[default]
 	NewestToOldest,
 	OldestToNewest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TimestampFormat {
+	#[default]
+	Relative,
+	Absolute,
 }
 
 fn default_enter_to_send() -> bool {
@@ -42,6 +51,7 @@ impl Default for Config {
 			active_account_id: None,
 			enter_to_send: true,
 			sort_order: SortOrder::default(),
+			timestamp_format: TimestampFormat::default(),
 		}
 	}
 }

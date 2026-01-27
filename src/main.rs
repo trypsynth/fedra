@@ -26,7 +26,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, Config, SortOrder},
+	config::{Account, Config, SortOrder, TimestampFormat},
 	mastodon::{MastodonClient, PollLimits, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
 	timeline::{Timeline, TimelineEntry, TimelineManager, TimelineType},
@@ -217,14 +217,19 @@ fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 	}
 }
 
-fn update_timeline_ui(timeline_list: &ListBox, entries: &[TimelineEntry], sort_order: SortOrder) {
+fn update_timeline_ui(
+	timeline_list: &ListBox,
+	entries: &[TimelineEntry],
+	sort_order: SortOrder,
+	timestamp_format: TimestampFormat,
+) {
 	timeline_list.clear();
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
 		SortOrder::OldestToNewest => Box::new(entries.iter().rev()),
 	};
 	for entry in iter {
-		timeline_list.append(&entry.display_text());
+		timeline_list.append(&entry.display_text(timestamp_format));
 	}
 }
 
@@ -253,9 +258,10 @@ fn update_active_timeline_ui(
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
 	sort_order: SortOrder,
+	timestamp_format: TimestampFormat,
 ) {
 	with_suppressed_selection(suppress_selection, || {
-		update_timeline_ui(timeline_list, &timeline.entries, sort_order);
+		update_timeline_ui(timeline_list, &timeline.entries, sort_order, timestamp_format);
 		apply_timeline_selection(timeline_list, timeline);
 	});
 }
@@ -357,7 +363,13 @@ fn handle_ui_command(
 				}
 				state.timeline_manager.set_active(index);
 				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						state.config.sort_order,
+						state.config.timestamp_format,
+					);
 				}
 			}
 		}
@@ -367,18 +379,29 @@ fn handle_ui_command(
 			}
 		}
 		UiCommand::ShowOptions => {
-			if let Some((enter_to_send, sort_order)) =
-				dialogs::prompt_for_options(frame, state.config.enter_to_send, state.config.sort_order)
-			{
-				let sort_changed = state.config.sort_order != sort_order;
+			if let Some((enter_to_send, sort_order, timestamp_format)) = dialogs::prompt_for_options(
+				frame,
+				state.config.enter_to_send,
+				state.config.sort_order,
+				state.config.timestamp_format,
+			) {
+				let needs_refresh =
+					state.config.sort_order != sort_order || state.config.timestamp_format != timestamp_format;
 				state.config.enter_to_send = enter_to_send;
 				state.config.sort_order = sort_order;
+				state.config.timestamp_format = timestamp_format;
 				let store = config::ConfigStore::new();
 				if let Err(err) = store.save(&state.config) {
 					dialogs::show_error(frame, &err);
 				}
-				if sort_changed && let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
+				if needs_refresh && let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						state.config.sort_order,
+						state.config.timestamp_format,
+					);
 				}
 			}
 		}
@@ -468,7 +491,13 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 	}
 	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
 		active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
-		update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
+		update_active_timeline_ui(
+			timeline_list,
+			active,
+			suppress_selection,
+			state.config.sort_order,
+			state.config.timestamp_format,
+		);
 	}
 }
 
@@ -499,7 +528,13 @@ fn process_network_responses(
 						}
 					};
 					if is_active {
-						update_active_timeline_ui(timeline_list, timeline, suppress_selection, state.config.sort_order);
+						update_active_timeline_ui(
+							timeline_list,
+							timeline,
+							suppress_selection,
+							state.config.sort_order,
+							state.config.timestamp_format,
+						);
 					}
 				}
 			}
@@ -700,7 +735,13 @@ fn close_timeline(
 		selector.set_selection(active_index as u32, true);
 	});
 	if let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(timeline_list, active, suppress_selection, state.config.sort_order);
+		update_active_timeline_ui(
+			timeline_list,
+			active,
+			suppress_selection,
+			state.config.sort_order,
+			state.config.timestamp_format,
+		);
 	}
 }
 
