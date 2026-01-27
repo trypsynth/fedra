@@ -4,7 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{SortOrder, Account, TimestampFormat},
+	config::{Account, SortOrder, TimestampFormat},
 	error,
 	html::strip_html,
 	mastodon::{PollLimits, Status},
@@ -554,8 +554,7 @@ pub fn prompt_for_options(
 	if result != ID_OK {
 		return None;
 	}
-	let new_sort =
-		if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
+	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
 	Some((enter_checkbox.get_value(), new_sort, new_timestamp))
