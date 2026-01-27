@@ -888,9 +888,13 @@ fn open_timeline(
 fn get_selected_status(state: &AppState) -> Option<&Status> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
-	// Timeline displays statuses in reverse order (newest at top)
-	let reverse_index = timeline.entries.len().checked_sub(1)?.checked_sub(index)?;
-	timeline.entries.get(reverse_index)?.as_status()
+
+	let final_index = match state.config.sort_order {
+		crate::config::SortOrder::NewestToOldest => index,
+		crate::config::SortOrder::OldestToNewest => timeline.entries.len().checked_sub(1)?.checked_sub(index)?,
+	};
+
+	timeline.entries.get(final_index)?.as_status()
 }
 
 fn do_favourite(state: &AppState, live_region: &StaticText) {
