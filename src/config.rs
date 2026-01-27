@@ -64,11 +64,20 @@ pub struct Account {
 	pub client_id: Option<String>,
 	pub client_secret: Option<String>,
 	pub acct: Option<String>,
+	pub display_name: Option<String>,
 }
 
 impl Account {
 	pub fn new(instance: String) -> Self {
-		Self { id: new_account_id(), instance, access_token: None, client_id: None, client_secret: None, acct: None }
+		Self {
+			id: new_account_id(),
+			instance,
+			access_token: None,
+			client_id: None,
+			client_secret: None,
+			acct: None,
+			display_name: None,
+		}
 	}
 }
 

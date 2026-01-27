@@ -42,6 +42,7 @@ const ID_CLOSE_TIMELINE: i32 = 1007;
 const ID_REFRESH: i32 = 1008;
 const ID_REPLY_AUTHOR: i32 = 1009;
 const ID_OPTIONS: i32 = 1010;
+const ID_MANAGE_ACCOUNTS: i32 = 1011;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -102,7 +103,19 @@ impl AppState {
 	}
 
 	fn active_account(&self) -> Option<&config::Account> {
-		self.config.accounts.first()
+		if let Some(id) = &self.config.active_account_id {
+			self.config.accounts.iter().find(|a| &a.id == id)
+		} else {
+			self.config.accounts.first()
+		}
+	}
+
+	fn active_account_mut(&mut self) -> Option<&mut config::Account> {
+		if let Some(id) = self.config.active_account_id.clone() {
+			self.config.accounts.iter_mut().find(|a| a.id == id)
+		} else {
+			self.config.accounts.first_mut()
+		}
 	}
 }
 
@@ -117,6 +130,11 @@ enum UiCommand {
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
 	ShowOptions,
+	ManageAccounts,
+	SwitchAccount(String),
+	SwitchNextAccount,
+	SwitchPrevAccount,
+	RemoveAccount(String),
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -177,8 +195,11 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 }
 
 fn build_menu_bar() -> MenuBar {
-	let file_menu =
-		Menu::builder().append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings").build();
+	let file_menu = Menu::builder()
+		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
+		.append_separator()
+		.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings")
+		.build();
 	let post_menu = Menu::builder()
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
 		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
@@ -405,7 +426,221 @@ fn handle_ui_command(
 				}
 			}
 		}
+		UiCommand::ManageAccounts => {
+			let result = dialogs::prompt_manage_accounts(
+				frame,
+				&state.config.accounts,
+				state.active_account().map(|a| a.id.as_str()),
+			);
+			match result {
+				dialogs::ManageAccountsResult::Add => {
+					if let Some(account) = setup_new_account(frame) {
+						let id = account.id.clone();
+						state.config.accounts.push(account);
+						let _ = config::ConfigStore::new().save(&state.config);
+						handle_ui_command(
+							UiCommand::SwitchAccount(id),
+							state,
+							frame,
+							timelines_selector,
+							timeline_list,
+							suppress_selection,
+							live_region,
+						);
+					}
+				}
+				dialogs::ManageAccountsResult::Remove(id) => {
+					handle_ui_command(
+						UiCommand::RemoveAccount(id),
+						state,
+						frame,
+						timelines_selector,
+						timeline_list,
+						suppress_selection,
+						live_region,
+					);
+				}
+				dialogs::ManageAccountsResult::Switch(id) => {
+					handle_ui_command(
+						UiCommand::SwitchAccount(id),
+						state,
+						frame,
+						timelines_selector,
+						timeline_list,
+						suppress_selection,
+						live_region,
+					);
+				}
+				dialogs::ManageAccountsResult::None => {}
+			}
+		}
+		UiCommand::SwitchAccount(id) => {
+			if state.config.active_account_id.as_ref() == Some(&id) {
+				return;
+			}
+			state.config.active_account_id = Some(id);
+			let _ = config::ConfigStore::new().save(&state.config);
+			switch_to_account(state, frame, timelines_selector, timeline_list, suppress_selection, live_region, true);
+		}
+		UiCommand::SwitchNextAccount => {
+			if state.config.accounts.len() <= 1 {
+				return;
+			}
+			let current_index = state
+				.config
+				.active_account_id
+				.as_ref()
+				.and_then(|id| state.config.accounts.iter().position(|a| &a.id == id))
+				.unwrap_or(0);
+			let next_index = (current_index + 1) % state.config.accounts.len();
+			let next_id = state.config.accounts[next_index].id.clone();
+			handle_ui_command(
+				UiCommand::SwitchAccount(next_id),
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+			);
+		}
+		UiCommand::SwitchPrevAccount => {
+			if state.config.accounts.len() <= 1 {
+				return;
+			}
+			let current_index = state
+				.config
+				.active_account_id
+				.as_ref()
+				.and_then(|id| state.config.accounts.iter().position(|a| &a.id == id))
+				.unwrap_or(0);
+			let prev_index = (current_index + state.config.accounts.len() - 1) % state.config.accounts.len();
+			let prev_id = state.config.accounts[prev_index].id.clone();
+			handle_ui_command(
+				UiCommand::SwitchAccount(prev_id),
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+			);
+		}
+		UiCommand::RemoveAccount(id) => {
+			let is_active = state.config.active_account_id.as_ref() == Some(&id);
+			state.config.accounts.retain(|a| a.id != id);
+			if is_active {
+				state.config.active_account_id = state.config.accounts.first().map(|a| a.id.clone());
+			}
+			let _ = config::ConfigStore::new().save(&state.config);
+			if is_active {
+				if state.config.accounts.is_empty() {
+					if let Some(account) = setup_new_account(frame) {
+						let id = account.id.clone();
+						state.config.accounts.push(account);
+						state.config.active_account_id = Some(id);
+						let _ = config::ConfigStore::new().save(&state.config);
+					} else {
+						frame.close(true);
+						return;
+					}
+				}
+				switch_to_account(
+					state,
+					frame,
+					timelines_selector,
+					timeline_list,
+					suppress_selection,
+					live_region,
+					true,
+				);
+			}
+		}
 	}
+}
+
+fn switch_to_account(
+	state: &mut AppState,
+	frame: &Frame,
+	timelines_selector: &ListBox,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+	live_region: &StaticText,
+	should_announce: bool,
+) {
+	for timeline in state.timeline_manager.iter_mut() {
+		timeline.stream_handle = None;
+	}
+	state.network_handle = None;
+	state.timeline_manager = TimelineManager::new();
+
+	let (url, token) = match state.active_account().and_then(|a| {
+		let url = Url::parse(&a.instance).ok()?;
+		let token = a.access_token.clone()?;
+		Some((url, token))
+	}) {
+		Some(val) => val,
+		None => return,
+	};
+
+	state.streaming_url = Some(url.clone());
+	state.access_token = Some(token.clone());
+	state.network_handle = network::start_network(url.clone(), token.clone()).ok();
+
+	if let Ok(client) = MastodonClient::new(url.clone()) {
+		if let Ok(info) = client.get_instance_info() {
+			state.max_post_chars = Some(info.max_post_chars);
+			state.poll_limits = info.poll_limits;
+		}
+		if (state.active_account().and_then(|a| a.acct.as_deref()).is_none()
+			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none())
+			&& let Ok(account) = client.verify_credentials(&token)
+			&& let Some(active) = state.active_account_mut()
+		{
+			active.acct = Some(account.acct);
+			active.display_name = Some(account.display_name);
+			let _ = config::ConfigStore::new().save(&state.config);
+		}
+	}
+
+	state.timeline_manager.open(TimelineType::Home);
+	state.timeline_manager.open(TimelineType::Notifications);
+	state.timeline_manager.open(TimelineType::Local);
+
+	if let Some(handle) = &state.network_handle {
+		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40) });
+		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Notifications, limit: Some(40) });
+		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Local, limit: Some(40) });
+	}
+
+	start_streaming_for_timeline(state, &TimelineType::Home);
+	start_streaming_for_timeline(state, &TimelineType::Notifications);
+	start_streaming_for_timeline(state, &TimelineType::Local);
+
+	timelines_selector.clear();
+	for name in state.timeline_manager.display_names() {
+		timelines_selector.append(&name);
+	}
+	timelines_selector.set_selection(0_u32, true);
+
+	with_suppressed_selection(suppress_selection, || {
+		timeline_list.clear();
+	});
+
+	let (handle, title) = if let Some(account) = state.active_account() {
+		let host =
+			Url::parse(&account.instance).ok().and_then(|u| u.host_str().map(|s| s.to_string())).unwrap_or_default();
+		let username = account.acct.as_deref().unwrap_or("?");
+		let h = if username.contains('@') { format!("@{}", username) } else { format!("@{}@{}", username, host) };
+		(h.clone(), format!("Fedra - {}", h))
+	} else {
+		("Unknown".to_string(), "Fedra".to_string())
+	};
+
+	if should_announce {
+		live_region::announce(live_region, &format!("Switched to {}", handle));
+	}
+	frame.set_label(&title);
 }
 
 fn drain_ui_commands(
@@ -778,11 +1013,18 @@ fn main() {
 		let frame_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		frame_sizer.add(&panel, 1, SizerFlag::Expand | SizerFlag::All, 0);
 		frame.set_sizer(frame_sizer, true);
+
+		let (ui_tx, ui_rx) = mpsc::channel();
+		let is_shutting_down = Rc::new(Cell::new(false));
+		let suppress_selection = Rc::new(Cell::new(false));
+		let timer_busy = Rc::new(Cell::new(false));
+
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
 		if config.accounts.is_empty() {
 			match setup_new_account(&frame) {
 				Some(account) => {
+					config.active_account_id = Some(account.id.clone());
 					config.accounts.push(account);
 					let _ = store.save(&config);
 				}
@@ -792,50 +1034,18 @@ fn main() {
 				}
 			}
 		}
+
 		let mut state = AppState::new(config);
-		state.timeline_manager.open(TimelineType::Home);
-		state.timeline_manager.open(TimelineType::Notifications);
-		state.timeline_manager.open(TimelineType::Local);
-		let network_info = state.active_account().and_then(|account| {
-			let url = Url::parse(&account.instance).ok()?;
-			let token = account.access_token.clone()?;
-			Some((url, token))
-		});
-		if let Some((url, token)) = network_info.clone() {
-			if let Ok(client) = MastodonClient::new(url.clone()) {
-				if let Ok(info) = client.get_instance_info() {
-					state.max_post_chars = Some(info.max_post_chars);
-					state.poll_limits = info.poll_limits;
-				}
-				if state.active_account().and_then(|account| account.acct.as_deref()).is_none()
-					&& let Ok(account) = client.verify_credentials(&token)
-					&& let Some(active) = state.config.accounts.first_mut()
-				{
-					active.acct = Some(account.acct);
-					let _ = store.save(&state.config);
-				}
-			}
-			state.streaming_url = Some(url.clone());
-			state.access_token = Some(token.clone());
-			state.network_handle = network::start_network(url, token).ok();
-		}
-		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40) });
-			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Notifications, limit: Some(40) });
-			handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Local, limit: Some(40) });
-		}
-		start_streaming_for_timeline(&mut state, &TimelineType::Home);
-		start_streaming_for_timeline(&mut state, &TimelineType::Notifications);
-		start_streaming_for_timeline(&mut state, &TimelineType::Local);
-		timelines_selector.clear();
-		for name in state.timeline_manager.display_names() {
-			timelines_selector.append(&name);
-		}
-		timelines_selector.set_selection(0_u32, true);
-		let (ui_tx, ui_rx) = mpsc::channel();
-		let is_shutting_down = Rc::new(Cell::new(false));
-		let suppress_selection = Rc::new(Cell::new(false));
-		let timer_busy = Rc::new(Cell::new(false));
+
+		switch_to_account(
+			&mut state,
+			&frame,
+			&timelines_selector,
+			&timeline_list,
+			&suppress_selection,
+			&live_region_label,
+			false,
+		);
 		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
@@ -873,7 +1083,7 @@ fn main() {
 			);
 			busy_timer.set(false);
 		});
-		timer.start(100, false); // Check every 100ms
+		timer.start(100, false);
 		let ui_tx_selector = ui_tx.clone();
 		let shutdown_selector = is_shutting_down.clone();
 		let suppress_selector = suppress_selection.clone();
@@ -898,6 +1108,21 @@ fn main() {
 				return;
 			}
 			if let WindowEventData::Keyboard(ref key_event) = event {
+				if key_event.control_down() {
+					match key_event.get_key_code() {
+						Some(91) => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchPrevAccount);
+							event.skip(false);
+							return;
+						}
+						Some(93) => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchNextAccount);
+							event.skip(false);
+							return;
+						}
+						_ => {}
+					}
+				}
 				if key_event.get_key_code() == Some(KEY_DELETE) {
 					let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
 					event.skip(false);
@@ -912,6 +1137,32 @@ fn main() {
 		let shutdown_list = is_shutting_down.clone();
 		let suppress_list = suppress_selection.clone();
 		let timeline_list_state = timeline_list;
+		let ui_tx_list_key = ui_tx.clone();
+		let shutdown_list_key = is_shutting_down.clone();
+		timeline_list_state.on_key_down(move |event| {
+			if shutdown_list_key.get() {
+				return;
+			}
+			if let WindowEventData::Keyboard(ref key_event) = event
+				&& key_event.control_down()
+			{
+				match key_event.get_key_code() {
+					Some(91) => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
+						event.skip(false);
+						return;
+					}
+					Some(93) => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
+						event.skip(false);
+						return;
+					}
+					_ => {}
+				}
+			}
+			event.skip(true);
+		});
+
 		timeline_list_state.on_selection_changed(move |event| {
 			if shutdown_list.get() {
 				return;
@@ -927,12 +1178,43 @@ fn main() {
 		});
 		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
+		frame.on_key_down(move |event| {
+			if shutdown_menu.get() {
+				return;
+			}
+			if let WindowEventData::Keyboard(ref key_event) = event {
+				if key_event.control_down() {
+					match key_event.get_key_code() {
+						Some(91) => {
+							let _ = ui_tx_menu.send(UiCommand::SwitchPrevAccount);
+						}
+						Some(93) => {
+							let _ = ui_tx_menu.send(UiCommand::SwitchNextAccount);
+						}
+						_ => event.skip(true),
+					}
+				} else {
+					event.skip(true);
+				}
+			} else {
+				event.skip(true);
+			}
+		});
+
+		let ui_tx_menu = ui_tx.clone();
+		let shutdown_menu = is_shutting_down.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_OPTIONS => {
 				if shutdown_menu.get() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::ShowOptions);
+			}
+			ID_MANAGE_ACCOUNTS => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ManageAccounts);
 			}
 			ID_NEW_POST => {
 				if shutdown_menu.get() {
