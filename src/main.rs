@@ -159,7 +159,7 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 			return None;
 		}
 	};
-	let _ = webbrowser::open(authorize_url.as_str());
+	let _ = launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default);
 	let code = dialogs::prompt_for_oauth_code(frame, instance_url)?;
 	let access_token = match client.exchange_token(&credentials, &code, auth::OOB_REDIRECT_URI) {
 		Ok(token) => token,

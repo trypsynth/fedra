@@ -6,6 +6,7 @@ use std::{
 };
 
 use url::Url;
+use wxdragon::utils::{BrowserLaunchFlags, launch_default_browser};
 
 use crate::{
 	error::{Context, Result},
@@ -28,7 +29,9 @@ pub fn oauth_with_local_listener(client: &MastodonClient, app_name: &str) -> Res
 	let redirect_uri = format!("http://127.0.0.1:{}{}", addr.port(), CALLBACK_PATH);
 	let credentials = client.register_app(app_name, &redirect_uri)?;
 	let authorize_url = client.build_authorize_url(&credentials, &redirect_uri)?;
-	webbrowser::open(authorize_url.as_str()).context("Failed to open browser")?;
+	if !launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default) {
+		return Err(anyhow::anyhow!("Failed to open browser"));
+	}
 	let code = wait_for_code(listener, addr.port()).context("OAuth callback timeout")?;
 	let access_token = client.exchange_token(&credentials, &code, &redirect_uri)?;
 	Ok(OAuthResult { access_token, client_id: credentials.client_id, client_secret: credentials.client_secret })

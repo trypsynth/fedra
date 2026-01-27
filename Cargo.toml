@@ -13,8 +13,7 @@ serde_json = "1.0.149"
 tts = { version = "0.26.3", features = ["tolk"] }
 tungstenite = { version = "0.28.0", features = ["native-tls"] }
 url = "2.5.8"
-webbrowser = "1.0.6"
-wxdragon = "0.9.8"
+wxdragon = { git = "https://github.com/AllenDang/wxDragon", branch = "main", version = "0.9.8" }
 
 [build-dependencies]
 embed-manifest = "1.5.0"
