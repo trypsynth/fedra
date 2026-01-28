@@ -46,6 +46,7 @@ const ID_MANAGE_ACCOUNTS: i32 = 1011;
 const ID_VIEW_PROFILE: i32 = 1012;
 const ID_VIEW_USER_TIMELINE: i32 = 1013;
 const ID_OPEN_LINKS: i32 = 1014;
+const ID_VIEW_MENTIONS: i32 = 1015;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -140,6 +141,7 @@ enum UiCommand {
 	SwitchPrevAccount,
 	RemoveAccount(String),
 	ViewProfile,
+	ViewMentions,
 	OpenLinks,
 }
 
@@ -211,6 +213,7 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
 		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
 		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
+		.append_item(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post")
 		.append_item(ID_OPEN_LINKS, "Open &Links\tCtrl+Shift+L", "Open links in selected post")
 		.append_separator()
 		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
@@ -659,6 +662,49 @@ fn handle_ui_command(
 			let timeline_type =
 				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+		}
+		UiCommand::ViewMentions => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if target.mentions.is_empty() {
+				live_region::announce(live_region, "No mentions in this post");
+				return;
+			}
+			if let Some(mention) = dialogs::prompt_for_mentions(frame, &target.mentions) {
+				let account = crate::mastodon::Account {
+					id: mention.id.clone(),
+					username: mention.username.clone(),
+					acct: mention.acct.clone(),
+					display_name: String::new(),
+					url: mention.url,
+					note: String::new(),
+					followers_count: 0,
+					following_count: 0,
+					statuses_count: 0,
+					fields: Vec::new(),
+					created_at: String::new(),
+					locked: false,
+					bot: false,
+				};
+				if dialogs::show_profile(frame, &account) {
+					let timeline_type = TimelineType::User { id: mention.id, name: mention.username };
+					handle_ui_command(
+						UiCommand::OpenTimeline(timeline_type),
+						state,
+						frame,
+						timelines_selector,
+						timeline_list,
+						suppress_selection,
+						live_region,
+					);
+				}
+			}
 		}
 		UiCommand::OpenLinks => {
 			let status = match get_selected_status(state) {
@@ -1425,6 +1471,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::CloseTimeline);
+			}
+			ID_VIEW_MENTIONS => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ViewMentions);
 			}
 			ID_OPEN_LINKS => {
 				if shutdown_menu.get() {
