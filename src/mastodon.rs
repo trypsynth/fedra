@@ -554,6 +554,21 @@ impl MastodonClient {
 		Ok(account)
 	}
 
+	pub fn lookup_account(&self, access_token: &str, acct: &str) -> Result<Account> {
+		let mut url = self.base_url.join("api/v1/accounts/lookup")?;
+		url.query_pairs_mut().append_pair("acct", acct);
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to lookup account")?
+			.error_for_status()
+			.context("Instance rejected account lookup")?;
+		let account: Account = response.json().context("Invalid account response")?;
+		Ok(account)
+	}
+
 	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
 		let response = self

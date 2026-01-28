@@ -8,7 +8,7 @@ use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	mastodon::{MastodonClient, Notification, Status},
+	mastodon::{Account, MastodonClient, Notification, Status},
 	timeline::TimelineType,
 };
 
@@ -22,6 +22,9 @@ pub enum NetworkCommand {
 	FetchThread {
 		timeline_type: TimelineType,
 		focus: Status,
+	},
+	LookupAccount {
+		handle: String,
 	},
 	PostStatus {
 		content: String,
@@ -71,6 +74,7 @@ pub struct PollData {
 #[derive(Debug)]
 pub enum NetworkResponse {
 	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
+	AccountLookupResult { handle: String, result: Result<Account> },
 	PostComplete(Result<()>),
 	Favourited { status_id: String, result: Result<Status> },
 	Unfavourited { status_id: String, result: Result<Status> },
@@ -205,6 +209,10 @@ fn network_loop(
 					TimelineData::Statuses(sorted)
 				});
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None });
+			}
+			Ok(NetworkCommand::LookupAccount { handle }) => {
+				let result = client.lookup_account(&access_token, &handle);
+				let _ = responses.send(NetworkResponse::AccountLookupResult { handle, result });
 			}
 			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
 				let result = post_with_media(

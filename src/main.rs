@@ -47,6 +47,7 @@ const ID_VIEW_USER_TIMELINE: i32 = 1013;
 const ID_OPEN_LINKS: i32 = 1014;
 const ID_VIEW_MENTIONS: i32 = 1015;
 const ID_VIEW_THREAD: i32 = 1016;
+const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -135,6 +136,7 @@ enum UiCommand {
 	Refresh,
 	OpenTimeline(TimelineType),
 	OpenUserTimeline,
+	OpenUserTimelineByInput,
 	CloseTimeline,
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
@@ -143,6 +145,8 @@ enum UiCommand {
 	SwitchAccount(String),
 	SwitchNextAccount,
 	SwitchPrevAccount,
+	SwitchNextTimeline,
+	SwitchPrevTimeline,
 	RemoveAccount(String),
 	ViewProfile,
 	ViewMentions,
@@ -233,6 +237,11 @@ fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
+		.append_item(
+			ID_OPEN_USER_TIMELINE_BY_INPUT,
+			"Open &Timeline by Username...",
+			"Open timeline for a specific user",
+		)
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_separator()
@@ -241,7 +250,7 @@ fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
 	let menu_bar = MenuBar::builder()
-		.append(file_menu, "&File")
+		.append(file_menu, "&Options")
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
 		.build();
@@ -363,6 +372,7 @@ fn handle_ui_command(
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
+	quick_action_keys_enabled: &Cell<bool>,
 ) {
 	match cmd {
 		UiCommand::NewPost => {
@@ -519,11 +529,12 @@ fn handle_ui_command(
 			update_menu_labels(state);
 		}
 		UiCommand::ShowOptions => {
-			if let Some((enter_to_send, always_show_link_dialog, sort_order, timestamp_format)) =
+			if let Some((enter_to_send, always_show_link_dialog, quick_action_keys, sort_order, timestamp_format)) =
 				dialogs::prompt_for_options(
 					frame,
 					state.config.enter_to_send,
 					state.config.always_show_link_dialog,
+					state.config.quick_action_keys,
 					state.config.sort_order,
 					state.config.timestamp_format,
 				) {
@@ -531,6 +542,8 @@ fn handle_ui_command(
 					state.config.sort_order != sort_order || state.config.timestamp_format != timestamp_format;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
+				state.config.quick_action_keys = quick_action_keys;
+				quick_action_keys_enabled.set(quick_action_keys);
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
 				let store = config::ConfigStore::new();
@@ -568,6 +581,7 @@ fn handle_ui_command(
 							timeline_list,
 							suppress_selection,
 							live_region,
+							quick_action_keys_enabled,
 						);
 					}
 				}
@@ -580,6 +594,7 @@ fn handle_ui_command(
 						timeline_list,
 						suppress_selection,
 						live_region,
+						quick_action_keys_enabled,
 					);
 				}
 				dialogs::ManageAccountsResult::Switch(id) => {
@@ -591,6 +606,7 @@ fn handle_ui_command(
 						timeline_list,
 						suppress_selection,
 						live_region,
+						quick_action_keys_enabled,
 					);
 				}
 				dialogs::ManageAccountsResult::None => {}
@@ -624,6 +640,7 @@ fn handle_ui_command(
 				timeline_list,
 				suppress_selection,
 				live_region,
+				quick_action_keys_enabled,
 			);
 		}
 		UiCommand::SwitchPrevAccount => {
@@ -646,6 +663,47 @@ fn handle_ui_command(
 				timeline_list,
 				suppress_selection,
 				live_region,
+				quick_action_keys_enabled,
+			);
+		}
+		UiCommand::SwitchNextTimeline => {
+			if state.timeline_manager.len() <= 1 {
+				return;
+			}
+			let current = state.timeline_manager.active_index();
+			let next = (current + 1) % state.timeline_manager.len();
+			if let Some(name) = state.timeline_manager.display_names().get(next) {
+				live_region::announce(live_region, name);
+			}
+			handle_ui_command(
+				UiCommand::TimelineSelectionChanged(next),
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+				quick_action_keys_enabled,
+			);
+		}
+		UiCommand::SwitchPrevTimeline => {
+			if state.timeline_manager.len() <= 1 {
+				return;
+			}
+			let current = state.timeline_manager.active_index();
+			let prev = (current + state.timeline_manager.len() - 1) % state.timeline_manager.len();
+			if let Some(name) = state.timeline_manager.display_names().get(prev) {
+				live_region::announce(live_region, name);
+			}
+			handle_ui_command(
+				UiCommand::TimelineSelectionChanged(prev),
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+				quick_action_keys_enabled,
 			);
 		}
 		UiCommand::RemoveAccount(id) => {
@@ -707,6 +765,18 @@ fn handle_ui_command(
 				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
 		}
+		UiCommand::OpenUserTimelineByInput => {
+			if let Some(input) =
+				dialogs::prompt_text(frame, "Enter username (e.g. @user@domain):", "Open Timeline by Username")
+			{
+				let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+				if let Some(network) = &state.network_handle {
+					network.send(NetworkCommand::LookupAccount { handle });
+				} else {
+					live_region::announce(live_region, "Network not available");
+				}
+			}
+		}
 		UiCommand::ViewMentions => {
 			let status = match get_selected_status(state) {
 				Some(s) => s,
@@ -722,13 +792,13 @@ fn handle_ui_command(
 			}
 			if let Some(mention) = dialogs::prompt_for_mentions(frame, &target.mentions) {
 				let mut account = None;
-				if let (Some(base_url), Some(token)) = (state.streaming_url.clone(), state.access_token.clone()) {
-					if let Ok(client) = MastodonClient::new(base_url) {
-						match client.get_account(&token, &mention.id) {
-							Ok(full) => account = Some(full),
-							Err(err) => {
-								dialogs::show_error(frame, &err);
-							}
+				if let (Some(base_url), Some(token)) = (state.streaming_url.clone(), state.access_token.clone())
+					&& let Ok(client) = MastodonClient::new(base_url)
+				{
+					match client.get_account(&token, &mention.id) {
+						Ok(full) => account = Some(full),
+						Err(err) => {
+							dialogs::show_error(frame, &err);
 						}
 					}
 				}
@@ -760,6 +830,7 @@ fn handle_ui_command(
 						timeline_list,
 						suppress_selection,
 						live_region,
+						quick_action_keys_enabled,
 					);
 				}
 			}
@@ -923,9 +994,19 @@ fn drain_ui_commands(
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
+	quick_action_keys_enabled: &Cell<bool>,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
-		handle_ui_command(cmd, state, frame, timelines_selector, timeline_list, suppress_selection, live_region);
+		handle_ui_command(
+			cmd,
+			state,
+			frame,
+			timelines_selector,
+			timeline_list,
+			suppress_selection,
+			live_region,
+			quick_action_keys_enabled,
+		);
 	}
 }
 
@@ -1014,9 +1095,11 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 fn process_network_responses(
 	frame: &Frame,
 	state: &mut AppState,
+	timelines_selector: &ListBox,
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
+	quick_action_keys_enabled: &Cell<bool>,
 ) {
 	let handle = match &state.network_handle {
 		Some(h) => h,
@@ -1076,6 +1159,23 @@ fn process_network_responses(
 					timeline.loading_more = false;
 				}
 				live_region::announce(live_region, &format!("Failed to load timeline: {}", err));
+			}
+			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
+				let timeline_type =
+					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
+				handle_ui_command(
+					UiCommand::OpenTimeline(timeline_type),
+					state,
+					frame,
+					timelines_selector,
+					timeline_list,
+					suppress_selection,
+					live_region,
+					quick_action_keys_enabled,
+				);
+			}
+			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to find user {}: {}", handle, err));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
 				live_region::announce(live_region, "Posted");
@@ -1391,6 +1491,7 @@ fn main() {
 			}
 		}
 
+		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let mut state = AppState::new(config);
 		state.fav_menu_item = Some(fav_item);
 		state.boost_menu_item = Some(boost_item);
@@ -1413,6 +1514,7 @@ fn main() {
 		let live_region_timer = live_region_label;
 		let mut state = state;
 		let timer_tick = timer.clone();
+		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		timer_tick.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
@@ -1429,14 +1531,17 @@ fn main() {
 				&timeline_list_timer,
 				&suppress_timer,
 				&live_region_timer,
+				&quick_action_keys_drain,
 			);
 			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
 			process_network_responses(
 				&frame_timer,
 				&mut state,
+				&timelines_selector_timer,
 				&timeline_list_timer,
 				&suppress_timer,
 				&live_region_timer,
+				&quick_action_keys_drain,
 			);
 			busy_timer.set(false);
 		});
@@ -1497,27 +1602,77 @@ fn main() {
 		let timeline_list_state = timeline_list;
 		let ui_tx_list_key = ui_tx.clone();
 		let shutdown_list_key = is_shutting_down.clone();
+		let quick_action_keys_list = quick_action_keys_enabled.clone();
 		timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
 			if shutdown_list_key.get() {
 				return;
 			}
-			if let Some(key) = event.get_key_code()
-				&& event.control_down()
-			{
-				match key {
-					91 => {
-						// [
-						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
-						event.skip(false);
-						return;
+			if let Some(key) = event.get_key_code() {
+				// Navigation keys (always active)
+				if !event.control_down() && !event.shift_down() && !event.alt_down() {
+					match key {
+						314 => {
+							// Left Arrow
+							let _ = ui_tx_list_key.send(UiCommand::SwitchPrevTimeline);
+							event.skip(false);
+							return;
+						}
+						316 => {
+							// Right Arrow
+							let _ = ui_tx_list_key.send(UiCommand::SwitchNextTimeline);
+							event.skip(false);
+							return;
+						}
+						_ => {}
 					}
-					93 => {
-						// ]
-						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
-						event.skip(false);
-						return;
+				}
+
+				if quick_action_keys_list.get() && !event.control_down() && !event.shift_down() && !event.alt_down() {
+					match key {
+						70 => {
+							// f
+							let _ = ui_tx_list_key.send(UiCommand::Favourite);
+							event.skip(false);
+							return;
+						}
+						66 => {
+							// b
+							let _ = ui_tx_list_key.send(UiCommand::Boost);
+							event.skip(false);
+							return;
+						}
+						67 => {
+							// c
+							let _ = ui_tx_list_key.send(UiCommand::NewPost);
+							event.skip(false);
+							return;
+						}
+						82 => {
+							// r
+							let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
+							event.skip(false);
+							return;
+						}
+						_ => {}
 					}
-					_ => {}
+				}
+
+				if event.control_down() {
+					match key {
+						91 => {
+							// [
+							let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
+							event.skip(false);
+							return;
+						}
+						93 => {
+							// ]
+							let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
+							event.skip(false);
+							return;
+						}
+						_ => {}
+					}
 				}
 			}
 			event.skip(true);
@@ -1573,6 +1728,7 @@ fn main() {
 
 		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
+		let quick_action_keys_menu = quick_action_keys_enabled.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_VIEW_PROFILE => {
 				if shutdown_menu.get() {
@@ -1602,7 +1758,8 @@ fn main() {
 				if shutdown_menu.get() {
 					return;
 				}
-				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: true });
+				let reply_all = !quick_action_keys_menu.get();
+				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all });
 			}
 			ID_REPLY_AUTHOR => {
 				if shutdown_menu.get() {
@@ -1633,6 +1790,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::OpenUserTimeline);
+			}
+			ID_OPEN_USER_TIMELINE_BY_INPUT => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::OpenUserTimelineByInput);
 			}
 			ID_LOCAL_TIMELINE => {
 				if shutdown_menu.get() {

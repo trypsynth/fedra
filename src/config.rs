@@ -20,6 +20,8 @@ pub struct Config {
 	pub enter_to_send: bool,
 	#[serde(default = "default_always_show_link_dialog")]
 	pub always_show_link_dialog: bool,
+	#[serde(default = "default_quick_action_keys")]
+	pub quick_action_keys: bool,
 	#[serde(default)]
 	pub sort_order: SortOrder,
 	#[serde(default)]
@@ -48,6 +50,10 @@ fn default_always_show_link_dialog() -> bool {
 	false
 }
 
+fn default_quick_action_keys() -> bool {
+	false
+}
+
 impl Default for Config {
 	fn default() -> Self {
 		Self {
@@ -56,6 +62,7 @@ impl Default for Config {
 			active_account_id: None,
 			enter_to_send: true,
 			always_show_link_dialog: false,
+			quick_action_keys: false,
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
 		}

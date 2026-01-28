@@ -536,16 +536,19 @@ pub fn prompt_for_options(
 	frame: &Frame,
 	enter_to_send: bool,
 	always_show_link_dialog: bool,
+	quick_action_keys: bool,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, SortOrder, TimestampFormat)> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 350).build();
+) -> Option<(bool, bool, bool, SortOrder, TimestampFormat)> {
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let enter_checkbox = CheckBox::builder(&panel).with_label("Enter to send").build();
 	enter_checkbox.set_value(enter_to_send);
 	let link_checkbox = CheckBox::builder(&panel).with_label("Always show link selection dialog").build();
 	link_checkbox.set_value(always_show_link_dialog);
+	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use quick action keys in timelines").build();
+	quick_action_checkbox.set_value(quick_action_keys);
 	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
@@ -559,6 +562,7 @@ pub fn prompt_for_options(
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_stretch_spacer(1);
@@ -577,7 +581,13 @@ pub fn prompt_for_options(
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
-	Some((enter_checkbox.get_value(), link_checkbox.get_value(), new_sort, new_timestamp))
+	Some((
+		enter_checkbox.get_value(),
+		link_checkbox.get_value(),
+		quick_action_checkbox.get_value(),
+		new_sort,
+		new_timestamp,
+	))
 }
 
 fn prompt_for_compose(
