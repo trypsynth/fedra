@@ -469,6 +469,7 @@ impl MastodonClient {
 		access_token: &str,
 		timeline_type: &TimelineType,
 		limit: Option<u32>,
+		max_id: Option<&str>,
 	) -> Result<Vec<Status>> {
 		let mut url = self.base_url.join(&timeline_type.api_path())?;
 		{
@@ -478,6 +479,9 @@ impl MastodonClient {
 			}
 			if let Some(limit) = limit {
 				query.append_pair("limit", &limit.to_string());
+			}
+			if let Some(max_id) = max_id {
+				query.append_pair("max_id", max_id);
 			}
 		}
 		let response = self
@@ -492,12 +496,20 @@ impl MastodonClient {
 		Ok(statuses)
 	}
 
-	pub fn get_notifications(&self, access_token: &str, limit: Option<u32>) -> Result<Vec<Notification>> {
+	pub fn get_notifications(
+		&self,
+		access_token: &str,
+		limit: Option<u32>,
+		max_id: Option<&str>,
+	) -> Result<Vec<Notification>> {
 		let mut url = self.base_url.join("api/v1/notifications")?;
 		{
 			let mut query = url.query_pairs_mut();
 			if let Some(limit) = limit {
 				query.append_pair("limit", &limit.to_string());
+			}
+			if let Some(max_id) = max_id {
+				query.append_pair("max_id", max_id);
 			}
 		}
 		let response = self

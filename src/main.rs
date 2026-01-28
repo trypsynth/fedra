@@ -242,7 +242,7 @@ fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 	};
 	match &state.network_handle {
 		Some(handle) => {
-			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40) });
+			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
 		}
 		None => {
 			live_region::announce(live_region, "Network not available");
@@ -472,6 +472,35 @@ fn handle_ui_command(
 				active.selected_index = Some(index);
 				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
+
+				if !active.entries.is_empty() && !active.loading_more {
+					let threshold = 5;
+					let should_load = match state.config.sort_order {
+						SortOrder::NewestToOldest => index + threshold >= active.entries.len(),
+						SortOrder::OldestToNewest => index <= threshold,
+					};
+
+					if should_load {
+						let now = std::time::Instant::now();
+						let can_load = match active.last_load_attempt {
+							Some(last) => now.duration_since(last) > std::time::Duration::from_secs(1),
+							None => true,
+						};
+
+						if can_load && let Some(last) = active.entries.last() {
+							let max_id = last.id().to_string();
+							active.loading_more = true;
+							active.last_load_attempt = Some(now);
+							if let Some(handle) = &state.network_handle {
+								handle.send(NetworkCommand::FetchTimeline {
+									timeline_type: active.timeline_type.clone(),
+									limit: Some(20),
+									max_id: Some(max_id),
+								});
+							}
+						}
+					}
+				}
 			}
 		}
 		UiCommand::ShowOptions => {
@@ -778,9 +807,17 @@ fn switch_to_account(
 	state.timeline_manager.open(TimelineType::Local);
 
 	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40) });
-		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Notifications, limit: Some(40) });
-		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Local, limit: Some(40) });
+		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40), max_id: None });
+		handle.send(NetworkCommand::FetchTimeline {
+			timeline_type: TimelineType::Notifications,
+			limit: Some(40),
+			max_id: None,
+		});
+		handle.send(NetworkCommand::FetchTimeline {
+			timeline_type: TimelineType::Local,
+			limit: Some(40),
+			max_id: None,
+		});
 	}
 
 	start_streaming_for_timeline(state, &TimelineType::Home);
@@ -922,30 +959,56 @@ fn process_network_responses(
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	for response in handle.drain() {
 		match response {
-			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data) } => {
+			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
 					}
-					timeline.entries = match data {
+					let new_entries: Vec<TimelineEntry> = match data {
 						TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
 						TimelineData::Notifications(notifications) => {
 							notifications.into_iter().map(TimelineEntry::Notification).collect()
 						}
 					};
-					if is_active {
-						update_active_timeline_ui(
-							timeline_list,
-							timeline,
-							suppress_selection,
-							state.config.sort_order,
-							state.config.timestamp_format,
-						);
+
+					if max_id.is_some() {
+						timeline.entries.extend(new_entries.clone());
+
+						if is_active {
+							if state.config.sort_order == SortOrder::NewestToOldest {
+								for entry in &new_entries {
+									timeline_list.append(&entry.display_text(state.config.timestamp_format));
+								}
+							} else {
+								update_active_timeline_ui(
+									timeline_list,
+									timeline,
+									suppress_selection,
+									state.config.sort_order,
+									state.config.timestamp_format,
+								);
+							}
+						}
+					} else {
+						timeline.entries = new_entries;
+						if is_active {
+							update_active_timeline_ui(
+								timeline_list,
+								timeline,
+								suppress_selection,
+								state.config.sort_order,
+								state.config.timestamp_format,
+							);
+						}
 					}
+					timeline.loading_more = false;
 				}
 			}
-			NetworkResponse::TimelineLoaded { result: Err(ref err), .. } => {
+			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), .. } => {
+				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+					timeline.loading_more = false;
+				}
 				live_region::announce(live_region, &format!("Failed to load timeline: {}", error::user_message(err)));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
@@ -1049,7 +1112,11 @@ fn open_timeline(
 		selector.set_selection(new_index as u32, true);
 	});
 	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchTimeline { timeline_type: timeline_type.clone(), limit: Some(40) });
+		handle.send(NetworkCommand::FetchTimeline {
+			timeline_type: timeline_type.clone(),
+			limit: Some(40),
+			max_id: None,
+		});
 	}
 	start_streaming_for_timeline(state, &timeline_type);
 	with_suppressed_selection(suppress_selection, || {

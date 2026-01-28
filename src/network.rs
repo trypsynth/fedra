@@ -16,6 +16,7 @@ pub enum NetworkCommand {
 	FetchTimeline {
 		timeline_type: TimelineType,
 		limit: Option<u32>,
+		max_id: Option<String>,
 	},
 	PostStatus {
 		content: String,
@@ -64,7 +65,7 @@ pub struct PollData {
 
 #[derive(Debug)]
 pub enum NetworkResponse {
-	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData> },
+	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
 	PostComplete(Result<()>),
 	Favourited { status_id: String, result: Result<Status> },
 	Unfavourited { status_id: String, result: Result<Status> },
@@ -168,14 +169,16 @@ fn network_loop(
 ) {
 	loop {
 		match commands.recv() {
-			Ok(NetworkCommand::FetchTimeline { timeline_type, limit }) => {
+			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
 				let result = match timeline_type {
-					TimelineType::Notifications => {
-						client.get_notifications(&access_token, limit).map(TimelineData::Notifications)
-					}
-					_ => client.get_timeline(&access_token, &timeline_type, limit).map(TimelineData::Statuses),
+					TimelineType::Notifications => client
+						.get_notifications(&access_token, limit, max_id.as_deref())
+						.map(TimelineData::Notifications),
+					_ => client
+						.get_timeline(&access_token, &timeline_type, limit, max_id.as_deref())
+						.map(TimelineData::Statuses),
 				};
-				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
+				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}
 			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
 				let result = post_with_media(

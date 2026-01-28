@@ -97,11 +97,21 @@ pub struct Timeline {
 	pub stream_handle: Option<StreamHandle>,
 	pub selected_index: Option<usize>,
 	pub selected_id: Option<String>,
+	pub loading_more: bool,
+	pub last_load_attempt: Option<std::time::Instant>,
 }
 
 impl Timeline {
 	pub fn new(timeline_type: TimelineType) -> Self {
-		Self { timeline_type, entries: Vec::new(), stream_handle: None, selected_index: None, selected_id: None }
+		Self {
+			timeline_type,
+			entries: Vec::new(),
+			stream_handle: None,
+			selected_index: None,
+			selected_id: None,
+			loading_more: false,
+			last_load_attempt: None,
+		}
 	}
 }
 
