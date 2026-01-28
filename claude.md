@@ -161,6 +161,7 @@ Configured in `rustfmt.toml`:
 | Ctrl+Shift+R | Reply to author only |
 | Ctrl+Shift+F | Favourite/Unfavourite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
+| Ctrl+P | View profile of selected post's author |
 | Ctrl+L | Open Local Timeline |
 | Ctrl+O | Open Options dialog |
 | F5 | Refresh current timeline |

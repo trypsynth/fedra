@@ -236,12 +236,81 @@ pub struct Account {
 	pub acct: String,
 	pub display_name: String,
 	pub url: String,
+	#[serde(default)]
+	pub note: String,
+	#[serde(default)]
+	pub followers_count: u64,
+	#[serde(default)]
+	pub following_count: u64,
+	#[serde(default)]
+	pub statuses_count: u64,
+	#[serde(default)]
+	pub fields: Vec<AccountField>,
+	#[serde(default)]
+	pub created_at: String,
+	#[serde(default)]
+	pub locked: bool,
+	#[serde(default)]
+	pub bot: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountField {
+	pub name: String,
+	pub value: String,
 }
 
 impl Account {
 	pub fn display_name_or_username(&self) -> &str {
 		if self.display_name.is_empty() { &self.username } else { &self.display_name }
 	}
+
+	pub fn profile_display(&self) -> String {
+		let mut lines = Vec::new();
+		let name = self.display_name_or_username();
+		lines.push(format!("Name: {}", name));
+		lines.push(format!("Username: @{}", self.acct));
+		lines.push(format!("Direct Profile URL: {}", self.url));
+		lines.push(format!("Posts: {}", self.statuses_count));
+		lines.push(format!("Following: {}", self.following_count));
+		lines.push(format!("Followers: {}", self.followers_count));
+		if self.bot || self.locked {
+			if self.bot {
+				lines.push("This account is a bot.".to_string());
+			}
+			if self.locked {
+				lines.push("This account requires follow approval.".to_string());
+			}
+		}
+		if !self.note.is_empty() {
+			let bio = strip_html(&self.note);
+			if !bio.trim().is_empty() {
+				lines.push(format!("Bio: {}", bio));
+			}
+		}
+		if !self.fields.is_empty() {
+			lines.push("Fields:".to_string());
+			for field in &self.fields {
+				let value = strip_html(&field.value);
+				lines.push(format!("\t{}: {}", field.name, value));
+			}
+		}
+		if !self.created_at.is_empty() {
+			if let Some(date) = friendly_date(&self.created_at) {
+				lines.push(format!("Joined: {}", date));
+			}
+		}
+		lines.join("\r\n")
+	}
+}
+
+fn friendly_date(iso_time: &str) -> Option<String> {
+	let trimmed = iso_time.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	let parsed: DateTime<Utc> = trimmed.parse().ok()?;
+	Some(parsed.format("%B %Y").to_string())
 }
 
 fn friendly_time(iso_time: &str, format: TimestampFormat) -> Option<String> {

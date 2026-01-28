@@ -7,7 +7,7 @@ use crate::{
 	config::{Account, SortOrder, TimestampFormat},
 	error,
 	html::strip_html,
-	mastodon::{PollLimits, Status},
+	mastodon::{Account as MastodonAccount, PollLimits, Status},
 };
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
@@ -1131,4 +1131,32 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 	dialog.show_modal();
 
 	result.borrow().clone()
+}
+
+pub fn show_profile(frame: &Frame, account: &MastodonAccount) {
+	let title = format!("Profile - {}", account.display_name_or_username());
+	let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let profile_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly).build();
+	profile_text.set_value(&account.profile_display());
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+	close_button.set_default();
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&profile_text, 1, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(
+		&button_sizer,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		8,
+	);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.centre();
+	dialog.show_modal();
 }

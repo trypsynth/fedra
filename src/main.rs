@@ -43,6 +43,7 @@ const ID_REFRESH: i32 = 1008;
 const ID_REPLY_AUTHOR: i32 = 1009;
 const ID_OPTIONS: i32 = 1010;
 const ID_MANAGE_ACCOUNTS: i32 = 1011;
+const ID_VIEW_PROFILE: i32 = 1012;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -135,6 +136,7 @@ enum UiCommand {
 	SwitchNextAccount,
 	SwitchPrevAccount,
 	RemoveAccount(String),
+	ViewProfile,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -196,6 +198,7 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 
 fn build_menu_bar() -> MenuBar {
 	let file_menu = Menu::builder()
+		.append_item(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author")
 		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
 		.append_separator()
 		.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings")
@@ -555,6 +558,18 @@ fn handle_ui_command(
 					true,
 				);
 			}
+		}
+		UiCommand::ViewProfile => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			// Use the boosted status's account if this is a boost
+			let account = status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account);
+			dialogs::show_profile(frame, account);
 		}
 	}
 }
@@ -1208,6 +1223,12 @@ fn main() {
 		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
+			ID_VIEW_PROFILE => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ViewProfile);
+			}
 			ID_OPTIONS => {
 				if shutdown_menu.get() {
 					return;
