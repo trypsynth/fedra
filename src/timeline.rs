@@ -62,6 +62,13 @@ pub enum TimelineEntry {
 }
 
 impl TimelineEntry {
+	pub fn id(&self) -> &str {
+		match self {
+			TimelineEntry::Status(status) => status.id.as_str(),
+			TimelineEntry::Notification(notification) => notification.id.as_str(),
+		}
+	}
+
 	pub fn display_text(&self, timestamp_format: TimestampFormat) -> String {
 		match self {
 			TimelineEntry::Status(status) => status.timeline_display(timestamp_format),
@@ -89,11 +96,12 @@ pub struct Timeline {
 	pub entries: Vec<TimelineEntry>,
 	pub stream_handle: Option<StreamHandle>,
 	pub selected_index: Option<usize>,
+	pub selected_id: Option<String>,
 }
 
 impl Timeline {
 	pub fn new(timeline_type: TimelineType) -> Self {
-		Self { timeline_type, entries: Vec::new(), stream_handle: None, selected_index: None }
+		Self { timeline_type, entries: Vec::new(), stream_handle: None, selected_index: None, selected_id: None }
 	}
 }
 

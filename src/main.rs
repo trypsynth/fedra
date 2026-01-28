@@ -267,16 +267,59 @@ fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnOnce(
 	result
 }
 
-fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline) {
+fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
+	if list_index >= entries_len {
+		return None;
+	}
+	match sort_order {
+		SortOrder::NewestToOldest => Some(list_index),
+		SortOrder::OldestToNewest => Some(entries_len - 1 - list_index),
+	}
+}
+
+fn entry_index_to_list_index(entry_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
+	if entry_index >= entries_len {
+		return None;
+	}
+	match sort_order {
+		SortOrder::NewestToOldest => Some(entry_index),
+		SortOrder::OldestToNewest => Some(entries_len - 1 - entry_index),
+	}
+}
+
+fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: &ListBox, sort_order: SortOrder) {
+	let selection = timeline_list.get_selection().map(|sel| sel as usize);
+	timeline.selected_index = selection;
+	timeline.selected_id = selection
+		.and_then(|list_index| list_index_to_entry_index(list_index, timeline.entries.len(), sort_order))
+		.map(|entry_index| timeline.entries[entry_index].id().to_string());
+}
+
+fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline, sort_order: SortOrder) {
 	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
+		timeline.selected_id = None;
 		return;
 	}
-	let selection = match timeline.selected_index {
-		Some(sel) if sel < timeline.entries.len() => sel,
-		_ => timeline.entries.len() - 1,
-	};
+	let entries_len = timeline.entries.len();
+	let selection = timeline
+		.selected_id
+		.as_deref()
+		.and_then(|selected_id| {
+			timeline
+				.entries
+				.iter()
+				.position(|entry| entry.id() == selected_id)
+				.and_then(|entry_index| entry_index_to_list_index(entry_index, entries_len, sort_order))
+		})
+		.or_else(|| timeline.selected_index.filter(|&sel| sel < entries_len))
+		.unwrap_or_else(|| match sort_order {
+			SortOrder::NewestToOldest => 0,
+			SortOrder::OldestToNewest => entries_len - 1,
+		});
 	timeline.selected_index = Some(selection);
+	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
+		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 	timeline_list.set_selection(selection as u32, true);
 }
 
@@ -289,7 +332,7 @@ fn update_active_timeline_ui(
 ) {
 	with_suppressed_selection(suppress_selection, || {
 		update_timeline_ui(timeline_list, &timeline.entries, sort_order, timestamp_format);
-		apply_timeline_selection(timeline_list, timeline);
+		apply_timeline_selection(timeline_list, timeline, sort_order);
 	});
 }
 
@@ -386,7 +429,7 @@ fn handle_ui_command(
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
-					active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+					sync_timeline_selection_from_list(active, timeline_list, state.config.sort_order);
 				}
 				state.timeline_manager.set_active(index);
 				if let Some(active) = state.timeline_manager.active_mut() {
@@ -403,6 +446,8 @@ fn handle_ui_command(
 		UiCommand::TimelineEntrySelectionChanged(index) => {
 			if let Some(active) = state.timeline_manager.active_mut() {
 				active.selected_index = Some(index);
+				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
+					.map(|entry_index| active.entries[entry_index].id().to_string());
 			}
 		}
 		UiCommand::ShowOptions => {
@@ -721,6 +766,9 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 		};
 		let events = handle.drain();
 		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
+		if is_active {
+			sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
+		}
 		for event in events {
 			match event {
 				streaming::StreamEvent::Update { timeline_type, status } => {
@@ -760,7 +808,6 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 		}
 	}
 	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
-		active.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
 		update_active_timeline_ui(
 			timeline_list,
 			active,
@@ -789,7 +836,7 @@ fn process_network_responses(
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
-						timeline.selected_index = timeline_list.get_selection().map(|sel| sel as usize);
+						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
 					}
 					timeline.entries = match data {
 						TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
