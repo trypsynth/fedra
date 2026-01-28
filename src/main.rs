@@ -92,6 +92,8 @@ struct AppState {
 	access_token: Option<String>,
 	max_post_chars: Option<usize>,
 	poll_limits: PollLimits,
+	fav_menu_item: Option<MenuItem>,
+	boost_menu_item: Option<MenuItem>,
 }
 
 impl AppState {
@@ -104,6 +106,8 @@ impl AppState {
 			access_token: None,
 			max_post_chars: None,
 			poll_limits: PollLimits::default(),
+			fav_menu_item: None,
+			boost_menu_item: None,
 		}
 	}
 
@@ -204,7 +208,7 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 	Some(account.clone())
 }
 
-fn build_menu_bar() -> MenuBar {
+fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 	let file_menu = Menu::builder()
 		.append_item(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author")
 		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
@@ -219,9 +223,15 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_OPEN_LINKS, "Open &Links\tCtrl+Shift+L", "Open links in selected post")
 		.append_item(ID_VIEW_THREAD, "View &Thread\tCtrl+Shift+T", "View conversation thread for selected post")
 		.append_separator()
-		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
-		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
 		.build();
+
+	let fav_item = post_menu
+		.append(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post", ItemKind::Normal)
+		.expect("Failed to append favourite menu item");
+	let boost_item = post_menu
+		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
+		.expect("Failed to append boost menu item");
+
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
@@ -231,11 +241,12 @@ fn build_menu_bar() -> MenuBar {
 		.append_separator()
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
-	MenuBar::builder()
+	let menu_bar = MenuBar::builder()
 		.append(file_menu, "&File")
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
-		.build()
+		.build();
+	(menu_bar, fav_item, boost_item)
 }
 
 fn refresh_timeline(state: &AppState, live_region: &StaticText) {
@@ -468,6 +479,7 @@ fn handle_ui_command(
 						state.config.timestamp_format,
 					);
 				}
+				update_menu_labels(state);
 			}
 		}
 		UiCommand::TimelineEntrySelectionChanged(index) => {
@@ -505,6 +517,7 @@ fn handle_ui_command(
 					}
 				}
 			}
+			update_menu_labels(state);
 		}
 		UiCommand::ShowOptions => {
 			if let Some((enter_to_send, always_show_link_dialog, sort_order, timestamp_format)) =
@@ -900,6 +913,7 @@ fn switch_to_account(
 		live_region::announce(live_region, &format!("Switched to {}", handle));
 	}
 	frame.set_label(&title);
+	update_menu_labels(state);
 }
 
 fn drain_ui_commands(
@@ -994,6 +1008,7 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 			state.config.sort_order,
 			state.config.timestamp_format,
 		);
+		update_menu_labels(state);
 	}
 }
 
@@ -1074,6 +1089,7 @@ fn process_network_responses(
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
+				update_menu_labels(state);
 				live_region::announce(live_region, "Favourited");
 			}
 			NetworkResponse::Favourited { result: Err(ref err), .. } => {
@@ -1084,6 +1100,7 @@ fn process_network_responses(
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
+				update_menu_labels(state);
 				live_region::announce(live_region, "Unfavourited");
 			}
 			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
@@ -1097,6 +1114,7 @@ fn process_network_responses(
 						s.reblogs_count = inner.reblogs_count;
 					});
 				}
+				update_menu_labels(state);
 				live_region::announce(live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
@@ -1107,6 +1125,7 @@ fn process_network_responses(
 					s.reblogged = status.reblogged;
 					s.reblogs_count = status.reblogs_count;
 				});
+				update_menu_labels(state);
 				live_region::announce(live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
@@ -1145,6 +1164,29 @@ where
 	}
 }
 
+fn update_menu_labels(state: &AppState) {
+	let status = get_selected_status(state);
+	let target = status.and_then(|s| s.reblog.as_ref().map(|r| r.as_ref()).or(Some(s)));
+
+	if let Some(fav_item) = &state.fav_menu_item {
+		let label = if target.map(|t| t.favourited).unwrap_or(false) {
+			"Un&favourite\tCtrl+Shift+F"
+		} else {
+			"&Favourite\tCtrl+Shift+F"
+		};
+		fav_item.set_label(label);
+	}
+
+	if let Some(boost_item) = &state.boost_menu_item {
+		let label = if target.map(|t| t.reblogged).unwrap_or(false) {
+			"Un&boost\tCtrl+Shift+B"
+		} else {
+			"&Boost\tCtrl+Shift+B"
+		};
+		boost_item.set_label(label);
+	}
+}
+
 fn open_timeline(
 	state: &mut AppState,
 	selector: &ListBox,
@@ -1169,6 +1211,7 @@ fn open_timeline(
 				);
 			}
 		}
+		update_menu_labels(state);
 		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
@@ -1191,6 +1234,7 @@ fn open_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
 	});
+	update_menu_labels(state);
 }
 
 fn get_selected_status(state: &AppState) -> Option<&Status> {
@@ -1299,7 +1343,7 @@ fn main() {
 		log_event("app_start");
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
-		let menu_bar = build_menu_bar();
+		let (menu_bar, fav_item, boost_item) = build_menu_bar();
 		frame.set_menu_bar(menu_bar);
 		let panel = Panel::builder(&frame).build();
 		// live region
@@ -1349,7 +1393,8 @@ fn main() {
 		}
 
 		let mut state = AppState::new(config);
-
+		state.fav_menu_item = Some(fav_item);
+		state.boost_menu_item = Some(boost_item);
 		switch_to_account(
 			&mut state,
 			&frame,
