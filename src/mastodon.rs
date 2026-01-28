@@ -544,6 +544,20 @@ impl MastodonClient {
 		Ok(account)
 	}
 
+	pub fn get_account(&self, access_token: &str, account_id: &str) -> Result<Account> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}", account_id))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch account")?
+			.error_for_status()
+			.context("Instance rejected account request")?;
+		let account: Account = response.json().context("Invalid account response")?;
+		Ok(account)
+	}
+
 	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
 		let response = self

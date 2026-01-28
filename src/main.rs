@@ -709,7 +709,18 @@ fn handle_ui_command(
 				return;
 			}
 			if let Some(mention) = dialogs::prompt_for_mentions(frame, &target.mentions) {
-				let account = crate::mastodon::Account {
+				let mut account = None;
+				if let (Some(base_url), Some(token)) = (state.streaming_url.clone(), state.access_token.clone()) {
+					if let Ok(client) = MastodonClient::new(base_url) {
+						match client.get_account(&token, &mention.id) {
+							Ok(full) => account = Some(full),
+							Err(err) => {
+								dialogs::show_error(frame, &err);
+							}
+						}
+					}
+				}
+				let account = account.unwrap_or_else(|| crate::mastodon::Account {
 					id: mention.id.clone(),
 					username: mention.username.clone(),
 					acct: mention.acct.clone(),
@@ -723,9 +734,12 @@ fn handle_ui_command(
 					created_at: String::new(),
 					locked: false,
 					bot: false,
-				};
+				});
 				if dialogs::show_profile(frame, &account) {
-					let timeline_type = TimelineType::User { id: mention.id, name: mention.username };
+					let timeline_type = TimelineType::User {
+						id: account.id.clone(),
+						name: account.display_name_or_username().to_string(),
+					};
 					handle_ui_command(
 						UiCommand::OpenTimeline(timeline_type),
 						state,
