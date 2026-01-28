@@ -582,27 +582,6 @@ impl MastodonClient {
 		Ok(status)
 	}
 
-	pub fn reply(
-		&self,
-		access_token: &str,
-		in_reply_to_id: &str,
-		content: &str,
-		visibility: &str,
-		spoiler_text: Option<&str>,
-	) -> Result<()> {
-		self.post_status_with_media(
-			access_token,
-			content,
-			visibility,
-			spoiler_text,
-			&[],
-			None,
-			None,
-			Some(in_reply_to_id),
-		)
-		.context("Failed to post reply")
-	}
-
 	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
 		let url = self.base_url.join("api/v1/instance")?;
 		let response = self

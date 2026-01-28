@@ -6,7 +6,7 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{Account, SortOrder, TimestampFormat},
 	error,
-	html::{Link, strip_html},
+	html::Link,
 	mastodon::{Account as MastodonAccount, PollLimits, Status},
 };
 
@@ -619,7 +619,7 @@ fn prompt_for_compose(
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
-	visibility_choice.set_selection(visibility_index(default_visibility));
+	visibility_choice.set_selection(visibility_index(default_visibility) as u32);
 	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
