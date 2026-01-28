@@ -464,7 +464,7 @@ impl MastodonClient {
 		timeline_type: &TimelineType,
 		limit: Option<u32>,
 	) -> Result<Vec<Status>> {
-		let mut url = self.base_url.join(timeline_type.api_path())?;
+		let mut url = self.base_url.join(&timeline_type.api_path())?;
 		{
 			let mut query = url.query_pairs_mut();
 			for (key, value) in timeline_type.api_query_params() {

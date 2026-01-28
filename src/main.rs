@@ -44,6 +44,7 @@ const ID_REPLY_AUTHOR: i32 = 1009;
 const ID_OPTIONS: i32 = 1010;
 const ID_MANAGE_ACCOUNTS: i32 = 1011;
 const ID_VIEW_PROFILE: i32 = 1012;
+const ID_VIEW_USER_TIMELINE: i32 = 1013;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -127,6 +128,7 @@ enum UiCommand {
 	Boost,
 	Refresh,
 	OpenTimeline(TimelineType),
+	OpenUserTimeline,
 	CloseTimeline,
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
@@ -212,6 +214,7 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
 		.build();
 	let timelines_menu = Menu::builder()
+		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_separator()
@@ -569,7 +572,24 @@ fn handle_ui_command(
 			};
 			// Use the boosted status's account if this is a boost
 			let account = status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account);
-			dialogs::show_profile(frame, account);
+			if dialogs::show_profile(frame, account) {
+				let timeline_type =
+					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
+				open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+			}
+		}
+		UiCommand::OpenUserTimeline => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let account = status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account);
+			let timeline_type =
+				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
+			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
 		}
 	}
 }
@@ -885,7 +905,7 @@ fn open_timeline(
 		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
-	selector.append(timeline_type.display_name());
+	selector.append(&timeline_type.display_name());
 	let new_index = state.timeline_manager.len() - 1;
 	state.timeline_manager.set_active(new_index);
 	with_suppressed_selection(suppress_selection, || {
@@ -1276,6 +1296,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::Refresh);
+			}
+			ID_VIEW_USER_TIMELINE => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::OpenUserTimeline);
 			}
 			ID_LOCAL_TIMELINE => {
 				if shutdown_menu.get() {

@@ -10,30 +10,33 @@ pub enum TimelineType {
 	Notifications,
 	Local,
 	Federated,
+	User { id: String, name: String },
 }
 
 impl TimelineType {
-	pub fn display_name(&self) -> &str {
+	pub fn display_name(&self) -> String {
 		match self {
-			TimelineType::Home => "Home",
-			TimelineType::Notifications => "Notifications",
-			TimelineType::Local => "Local",
-			TimelineType::Federated => "Federated",
+			TimelineType::Home => "Home".to_string(),
+			TimelineType::Notifications => "Notifications".to_string(),
+			TimelineType::Local => "Local".to_string(),
+			TimelineType::Federated => "Federated".to_string(),
+			TimelineType::User { name, .. } => name.clone(),
 		}
 	}
 
-	pub fn api_path(&self) -> &str {
+	pub fn api_path(&self) -> String {
 		match self {
-			TimelineType::Home => "api/v1/timelines/home",
-			TimelineType::Notifications => "api/v1/notifications",
-			TimelineType::Local | TimelineType::Federated => "api/v1/timelines/public",
+			TimelineType::Home => "api/v1/timelines/home".to_string(),
+			TimelineType::Notifications => "api/v1/notifications".to_string(),
+			TimelineType::Local | TimelineType::Federated => "api/v1/timelines/public".to_string(),
+			TimelineType::User { id, .. } => format!("api/v1/accounts/{}/statuses", id),
 		}
 	}
 
 	pub fn api_query_params(&self) -> Vec<(&str, &str)> {
 		match self {
 			TimelineType::Local => vec![("local", "true")],
-			TimelineType::Home | TimelineType::Federated | TimelineType::Notifications => vec![],
+			_ => vec![],
 		}
 	}
 
@@ -43,6 +46,7 @@ impl TimelineType {
 			TimelineType::Notifications => Some("user"),
 			TimelineType::Local => Some("public:local"),
 			TimelineType::Federated => Some("public"),
+			TimelineType::User { .. } => None, // No streaming for user timelines
 		}
 	}
 
@@ -148,7 +152,7 @@ impl TimelineManager {
 	}
 
 	pub fn display_names(&self) -> Vec<String> {
-		self.timelines.iter().map(|t| t.timeline_type.display_name().to_string()).collect()
+		self.timelines.iter().map(|t| t.timeline_type.display_name()).collect()
 	}
 
 	pub fn active_index(&self) -> usize {
