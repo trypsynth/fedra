@@ -104,7 +104,6 @@ fn normalize_text(input: String) -> String {
 #[derive(Debug, Clone)]
 pub struct Link {
 	pub url: String,
-	pub text: String,
 }
 
 pub fn extract_links(html: &str) -> Vec<Link> {
@@ -113,8 +112,14 @@ pub fn extract_links(html: &str) -> Vec<Link> {
 	let selector = scraper::Selector::parse("a").unwrap();
 	for element in fragment.select(&selector) {
 		if let Some(href) = element.value().attr("href") {
-			let text = element.text().collect::<Vec<_>>().join("");
-			links.push(Link { url: href.to_string(), text });
+			if let Some(class) = element.value().attr("class") {
+				let classes: Vec<&str> = class.split_whitespace().collect();
+				if classes.contains(&"mention") && !classes.contains(&"hashtag") {
+					continue;
+				}
+			}
+
+			links.push(Link { url: href.to_string() });
 		}
 	}
 	links

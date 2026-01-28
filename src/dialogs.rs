@@ -1097,7 +1097,7 @@ pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String
 	let list_label = StaticText::builder(&panel).with_label("Links found in post:").build();
 	let link_list = ListBox::builder(&panel).build();
 	for link in links {
-		link_list.append(&format!("{} ({})", link.text, link.url));
+		link_list.append(&link.url);
 	}
 	if !links.is_empty() {
 		link_list.set_selection(0, true);
