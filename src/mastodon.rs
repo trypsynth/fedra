@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
 use reqwest::{
@@ -6,12 +7,7 @@ use reqwest::{
 };
 use serde::Deserialize;
 
-use crate::{
-	config::TimestampFormat,
-	error::{Context, Result},
-	html::strip_html,
-	timeline::TimelineType,
-};
+use crate::{config::TimestampFormat, html::strip_html, timeline::TimelineType};
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
 

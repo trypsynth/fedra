@@ -5,13 +5,11 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use anyhow::{Context, Result};
 use url::Url;
 use wxdragon::utils::{BrowserLaunchFlags, launch_default_browser};
 
-use crate::{
-	error::{Context, Result},
-	mastodon::MastodonClient,
-};
+use crate::mastodon::MastodonClient;
 
 const CALLBACK_PATH: &str = "/oauth/callback";
 const LISTEN_TIMEOUT: Duration = Duration::from_secs(120);

@@ -3,11 +3,11 @@ use std::{
 	thread::{self, JoinHandle},
 };
 
+use anyhow::Result;
 use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	error::Result,
 	mastodon::{MastodonClient, Notification, Status},
 	timeline::TimelineType,
 };

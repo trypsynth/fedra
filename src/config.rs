@@ -4,9 +4,8 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-
-use crate::error::Result;
 
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";

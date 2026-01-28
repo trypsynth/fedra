@@ -3,7 +3,6 @@
 mod auth;
 mod config;
 mod dialogs;
-mod error;
 mod html;
 mod live_region;
 mod mastodon;
@@ -1076,13 +1075,13 @@ fn process_network_responses(
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(live_region, &format!("Failed to load timeline: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to load timeline: {}", err));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
 				live_region::announce(live_region, "Posted");
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to post: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to post: {}", err));
 			}
 			NetworkResponse::Favourited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -1093,7 +1092,7 @@ fn process_network_responses(
 				live_region::announce(live_region, "Favourited");
 			}
 			NetworkResponse::Favourited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to favourite: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to favourite: {}", err));
 			}
 			NetworkResponse::Unfavourited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -1104,7 +1103,7 @@ fn process_network_responses(
 				live_region::announce(live_region, "Unfavourited");
 			}
 			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unfavourite: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to unfavourite: {}", err));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -1118,7 +1117,7 @@ fn process_network_responses(
 				live_region::announce(live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to boost: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to boost: {}", err));
 			}
 			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -1129,13 +1128,13 @@ fn process_network_responses(
 				live_region::announce(live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unboost: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to unboost: {}", err));
 			}
 			NetworkResponse::Replied(Ok(())) => {
 				live_region::announce(live_region, "Reply sent");
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to reply: {}", error::user_message(err)));
+				live_region::announce(live_region, &format!("Failed to reply: {}", err));
 			}
 		}
 	}
