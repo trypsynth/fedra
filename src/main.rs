@@ -395,17 +395,35 @@ fn handle_ui_command(
 			};
 			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
 			let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
-			let reply =
-				match dialogs::prompt_for_reply(frame, target, max_post_chars, reply_all, self_acct, enter_to_send) {
-					Some(r) => r,
-					None => return,
-				};
+			let reply = match dialogs::prompt_for_reply(
+				frame,
+				target,
+				max_post_chars,
+				&state.poll_limits,
+				reply_all,
+				self_acct,
+				enter_to_send,
+			) {
+				Some(r) => r,
+				None => return,
+			};
 			if let Some(handle) = &state.network_handle {
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: target.id.clone(),
 					content: reply.content,
 					visibility: reply.visibility.as_api_str().to_string(),
 					spoiler_text: reply.spoiler_text,
+					content_type: reply.content_type,
+					media: reply
+						.media
+						.into_iter()
+						.map(|item| network::MediaUpload { path: item.path, description: item.description })
+						.collect(),
+					poll: reply.poll.map(|poll| network::PollData {
+						options: poll.options,
+						expires_in: poll.expires_in,
+						multiple: poll.multiple,
+					}),
 				});
 			} else {
 				live_region::announce(live_region, "Network not available");

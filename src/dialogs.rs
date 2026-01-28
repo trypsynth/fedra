@@ -6,7 +6,6 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{Account, SortOrder, TimestampFormat},
 	error,
-	html::strip_html,
 	mastodon::{Account as MastodonAccount, PollLimits, Status},
 };
 
@@ -114,6 +113,23 @@ pub struct PostPoll {
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
 const KEY_RETURN: i32 = 13;
+
+struct ComposeDialogConfig {
+	title_prefix: String,
+	ok_label: String,
+	initial_content: String,
+	initial_cw: Option<String>,
+	default_visibility: PostVisibility,
+}
+
+fn visibility_index(visibility: PostVisibility) -> usize {
+	match visibility {
+		PostVisibility::Public => 0,
+		PostVisibility::Unlisted => 1,
+		PostVisibility::Private => 2,
+		PostVisibility::Direct => 3,
+	}
+}
 
 fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	media_list.clear();
@@ -560,14 +576,22 @@ pub fn prompt_for_options(
 	Some((enter_checkbox.get_value(), new_sort, new_timestamp))
 }
 
-pub fn prompt_for_post(
+fn prompt_for_compose(
 	frame: &Frame,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
+	config: ComposeDialogConfig,
 ) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
-	let dialog = Dialog::builder(frame, &format!("Post - 0 of {} characters", max_chars)).with_size(700, 560).build();
+	let title_prefix = config.title_prefix;
+	let ok_label = config.ok_label;
+	let initial_content = config.initial_content;
+	let initial_cw = config.initial_cw;
+	let default_visibility = config.default_visibility;
+	let dialog = Dialog::builder(frame, &format!("{} - 0 of {} characters", title_prefix, max_chars))
+		.with_size(700, 560)
+		.build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
@@ -590,7 +614,7 @@ pub fn prompt_for_post(
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
-	visibility_choice.set_selection(0);
+	visibility_choice.set_selection(visibility_index(default_visibility));
 	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
@@ -604,7 +628,7 @@ pub fn prompt_for_post(
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
 	let poll_summary_label = StaticText::builder(&panel).with_label("No poll attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Post").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(&ok_label).build();
 	if enter_to_send {
 		ok_button.set_default();
 	}
@@ -693,6 +717,17 @@ pub fn prompt_for_post(
 		panel_toggle.layout();
 		dialog_toggle.layout();
 	});
+	if !initial_content.is_empty() {
+		content_text.set_value(&initial_content);
+	}
+	if let Some(cw) = initial_cw.as_deref().map(str::trim)
+		&& !cw.is_empty()
+	{
+		cw_checkbox.set_value(true);
+		cw_label.show(true);
+		cw_text.show(true);
+		cw_text.set_value(cw);
+	}
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			let key = key_event.get_key_code();
@@ -715,14 +750,18 @@ pub fn prompt_for_post(
 		}
 	});
 	let timer = Timer::new(&dialog);
+	let title_prefix_timer = title_prefix.clone();
 	timer.on_tick(move |_| {
 		let text = content_text.get_value();
 		let char_count = text.chars().count();
-		dialog.set_label(&format!("Post - {} of {} characters", char_count, max_chars));
+		dialog.set_label(&format!("{} - {} of {} characters", title_prefix_timer, char_count, max_chars));
 	});
 	timer.start(100, false);
 	dialog.centre();
 	content_text.set_focus();
+	if !initial_content.is_empty() {
+		content_text.set_insertion_point_end();
+	}
 	let result = dialog.show_modal();
 	timer.stop();
 	if result != ID_OK {
@@ -735,7 +774,7 @@ pub fn prompt_for_post(
 		show_warning_widget(
 			frame,
 			&format!("Post is {} characters, which exceeds the {} character limit.", char_count, max_chars),
-			"Post",
+			&title_prefix,
 		);
 		return None;
 	}
@@ -758,34 +797,37 @@ pub fn prompt_for_post(
 	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media, poll })
 }
 
-pub struct ReplyResult {
-	pub content: String,
-	pub visibility: PostVisibility,
-	pub spoiler_text: Option<String>,
+pub fn prompt_for_post(
+	frame: &Frame,
+	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
+	enter_to_send: bool,
+) -> Option<PostResult> {
+	prompt_for_compose(
+		frame,
+		max_chars,
+		poll_limits,
+		enter_to_send,
+		ComposeDialogConfig {
+			title_prefix: "Post".to_string(),
+			ok_label: "Post".to_string(),
+			initial_content: String::new(),
+			initial_cw: None,
+			default_visibility: PostVisibility::Public,
+		},
+	)
 }
 
 pub fn prompt_for_reply(
 	frame: &Frame,
 	replying_to: &Status,
 	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
 	reply_all: bool,
 	self_acct: Option<&str>,
 	enter_to_send: bool,
-) -> Option<ReplyResult> {
-	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
+) -> Option<PostResult> {
 	let author = replying_to.account.display_name_or_username();
-	let dialog = Dialog::builder(frame, &format!("Reply to {} - 0 of {} characters", author, max_chars))
-		.with_size(600, 400)
-		.build();
-	let panel = Panel::builder(&dialog).build();
-	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	let original_label = StaticText::builder(&panel).with_label("Replying to:").build();
-	let original_content = replying_to.reblog.as_ref().map(|r| r.content.as_str()).unwrap_or(&replying_to.content);
-	let original_text = strip_html(original_content);
-	let preview = if original_text.len() > 200 { format!("{}...", &original_text[..200]) } else { original_text };
-	let original_preview = StaticText::builder(&panel).with_label(&format!("{}: {}", author, preview)).build();
-	let content_label = StaticText::builder(&panel).with_label("Your reply:").build();
-	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
 	let mention = if reply_all {
 		let mut accts = Vec::new();
 		let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
@@ -815,131 +857,28 @@ pub fn prompt_for_reply(
 	} else {
 		format!("@{} ", replying_to.account.acct)
 	};
-	content_text.set_value(&mention);
-	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
-	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
-	let cw_text = TextCtrl::builder(&panel).build();
-	cw_label.show(false);
-	cw_text.show(false);
-	if !replying_to.spoiler_text.is_empty() {
-		cw_checkbox.set_value(true);
-		cw_label.show(true);
-		cw_text.show(true);
-		cw_text.set_value(&format!("re: {}", replying_to.spoiler_text));
-	}
-	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
-	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
-	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
 	let default_visibility = match replying_to.visibility.as_str() {
-		"public" => 0,
-		"unlisted" => 1,
-		"private" => 2,
-		"direct" => 3,
-		_ => 0,
+		"public" => PostVisibility::Public,
+		"unlisted" => PostVisibility::Unlisted,
+		"private" => PostVisibility::Private,
+		"direct" => PostVisibility::Direct,
+		_ => PostVisibility::Public,
 	};
-	visibility_choice.set_selection(default_visibility);
-	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
-	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Reply").build();
-	if enter_to_send {
-		ok_button.set_default();
-	}
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add(&original_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&original_preview, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&content_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&content_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&cw_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&cw_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	panel.set_sizer(main_sizer, true);
-	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
-	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
-	let cw_label_toggle = cw_label;
-	let cw_text_toggle = cw_text;
-	let panel_toggle = panel;
-	let dialog_toggle = dialog;
-	cw_checkbox.on_toggled(move |event| {
-		let checked = event.is_checked();
-		cw_label_toggle.show(checked);
-		cw_text_toggle.show(checked);
-		if !checked {
-			cw_text_toggle.set_value("");
-		}
-		panel_toggle.layout();
-		dialog_toggle.layout();
-	});
-	content_text.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			let key = key_event.get_key_code();
-			let shift = key_event.shift_down();
-			let ctrl = key_event.control_down();
-			let should_submit = if enter_to_send {
-				key == Some(KEY_RETURN) && !shift && !ctrl
-			} else {
-				key == Some(KEY_RETURN) && ctrl
-			};
-
-			if should_submit {
-				dialog.end_modal(ID_OK);
-				event.skip(false);
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
-	let timer = Timer::new(&dialog);
-	let author_timer = author.to_string();
-	timer.on_tick(move |_| {
-		let text = content_text.get_value();
-		let char_count = text.chars().count();
-		dialog.set_label(&format!("Reply to {} - {} of {} characters", author_timer, char_count, max_chars));
-	});
-	timer.start(100, false);
-	dialog.centre();
-	content_text.set_focus();
-	content_text.set_insertion_point_end();
-	let result = dialog.show_modal();
-	timer.stop();
-	if result != ID_OK {
-		return None;
-	}
-	let content = content_text.get_value();
-	let trimmed = content.trim();
-	if trimmed.is_empty() {
-		return None;
-	}
-	let char_count = trimmed.chars().count();
-	if char_count > max_chars {
-		show_warning_widget(
-			frame,
-			&format!("Reply is {} characters, which exceeds the {} character limit.", char_count, max_chars),
-			"Reply",
-		);
-		return None;
-	}
-	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
-	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
-	let spoiler_text = if cw_checkbox.get_value() {
-		let text = cw_text.get_value();
-		let trimmed = text.trim();
-		if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
-	} else {
-		None
-	};
-	Some(ReplyResult { content: trimmed.to_string(), visibility, spoiler_text })
+	let initial_cw =
+		if replying_to.spoiler_text.trim().is_empty() { None } else { Some(replying_to.spoiler_text.clone()) };
+	prompt_for_compose(
+		frame,
+		max_chars,
+		poll_limits,
+		enter_to_send,
+		ComposeDialogConfig {
+			title_prefix: format!("Reply to {}", author),
+			ok_label: "Post".to_string(),
+			initial_content: mention,
+			initial_cw,
+			default_visibility,
+		},
+	)
 }
 
 fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool {

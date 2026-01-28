@@ -42,6 +42,9 @@ pub enum NetworkCommand {
 		content: String,
 		visibility: String,
 		spoiler_text: Option<String>,
+		content_type: Option<String>,
+		media: Vec<MediaUpload>,
+		poll: Option<PollData>,
 	},
 	Shutdown,
 }
@@ -74,6 +77,43 @@ pub enum NetworkResponse {
 pub enum TimelineData {
 	Statuses(Vec<Status>),
 	Notifications(Vec<Notification>),
+}
+
+fn post_with_media(
+	client: &MastodonClient,
+	access_token: &str,
+	content: &str,
+	visibility: &str,
+	spoiler_text: Option<&str>,
+	content_type: Option<&str>,
+	media: Vec<MediaUpload>,
+	poll: Option<PollData>,
+	in_reply_to_id: Option<&str>,
+) -> Result<()> {
+	let mut media_ids = Vec::new();
+	let mut upload_failed = None;
+	for item in media {
+		match client.upload_media(access_token, &item.path, item.description.as_deref()) {
+			Ok(id) => media_ids.push(id),
+			Err(err) => {
+				upload_failed = Some(err);
+				break;
+			}
+		}
+	}
+	if let Some(err) = upload_failed {
+		return Err(err);
+	}
+	client.post_status_with_media(
+		access_token,
+		content,
+		visibility,
+		spoiler_text,
+		&media_ids,
+		content_type,
+		poll.as_ref(),
+		in_reply_to_id,
+	)
 }
 
 pub struct NetworkHandle {
@@ -138,29 +178,16 @@ fn network_loop(
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result });
 			}
 			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
-				let mut media_ids = Vec::new();
-				let mut upload_failed = None;
-				for item in media {
-					match client.upload_media(&access_token, &item.path, item.description.as_deref()) {
-						Ok(id) => media_ids.push(id),
-						Err(err) => {
-							upload_failed = Some(err);
-							break;
-						}
-					}
-				}
-				if let Some(err) = upload_failed {
-					let _ = responses.send(NetworkResponse::PostComplete(Err(err)));
-					continue;
-				}
-				let result = client.post_status_with_media(
+				let result = post_with_media(
+					&client,
 					&access_token,
 					&content,
 					&visibility,
 					spoiler_text.as_deref(),
-					&media_ids,
 					content_type.as_deref(),
-					poll.as_ref(),
+					media,
+					poll,
+					None,
 				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
 			}
@@ -180,9 +207,26 @@ fn network_loop(
 				let result = client.unreblog(&access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Unboosted { status_id, result });
 			}
-			Ok(NetworkCommand::Reply { in_reply_to_id, content, visibility, spoiler_text }) => {
-				let result =
-					client.reply(&access_token, &in_reply_to_id, &content, &visibility, spoiler_text.as_deref());
+			Ok(NetworkCommand::Reply {
+				in_reply_to_id,
+				content,
+				visibility,
+				spoiler_text,
+				content_type,
+				media,
+				poll,
+			}) => {
+				let result = post_with_media(
+					&client,
+					&access_token,
+					&content,
+					&visibility,
+					spoiler_text.as_deref(),
+					content_type.as_deref(),
+					media,
+					poll,
+					Some(&in_reply_to_id),
+				);
 				let _ = responses.send(NetworkResponse::Replied(result));
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {

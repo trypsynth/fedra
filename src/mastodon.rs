@@ -401,6 +401,7 @@ impl MastodonClient {
 		media_ids: &[String],
 		content_type: Option<&str>,
 		poll: Option<&crate::network::PollData>,
+		in_reply_to_id: Option<&str>,
 	) -> Result<()> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
@@ -414,6 +415,11 @@ impl MastodonClient {
 			&& !content_type.trim().is_empty()
 		{
 			params.push(("content_type".to_string(), content_type.to_string()));
+		}
+		if let Some(in_reply_to_id) = in_reply_to_id
+			&& !in_reply_to_id.trim().is_empty()
+		{
+			params.push(("in_reply_to_id".to_string(), in_reply_to_id.to_string()));
 		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));
@@ -584,26 +590,17 @@ impl MastodonClient {
 		visibility: &str,
 		spoiler_text: Option<&str>,
 	) -> Result<()> {
-		let url = self.base_url.join("api/v1/statuses")?;
-		let mut params = vec![
-			("status".to_string(), content.to_string()),
-			("visibility".to_string(), visibility.to_string()),
-			("in_reply_to_id".to_string(), in_reply_to_id.to_string()),
-		];
-		if let Some(spoiler) = spoiler_text
-			&& !spoiler.trim().is_empty()
-		{
-			params.push(("spoiler_text".to_string(), spoiler.to_string()));
-		}
-		self.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to post reply")?
-			.error_for_status()
-			.context("Instance rejected reply")?;
-		Ok(())
+		self.post_status_with_media(
+			access_token,
+			content,
+			visibility,
+			spoiler_text,
+			&[],
+			None,
+			None,
+			Some(in_reply_to_id),
+		)
+		.context("Failed to post reply")
 	}
 
 	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
