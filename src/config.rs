@@ -19,6 +19,8 @@ pub struct Config {
 	pub active_account_id: Option<String>,
 	#[serde(default = "default_enter_to_send")]
 	pub enter_to_send: bool,
+	#[serde(default = "default_always_show_link_dialog")]
+	pub always_show_link_dialog: bool,
 	#[serde(default)]
 	pub sort_order: SortOrder,
 	#[serde(default)]
@@ -43,6 +45,10 @@ fn default_enter_to_send() -> bool {
 	true
 }
 
+fn default_always_show_link_dialog() -> bool {
+	false
+}
+
 impl Default for Config {
 	fn default() -> Self {
 		Self {
@@ -50,6 +56,7 @@ impl Default for Config {
 			accounts: Vec::new(),
 			active_account_id: None,
 			enter_to_send: true,
+			always_show_link_dialog: false,
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
 		}

@@ -45,6 +45,7 @@ const ID_OPTIONS: i32 = 1010;
 const ID_MANAGE_ACCOUNTS: i32 = 1011;
 const ID_VIEW_PROFILE: i32 = 1012;
 const ID_VIEW_USER_TIMELINE: i32 = 1013;
+const ID_OPEN_LINKS: i32 = 1014;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -139,6 +140,7 @@ enum UiCommand {
 	SwitchPrevAccount,
 	RemoveAccount(String),
 	ViewProfile,
+	OpenLinks,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -209,6 +211,7 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
 		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
 		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
+		.append_item(ID_OPEN_LINKS, "Open &Links\tCtrl+Shift+L", "Open links in selected post")
 		.append_separator()
 		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
 		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
@@ -469,15 +472,18 @@ fn handle_ui_command(
 			}
 		}
 		UiCommand::ShowOptions => {
-			if let Some((enter_to_send, sort_order, timestamp_format)) = dialogs::prompt_for_options(
-				frame,
-				state.config.enter_to_send,
-				state.config.sort_order,
-				state.config.timestamp_format,
-			) {
+			if let Some((enter_to_send, always_show_link_dialog, sort_order, timestamp_format)) =
+				dialogs::prompt_for_options(
+					frame,
+					state.config.enter_to_send,
+					state.config.always_show_link_dialog,
+					state.config.sort_order,
+					state.config.timestamp_format,
+				) {
 				let needs_refresh =
 					state.config.sort_order != sort_order || state.config.timestamp_format != timestamp_format;
 				state.config.enter_to_send = enter_to_send;
+				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
 				let store = config::ConfigStore::new();
@@ -653,6 +659,26 @@ fn handle_ui_command(
 			let timeline_type =
 				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+		}
+		UiCommand::OpenLinks => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => return,
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let links = html::extract_links(&target.content);
+			if links.is_empty() {
+				live_region::announce(live_region, "No links in this post");
+				return;
+			}
+			let url_to_open = if links.len() == 1 && !state.config.always_show_link_dialog {
+				Some(links[0].url.clone())
+			} else {
+				dialogs::prompt_for_link_selection(frame, &links)
+			};
+			if let Some(url) = url_to_open {
+				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
+			}
 		}
 	}
 }
@@ -1098,6 +1124,7 @@ fn main() {
 		let live_region_label = StaticText::builder(&panel).with_size(Size::new(1, 1)).build();
 		live_region_label.show(false);
 		live_region::set_live_region(&live_region_label);
+
 		let sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
 		let timelines_selector = ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
@@ -1237,26 +1264,29 @@ fn main() {
 				event.skip(true);
 			}
 		});
+
 		let ui_tx_list = ui_tx.clone();
 		let shutdown_list = is_shutting_down.clone();
 		let suppress_list = suppress_selection.clone();
 		let timeline_list_state = timeline_list;
 		let ui_tx_list_key = ui_tx.clone();
 		let shutdown_list_key = is_shutting_down.clone();
-		timeline_list_state.on_key_down(move |event| {
+		timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
 			if shutdown_list_key.get() {
 				return;
 			}
-			if let WindowEventData::Keyboard(ref key_event) = event
-				&& key_event.control_down()
+			if let Some(key) = event.get_key_code()
+				&& event.control_down()
 			{
-				match key_event.get_key_code() {
-					Some(91) => {
+				match key {
+					91 => {
+						// [
 						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
 						event.skip(false);
 						return;
 					}
-					Some(93) => {
+					93 => {
+						// ]
 						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
 						event.skip(false);
 						return;
@@ -1265,6 +1295,16 @@ fn main() {
 				}
 			}
 			event.skip(true);
+		});
+
+		let ui_tx_list_dbl = ui_tx.clone();
+		let shutdown_list_dbl = is_shutting_down.clone();
+		timeline_list_state.on_item_double_clicked(move |event| {
+			if shutdown_list_dbl.get() {
+				return;
+			}
+			let _ = ui_tx_list_dbl.send(UiCommand::OpenLinks);
+			event.event.skip(false);
 		});
 
 		timeline_list_state.on_selection_changed(move |event| {
@@ -1385,6 +1425,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::CloseTimeline);
+			}
+			ID_OPEN_LINKS => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::OpenLinks);
 			}
 			_ => {}
 		});

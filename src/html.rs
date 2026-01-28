@@ -100,3 +100,22 @@ fn normalize_text(input: String) -> String {
 	}
 	final_out.trim().to_string()
 }
+
+#[derive(Debug, Clone)]
+pub struct Link {
+	pub url: String,
+	pub text: String,
+}
+
+pub fn extract_links(html: &str) -> Vec<Link> {
+	let fragment = scraper::Html::parse_fragment(html);
+	let mut links = Vec::new();
+	let selector = scraper::Selector::parse("a").unwrap();
+	for element in fragment.select(&selector) {
+		if let Some(href) = element.value().attr("href") {
+			let text = element.text().collect::<Vec<_>>().join("");
+			links.push(Link { url: href.to_string(), text });
+		}
+	}
+	links
+}

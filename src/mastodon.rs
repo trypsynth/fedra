@@ -295,10 +295,10 @@ impl Account {
 				lines.push(format!("\t{}: {}", field.name, value));
 			}
 		}
-		if !self.created_at.is_empty() {
-			if let Some(date) = friendly_date(&self.created_at) {
-				lines.push(format!("Joined: {}", date));
-			}
+		if !self.created_at.is_empty()
+			&& let Some(date) = friendly_date(&self.created_at)
+		{
+			lines.push(format!("Joined: {}", date));
 		}
 		lines.join("\r\n")
 	}
