@@ -219,7 +219,7 @@ fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
 		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
 		.append_item(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post")
-		.append_item(ID_OPEN_LINKS, "Open &Links\tCtrl+Shift+L", "Open links in selected post")
+		.append_item(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post")
 		.append_item(ID_VIEW_THREAD, "View &Thread\tCtrl+Shift+T", "View conversation thread for selected post")
 		.append_separator()
 		.build();

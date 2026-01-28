@@ -911,7 +911,7 @@ pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> 
 }
 
 pub fn show_error(frame: &Frame, err: &anyhow::Error) {
-	let dialog = MessageDialog::builder(frame, err.to_string(), "Fedra")
+	let dialog = MessageDialog::builder(frame, &err.to_string(), "Fedra")
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
 		.build();
 	dialog.show_modal();
