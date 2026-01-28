@@ -11,6 +11,7 @@ pub enum TimelineType {
 	Local,
 	Federated,
 	User { id: String, name: String },
+	Thread { id: String, name: String },
 }
 
 impl TimelineType {
@@ -21,6 +22,7 @@ impl TimelineType {
 			TimelineType::Local => "Local".to_string(),
 			TimelineType::Federated => "Federated".to_string(),
 			TimelineType::User { name, .. } => name.clone(),
+			TimelineType::Thread { name, .. } => name.clone(),
 		}
 	}
 
@@ -30,6 +32,7 @@ impl TimelineType {
 			TimelineType::Notifications => "api/v1/notifications".to_string(),
 			TimelineType::Local | TimelineType::Federated => "api/v1/timelines/public".to_string(),
 			TimelineType::User { id, .. } => format!("api/v1/accounts/{}/statuses", id),
+			TimelineType::Thread { id, .. } => format!("api/v1/statuses/{}/context", id),
 		}
 	}
 
@@ -47,11 +50,16 @@ impl TimelineType {
 			TimelineType::Local => Some("public:local"),
 			TimelineType::Federated => Some("public"),
 			TimelineType::User { .. } => None, // No streaming for user timelines
+			TimelineType::Thread { .. } => None,
 		}
 	}
 
 	pub fn is_closeable(&self) -> bool {
 		!matches!(self, TimelineType::Home | TimelineType::Notifications)
+	}
+
+	pub fn supports_paging(&self) -> bool {
+		!matches!(self, TimelineType::Thread { .. })
 	}
 }
 
@@ -163,6 +171,10 @@ impl TimelineManager {
 
 	pub fn get_mut(&mut self, timeline_type: &TimelineType) -> Option<&mut Timeline> {
 		self.timelines.iter_mut().find(|t| t.timeline_type == *timeline_type)
+	}
+
+	pub fn index_of(&self, timeline_type: &TimelineType) -> Option<usize> {
+		self.timelines.iter().position(|t| t.timeline_type == *timeline_type)
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Timeline> {

@@ -164,6 +164,7 @@ Configured in `rustfmt.toml`:
 | Ctrl+P | View profile of selected post's author |
 | Ctrl+T | Open timeline of selected post's author |
 | Ctrl+L | Open Local Timeline |
+| Ctrl+Shift+T | View thread timeline for selected post |
 | Ctrl+O | Open Options dialog |
 | F5 | Refresh current timeline |
 | Delete | Close current timeline (except Home) |

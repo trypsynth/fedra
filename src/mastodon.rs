@@ -202,6 +202,12 @@ pub struct Notification {
 	pub status: Option<Box<Status>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatusContext {
+	pub ancestors: Vec<Status>,
+	pub descendants: Vec<Status>,
+}
+
 impl Notification {
 	pub fn timeline_display(&self, timestamp_format: TimestampFormat) -> String {
 		let actor = self.account.display_name_or_username();
@@ -610,6 +616,20 @@ impl MastodonClient {
 		let poll_limits =
 			info.configuration.as_ref().and_then(|c| c.polls.as_ref()).map(PollLimits::from_config).unwrap_or_default();
 		Ok(InstanceInfo { max_post_chars: max_chars, poll_limits })
+	}
+
+	pub fn get_status_context(&self, access_token: &str, status_id: &str) -> Result<StatusContext> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/context", status_id))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch status context")?
+			.error_for_status()
+			.context("Instance rejected status context request")?;
+		let context: StatusContext = response.json().context("Invalid status context response")?;
+		Ok(context)
 	}
 }
 

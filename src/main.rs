@@ -47,6 +47,7 @@ const ID_VIEW_PROFILE: i32 = 1012;
 const ID_VIEW_USER_TIMELINE: i32 = 1013;
 const ID_OPEN_LINKS: i32 = 1014;
 const ID_VIEW_MENTIONS: i32 = 1015;
+const ID_VIEW_THREAD: i32 = 1016;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -143,6 +144,7 @@ enum UiCommand {
 	ViewProfile,
 	ViewMentions,
 	OpenLinks,
+	ViewThread,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -215,6 +217,7 @@ fn build_menu_bar() -> MenuBar {
 		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
 		.append_item(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post")
 		.append_item(ID_OPEN_LINKS, "Open &Links\tCtrl+Shift+L", "Open links in selected post")
+		.append_item(ID_VIEW_THREAD, "View &Thread\tCtrl+Shift+T", "View conversation thread for selected post")
 		.append_separator()
 		.append_item(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post")
 		.append_item(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post")
@@ -473,7 +476,7 @@ fn handle_ui_command(
 				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
 
-				if !active.entries.is_empty() && !active.loading_more {
+				if !active.entries.is_empty() && !active.loading_more && active.timeline_type.supports_paging() {
 					let threshold = 5;
 					let should_load = match state.config.sort_order {
 						SortOrder::NewestToOldest => index + threshold >= active.entries.len(),
@@ -754,6 +757,41 @@ fn handle_ui_command(
 			if let Some(url) = url_to_open {
 				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
 			}
+		}
+		UiCommand::ViewThread => {
+			let target = {
+				let status = match get_selected_status(state) {
+					Some(s) => s,
+					None => {
+						live_region::announce(live_region, "No post selected");
+						return;
+					}
+				};
+				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+				target.clone()
+			};
+			let name = format!("Thread: {}", target.account.display_name_or_username());
+			let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
+			open_timeline(
+				state,
+				timelines_selector,
+				timeline_list,
+				timeline_type.clone(),
+				suppress_selection,
+				live_region,
+			);
+			if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+				timeline.selected_id = Some(target.id.clone());
+				timeline.selected_index = None;
+			}
+			let handle = match &state.network_handle {
+				Some(h) => h,
+				None => {
+					live_region::announce(live_region, "Network not available");
+					return;
+				}
+			};
+			handle.send(NetworkCommand::FetchThread { timeline_type, focus: target });
 		}
 	}
 }
@@ -1102,6 +1140,21 @@ fn open_timeline(
 	live_region: &StaticText,
 ) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
+		if let Some(index) = state.timeline_manager.index_of(&timeline_type) {
+			state.timeline_manager.set_active(index);
+			with_suppressed_selection(suppress_selection, || {
+				selector.set_selection(index as u32, true);
+			});
+			if let Some(active) = state.timeline_manager.active_mut() {
+				update_active_timeline_ui(
+					timeline_list,
+					active,
+					suppress_selection,
+					state.config.sort_order,
+					state.config.timestamp_format,
+				);
+			}
+		}
 		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
@@ -1111,14 +1164,16 @@ fn open_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(new_index as u32, true);
 	});
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchTimeline {
-			timeline_type: timeline_type.clone(),
-			limit: Some(40),
-			max_id: None,
-		});
+	if !matches!(timeline_type, TimelineType::Thread { .. }) {
+		if let Some(handle) = &state.network_handle {
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type: timeline_type.clone(),
+				limit: Some(40),
+				max_id: None,
+			});
+		}
+		start_streaming_for_timeline(state, &timeline_type);
 	}
-	start_streaming_for_timeline(state, &timeline_type);
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
 	});
@@ -1550,6 +1605,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::OpenLinks);
+			}
+			ID_VIEW_THREAD => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ViewThread);
 			}
 			_ => {}
 		});
