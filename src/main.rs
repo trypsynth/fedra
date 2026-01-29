@@ -249,13 +249,28 @@ fn update_timeline_ui(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 ) {
-	timeline_list.clear();
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
 		SortOrder::OldestToNewest => Box::new(entries.iter().rev()),
 	};
-	for entry in iter {
-		timeline_list.append(&entry.display_text(timestamp_format));
+
+	let count = timeline_list.get_count() as usize;
+	if count == entries.len() {
+		for (i, entry) in iter.enumerate() {
+			let text = entry.display_text(timestamp_format);
+			if let Some(current) = timeline_list.get_string(i as u32) {
+				if current != text {
+					timeline_list.set_string(i as u32, &text);
+				}
+			} else {
+				timeline_list.set_string(i as u32, &text);
+			}
+		}
+	} else {
+		timeline_list.clear();
+		for entry in iter {
+			timeline_list.append(&entry.display_text(timestamp_format));
+		}
 	}
 }
 
@@ -319,7 +334,11 @@ fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline, so
 	timeline.selected_index = Some(selection);
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
-	timeline_list.set_selection(selection as u32, true);
+
+	let current_ui_sel = timeline_list.get_selection().map(|s| s as usize);
+	if current_ui_sel != Some(selection) {
+		timeline_list.set_selection(selection as u32, true);
+	}
 }
 
 fn update_active_timeline_ui(
@@ -478,6 +497,11 @@ fn handle_ui_command(
 					sync_timeline_selection_from_list(active, timeline_list, state.config.sort_order);
 				}
 				state.timeline_manager.set_active(index);
+
+				with_suppressed_selection(suppress_selection, || {
+					timelines_selector.set_selection(index as u32, true);
+				});
+
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
@@ -1171,17 +1195,14 @@ fn process_network_responses(
 								);
 							}
 						}
-					} else {
-						timeline.entries = new_entries;
-						if is_active {
-							update_active_timeline_ui(
-								timeline_list,
-								timeline,
-								suppress_selection,
-								state.config.sort_order,
-								state.config.timestamp_format,
-							);
-						}
+					} else if is_active {
+						update_active_timeline_ui(
+							timeline_list,
+							timeline,
+							suppress_selection,
+							state.config.sort_order,
+							state.config.timestamp_format,
+						);
 					}
 					timeline.loading_more = false;
 				}
