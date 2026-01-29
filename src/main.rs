@@ -100,6 +100,7 @@ pub(crate) struct AppState {
 	pub(crate) boost_menu_item: Option<MenuItem>,
 	pub(crate) new_post_menu_item: Option<MenuItem>,
 	pub(crate) reply_menu_item: Option<MenuItem>,
+	pub(crate) view_profile_menu_item: Option<MenuItem>,
 }
 
 impl AppState {
@@ -116,6 +117,7 @@ impl AppState {
 			boost_menu_item: None,
 			new_post_menu_item: None,
 			reply_menu_item: None,
+			view_profile_menu_item: None,
 		}
 	}
 
@@ -1382,7 +1384,7 @@ fn main() {
 		log_event("app_start");
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
-		let (menu_bar, new_post_item, reply_item, fav_item, boost_item) = build_menu_bar();
+		let (menu_bar, new_post_item, reply_item, fav_item, boost_item, view_profile_item) = build_menu_bar();
 		frame.set_menu_bar(menu_bar);
 		let panel = Panel::builder(&frame).build();
 		// live region
@@ -1437,6 +1439,7 @@ fn main() {
 		state.boost_menu_item = Some(boost_item);
 		state.new_post_menu_item = Some(new_post_item);
 		state.reply_menu_item = Some(reply_item);
+		state.view_profile_menu_item = Some(view_profile_item);
 		update_menu_labels(&state);
 		switch_to_account(
 			&mut state,
@@ -1593,6 +1596,12 @@ fn main() {
 						82 => {
 							// r
 							let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
+							event.skip(false);
+							return;
+						}
+						80 => {
+							// p
+							let _ = ui_tx_list_key.send(UiCommand::ViewProfile);
 							event.skip(false);
 							return;
 						}

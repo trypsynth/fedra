@@ -6,13 +6,16 @@ use crate::{
 	ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
 };
 
-pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem) {
-	let file_menu = Menu::builder()
-		.append_item(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author")
-		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
-		.append_separator()
-		.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings")
-		.build();
+pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem) {
+	let file_menu = Menu::builder().build();
+	let view_profile_item = file_menu
+		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
+		.expect("Failed to append view profile menu item");
+
+	file_menu.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts");
+	file_menu.append_separator();
+	file_menu.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings");
+
 	let post_menu = Menu::builder().build();
 	let new_post_item = post_menu
 		.append(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post", ItemKind::Normal)
@@ -66,7 +69,7 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem) {
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
 		.build();
-	(menu_bar, new_post_item, reply_item, fav_item, boost_item)
+	(menu_bar, new_post_item, reply_item, fav_item, boost_item, view_profile_item)
 }
 
 pub fn update_menu_labels(state: &AppState) {
@@ -103,5 +106,11 @@ pub fn update_menu_labels(state: &AppState) {
 		let shortcut = if state.config.quick_action_keys { "R" } else { "Ctrl+R" };
 		let label = format!("&Reply\t{shortcut}");
 		reply_item.set_label(&label);
+	}
+
+	if let Some(view_profile_item) = &state.view_profile_menu_item {
+		let shortcut = if state.config.quick_action_keys { "P" } else { "Ctrl+P" };
+		let label = format!("View &Profile\t{shortcut}");
+		view_profile_item.set_label(&label);
 	}
 }
