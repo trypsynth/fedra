@@ -7,6 +7,7 @@ use crate::{
 	config::{Account, SortOrder, TimestampFormat},
 	html::Link,
 	mastodon::{Account as MastodonAccount, PollLimits, Status},
+	network::NetworkCommand,
 };
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
@@ -1228,9 +1229,8 @@ impl HashtagDialog {
 
 		let format_tag = |tag: &crate::mastodon::Tag| -> String {
 			let status = if tag.following { " (Following)" } else { "" };
-			format!("#{namespace}{}", tag.name, namespace = status)
+			format!("#{}{}", tag.name, status)
 		};
-
 		for tag in &tags {
 			tag_list.append(&format_tag(tag));
 		}
@@ -1253,7 +1253,6 @@ impl HashtagDialog {
 		dialog.set_sizer(dialog_sizer, true);
 		let tags_rc = Rc::new(RefCell::new(tags));
 		let handle = HashtagDialog { dialog, list: tag_list, action_button, tags: tags_rc.clone() };
-
 		let update_button_state = {
 			let tags = tags_rc.clone();
 			let btn = action_button;
@@ -1275,14 +1274,11 @@ impl HashtagDialog {
 				}
 			}
 		};
-
 		update_button_state();
-
 		let update_on_sel = update_button_state.clone();
 		tag_list.on_selection_changed(move |_| {
 			update_on_sel();
 		});
-
 		let tags_action = tags_rc.clone();
 		let list_action = tag_list;
 		let net_tx_action = net_tx.clone();
@@ -1292,9 +1288,9 @@ impl HashtagDialog {
 				let tags_borrow = tags_action.borrow();
 				if let Some(tag) = tags_borrow.get(index) {
 					let cmd = if tag.following {
-						crate::network::NetworkCommand::UnfollowTag { name: tag.name.clone() }
+						NetworkCommand::UnfollowTag { name: tag.name.clone() }
 					} else {
-						crate::network::NetworkCommand::FollowTag { name: tag.name.clone() }
+						NetworkCommand::FollowTag { name: tag.name.clone() }
 					};
 					let _ = net_tx_action.send(cmd);
 				}
@@ -1330,7 +1326,7 @@ impl HashtagDialog {
 		if let Some(i) = index {
 			let format_tag = |tag: &crate::mastodon::Tag| -> String {
 				let status = if tag.following { " (Following)" } else { "" };
-				format!("#{namespace}{}", tag.name, namespace = status)
+				format!("#{} {}", tag.name, status)
 			};
 			let sel = self.list.get_selection();
 			self.list.clear();
