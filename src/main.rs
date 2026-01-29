@@ -94,6 +94,8 @@ struct AppState {
 	poll_limits: PollLimits,
 	fav_menu_item: Option<MenuItem>,
 	boost_menu_item: Option<MenuItem>,
+	new_post_menu_item: Option<MenuItem>,
+	reply_menu_item: Option<MenuItem>,
 }
 
 impl AppState {
@@ -108,6 +110,8 @@ impl AppState {
 			poll_limits: PollLimits::default(),
 			fav_menu_item: None,
 			boost_menu_item: None,
+			new_post_menu_item: None,
+			reply_menu_item: None,
 		}
 	}
 
@@ -211,22 +215,38 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 	Some(account.clone())
 }
 
-fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
+fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem) {
 	let file_menu = Menu::builder()
 		.append_item(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author")
 		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
 		.append_separator()
 		.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings")
 		.build();
-	let post_menu = Menu::builder()
-		.append_item(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post")
-		.append_item(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users")
-		.append_item(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only")
-		.append_item(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post")
-		.append_item(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post")
-		.append_item(ID_VIEW_THREAD, "View &Thread\tCtrl+Shift+T", "View conversation thread for selected post")
-		.append_separator()
-		.build();
+	let post_menu = Menu::builder().build();
+	let new_post_item = post_menu
+		.append(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post", ItemKind::Normal)
+		.expect("Failed to append new post menu item");
+	let reply_item = post_menu
+		.append(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users", ItemKind::Normal)
+		.expect("Failed to append reply menu item");
+	post_menu
+		.append(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
+		.expect("Failed to append reply author menu item");
+	post_menu
+		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
+		.expect("Failed to append view mentions menu item");
+	post_menu
+		.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal)
+		.expect("Failed to append open links menu item");
+	post_menu
+		.append(
+			ID_VIEW_THREAD,
+			"View &Thread\tCtrl+Shift+T",
+			"View conversation thread for selected post",
+			ItemKind::Normal,
+		)
+		.expect("Failed to append view thread menu item");
+	post_menu.append_separator();
 
 	let fav_item = post_menu
 		.append(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post", ItemKind::Normal)
@@ -234,6 +254,7 @@ fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 	let boost_item = post_menu
 		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
 		.expect("Failed to append boost menu item");
+	post_menu.append_separator();
 
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
@@ -254,7 +275,7 @@ fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem) {
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
 		.build();
-	(menu_bar, fav_item, boost_item)
+	(menu_bar, new_post_item, reply_item, fav_item, boost_item)
 }
 
 fn refresh_timeline(state: &AppState, live_region: &StaticText) {
@@ -544,6 +565,7 @@ fn handle_ui_command(
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
 				quick_action_keys_enabled.set(quick_action_keys);
+				update_menu_labels(state);
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
 				let store = config::ConfigStore::new();
@@ -1268,21 +1290,35 @@ fn update_menu_labels(state: &AppState) {
 	let target = status.and_then(|s| s.reblog.as_ref().map(|r| r.as_ref()).or(Some(s)));
 
 	if let Some(fav_item) = &state.fav_menu_item {
+		let shortcut = if state.config.quick_action_keys { "F" } else { "Ctrl+Shift+F" };
 		let label = if target.map(|t| t.favourited).unwrap_or(false) {
-			"Un&favourite\tCtrl+Shift+F"
+			format!("Un&favourite\t{shortcut}")
 		} else {
-			"&Favourite\tCtrl+Shift+F"
+			format!("&Favourite\t{shortcut}")
 		};
-		fav_item.set_label(label);
+		fav_item.set_label(&label);
 	}
 
 	if let Some(boost_item) = &state.boost_menu_item {
+		let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
 		let label = if target.map(|t| t.reblogged).unwrap_or(false) {
-			"Un&boost\tCtrl+Shift+B"
+			format!("Un&boost\t{shortcut}")
 		} else {
-			"&Boost\tCtrl+Shift+B"
+			format!("&Boost\t{shortcut}")
 		};
-		boost_item.set_label(label);
+		boost_item.set_label(&label);
+	}
+
+	if let Some(new_post_item) = &state.new_post_menu_item {
+		let shortcut = if state.config.quick_action_keys { "C" } else { "Ctrl+N" };
+		let label = format!("&New Post\t{shortcut}");
+		new_post_item.set_label(&label);
+	}
+
+	if let Some(reply_item) = &state.reply_menu_item {
+		let shortcut = if state.config.quick_action_keys { "R" } else { "Ctrl+R" };
+		let label = format!("&Reply\t{shortcut}");
+		reply_item.set_label(&label);
 	}
 }
 
@@ -1442,7 +1478,7 @@ fn main() {
 		log_event("app_start");
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
-		let (menu_bar, fav_item, boost_item) = build_menu_bar();
+		let (menu_bar, new_post_item, reply_item, fav_item, boost_item) = build_menu_bar();
 		frame.set_menu_bar(menu_bar);
 		let panel = Panel::builder(&frame).build();
 		// live region
@@ -1495,6 +1531,9 @@ fn main() {
 		let mut state = AppState::new(config);
 		state.fav_menu_item = Some(fav_item);
 		state.boost_menu_item = Some(boost_item);
+		state.new_post_menu_item = Some(new_post_item);
+		state.reply_menu_item = Some(reply_item);
+		update_menu_labels(&state);
 		switch_to_account(
 			&mut state,
 			&frame,
@@ -1728,7 +1767,6 @@ fn main() {
 
 		let ui_tx_menu = ui_tx.clone();
 		let shutdown_menu = is_shutting_down.clone();
-		let quick_action_keys_menu = quick_action_keys_enabled.clone();
 		frame.on_menu_selected(move |event| match event.get_id() {
 			ID_VIEW_PROFILE => {
 				if shutdown_menu.get() {
@@ -1758,8 +1796,7 @@ fn main() {
 				if shutdown_menu.get() {
 					return;
 				}
-				let reply_all = !quick_action_keys_menu.get();
-				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all });
+				let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: true });
 			}
 			ID_REPLY_AUTHOR => {
 				if shutdown_menu.get() {
