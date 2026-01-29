@@ -53,6 +53,7 @@ pub(crate) const ID_VIEW_MENTIONS: i32 = 1015;
 pub(crate) const ID_VIEW_THREAD: i32 = 1016;
 pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
+pub(crate) const ID_LOAD_MORE: i32 = 1019;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -167,6 +168,7 @@ enum UiCommand {
 	HashtagDialogClosed,
 	OpenLinks,
 	ViewThread,
+	LoadMore,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -342,6 +344,8 @@ fn handle_ui_command(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
+	autoload_enabled: &Cell<bool>,
+	sort_order_cell: &Cell<SortOrder>,
 ) {
 	match cmd {
 		UiCommand::NewPost => {
@@ -442,6 +446,32 @@ fn handle_ui_command(
 		UiCommand::CloseTimeline => {
 			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region);
 		}
+		UiCommand::LoadMore => {
+			if let Some(active) = state.timeline_manager.active_mut()
+				&& !active.entries.is_empty()
+				&& !active.loading_more
+				&& active.timeline_type.supports_paging()
+			{
+				let now = std::time::Instant::now();
+				let can_load = match active.last_load_attempt {
+					Some(last) => now.duration_since(last) > std::time::Duration::from_secs(1),
+					None => true,
+				};
+
+				if can_load && let Some(last) = active.entries.last() {
+					let max_id = last.id().to_string();
+					active.loading_more = true;
+					active.last_load_attempt = Some(now);
+					if let Some(handle) = &state.network_handle {
+						handle.send(NetworkCommand::FetchTimeline {
+							timeline_type: active.timeline_type.clone(),
+							limit: Some(20),
+							max_id: Some(max_id),
+						});
+					}
+				}
+			}
+		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
@@ -465,54 +495,35 @@ fn handle_ui_command(
 				active.selected_index = Some(index);
 				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
-
-				if !active.entries.is_empty() && !active.loading_more && active.timeline_type.supports_paging() {
-					let threshold = 5;
-					let should_load = match state.config.sort_order {
-						SortOrder::NewestToOldest => index + threshold >= active.entries.len(),
-						SortOrder::OldestToNewest => index <= threshold,
-					};
-
-					if should_load {
-						let now = std::time::Instant::now();
-						let can_load = match active.last_load_attempt {
-							Some(last) => now.duration_since(last) > std::time::Duration::from_secs(1),
-							None => true,
-						};
-
-						if can_load && let Some(last) = active.entries.last() {
-							let max_id = last.id().to_string();
-							active.loading_more = true;
-							active.last_load_attempt = Some(now);
-							if let Some(handle) = &state.network_handle {
-								handle.send(NetworkCommand::FetchTimeline {
-									timeline_type: active.timeline_type.clone(),
-									limit: Some(20),
-									max_id: Some(max_id),
-								});
-							}
-						}
-					}
-				}
 			}
 			update_menu_labels(state);
 		}
 		UiCommand::ShowOptions => {
-			if let Some((enter_to_send, always_show_link_dialog, quick_action_keys, sort_order, timestamp_format)) =
-				dialogs::prompt_for_options(
-					frame,
-					state.config.enter_to_send,
-					state.config.always_show_link_dialog,
-					state.config.quick_action_keys,
-					state.config.sort_order,
-					state.config.timestamp_format,
-				) {
+			if let Some((
+				enter_to_send,
+				always_show_link_dialog,
+				quick_action_keys,
+				autoload,
+				sort_order,
+				timestamp_format,
+			)) = dialogs::prompt_for_options(
+				frame,
+				state.config.enter_to_send,
+				state.config.always_show_link_dialog,
+				state.config.quick_action_keys,
+				state.config.autoload,
+				state.config.sort_order,
+				state.config.timestamp_format,
+			) {
 				let needs_refresh =
 					state.config.sort_order != sort_order || state.config.timestamp_format != timestamp_format;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
+				state.config.autoload = autoload;
 				quick_action_keys_enabled.set(quick_action_keys);
+				autoload_enabled.set(autoload);
+				sort_order_cell.set(sort_order);
 				update_menu_labels(state);
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
@@ -552,6 +563,8 @@ fn handle_ui_command(
 							suppress_selection,
 							live_region,
 							quick_action_keys_enabled,
+							autoload_enabled,
+							sort_order_cell,
 						);
 					}
 				}
@@ -565,6 +578,8 @@ fn handle_ui_command(
 						suppress_selection,
 						live_region,
 						quick_action_keys_enabled,
+						autoload_enabled,
+						sort_order_cell,
 					);
 				}
 				dialogs::ManageAccountsResult::Switch(id) => {
@@ -577,6 +592,8 @@ fn handle_ui_command(
 						suppress_selection,
 						live_region,
 						quick_action_keys_enabled,
+						autoload_enabled,
+						sort_order_cell,
 					);
 				}
 				dialogs::ManageAccountsResult::None => {}
@@ -611,6 +628,8 @@ fn handle_ui_command(
 				suppress_selection,
 				live_region,
 				quick_action_keys_enabled,
+				autoload_enabled,
+				sort_order_cell,
 			);
 		}
 		UiCommand::SwitchPrevAccount => {
@@ -634,6 +653,8 @@ fn handle_ui_command(
 				suppress_selection,
 				live_region,
 				quick_action_keys_enabled,
+				autoload_enabled,
+				sort_order_cell,
 			);
 		}
 		UiCommand::SwitchNextTimeline => {
@@ -654,6 +675,8 @@ fn handle_ui_command(
 				suppress_selection,
 				live_region,
 				quick_action_keys_enabled,
+				autoload_enabled,
+				sort_order_cell,
 			);
 		}
 		UiCommand::SwitchPrevTimeline => {
@@ -674,6 +697,8 @@ fn handle_ui_command(
 				suppress_selection,
 				live_region,
 				quick_action_keys_enabled,
+				autoload_enabled,
+				sort_order_cell,
 			);
 		}
 		UiCommand::RemoveAccount(id) => {
@@ -806,6 +831,8 @@ fn handle_ui_command(
 						suppress_selection,
 						live_region,
 						quick_action_keys_enabled,
+						autoload_enabled,
+						sort_order_cell,
 					);
 				}
 			}
@@ -993,6 +1020,8 @@ fn drain_ui_commands(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
+	autoload_enabled: &Cell<bool>,
+	sort_order_cell: &Cell<SortOrder>,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
 		handle_ui_command(
@@ -1004,6 +1033,8 @@ fn drain_ui_commands(
 			suppress_selection,
 			live_region,
 			quick_action_keys_enabled,
+			autoload_enabled,
+			sort_order_cell,
 		);
 	}
 }
@@ -1098,6 +1129,8 @@ fn process_network_responses(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
+	autoload_enabled: &Cell<bool>,
+	sort_order_cell: &Cell<SortOrder>,
 	ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	let handle = match &state.network_handle {
@@ -1171,6 +1204,8 @@ fn process_network_responses(
 					suppress_selection,
 					live_region,
 					quick_action_keys_enabled,
+					autoload_enabled,
+					sort_order_cell,
 				);
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
@@ -1526,6 +1561,8 @@ fn main() {
 		}
 
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
+		let autoload_enabled = Rc::new(Cell::new(config.autoload));
+		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let mut state = AppState::new(config);
 		state.fav_menu_item = Some(fav_item);
 		state.boost_menu_item = Some(boost_item);
@@ -1553,7 +1590,10 @@ fn main() {
 		let mut state = state;
 		let timer_tick = timer.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
+		let autoload_drain = autoload_enabled.clone();
+		let sort_order_drain = sort_order_cell.clone();
 		let ui_tx_timer = ui_tx.clone();
+		let mut last_ui_refresh = std::time::Instant::now();
 		timer_tick.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
@@ -1571,6 +1611,8 @@ fn main() {
 				&suppress_timer,
 				&live_region_timer,
 				&quick_action_keys_drain,
+				&autoload_drain,
+				&sort_order_drain,
 			);
 			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
 			process_network_responses(
@@ -1581,8 +1623,26 @@ fn main() {
 				&suppress_timer,
 				&live_region_timer,
 				&quick_action_keys_drain,
+				&autoload_drain,
+				&sort_order_drain,
 				&ui_tx_timer,
 			);
+
+			if last_ui_refresh.elapsed() >= std::time::Duration::from_secs(60) {
+				if state.config.timestamp_format == TimestampFormat::Relative
+					&& let Some(active) = state.timeline_manager.active_mut()
+				{
+					update_active_timeline_ui(
+						&timeline_list_timer,
+						active,
+						&suppress_timer,
+						state.config.sort_order,
+						state.config.timestamp_format,
+					);
+				}
+				last_ui_refresh = std::time::Instant::now();
+			}
+
 			busy_timer.set(false);
 		});
 		timer.start(100, false);
@@ -1643,6 +1703,8 @@ fn main() {
 		let ui_tx_list_key = ui_tx.clone();
 		let shutdown_list_key = is_shutting_down.clone();
 		let quick_action_keys_list = quick_action_keys_enabled.clone();
+		let autoload_list = autoload_enabled.clone();
+		let sort_order_list = sort_order_cell.clone();
 		timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
 			if shutdown_list_key.get() {
 				return;
@@ -1663,7 +1725,33 @@ fn main() {
 							event.skip(false);
 							return;
 						}
+						46 => {
+							// .
+							let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+							event.skip(false);
+							return;
+						}
 						_ => {}
+					}
+
+					if autoload_list.get() {
+						let sort_order = sort_order_list.get();
+						let selection = timeline_list_state.get_selection().map(|s| s as usize);
+						let count = timeline_list_state.get_count() as usize;
+
+						if let Some(index) = selection {
+							if key == 315 {
+								// Up
+								if sort_order == SortOrder::OldestToNewest && index == 0 {
+									let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+								}
+							} else if key == 317 {
+								// Down
+								if sort_order == SortOrder::NewestToOldest && index + 1 == count {
+									let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+								}
+							}
+						}
 					}
 				}
 
@@ -1888,6 +1976,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::ViewThread);
+			}
+			ID_LOAD_MORE => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::LoadMore);
 			}
 			_ => {}
 		});

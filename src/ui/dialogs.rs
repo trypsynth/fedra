@@ -538,9 +538,10 @@ pub fn prompt_for_options(
 	enter_to_send: bool,
 	always_show_link_dialog: bool,
 	quick_action_keys: bool,
+	autoload: bool,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, bool, SortOrder, TimestampFormat)> {
+) -> Option<(bool, bool, bool, bool, SortOrder, TimestampFormat)> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -550,6 +551,8 @@ pub fn prompt_for_options(
 	link_checkbox.set_value(always_show_link_dialog);
 	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
+	let autoload_checkbox = CheckBox::builder(&panel).with_label("Autoload posts when scrolling").build();
+	autoload_checkbox.set_value(autoload);
 	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
@@ -564,6 +567,7 @@ pub fn prompt_for_options(
 	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&autoload_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_stretch_spacer(1);
@@ -586,6 +590,7 @@ pub fn prompt_for_options(
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
 		quick_action_checkbox.get_value(),
+		autoload_checkbox.get_value(),
 		new_sort,
 		new_timestamp,
 	))

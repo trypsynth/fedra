@@ -289,9 +289,8 @@ fn network_loop(
 			Ok(NetworkCommand::FetchTagsInfo { names }) => {
 				let mut tags = Vec::new();
 				for name in names {
-					match client.get_tag(&access_token, &name) {
-						Ok(tag) => tags.push(tag),
-						Err(_) => {}
+					if let Ok(tag) = client.get_tag(&access_token, &name) {
+						tags.push(tag)
 					}
 				}
 				let result = Ok(tags);
