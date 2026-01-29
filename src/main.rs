@@ -2,13 +2,13 @@
 
 mod auth;
 mod config;
-mod dialogs;
 mod html;
 mod live_region;
 mod mastodon;
 mod network;
 mod streaming;
 mod timeline;
+mod ui;
 
 use std::{
 	backtrace::Backtrace,
@@ -29,25 +29,29 @@ use crate::{
 	mastodon::{MastodonClient, PollLimits, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
 	timeline::{Timeline, TimelineEntry, TimelineManager, TimelineType},
+	ui::{
+		dialogs,
+		menu::{build_menu_bar, update_menu_labels},
+	},
 };
 
-const ID_NEW_POST: i32 = 1001;
-const ID_REPLY: i32 = 1002;
-const ID_FAVOURITE: i32 = 1003;
-const ID_BOOST: i32 = 1004;
-const ID_LOCAL_TIMELINE: i32 = 1005;
-const ID_FEDERATED_TIMELINE: i32 = 1006;
-const ID_CLOSE_TIMELINE: i32 = 1007;
-const ID_REFRESH: i32 = 1008;
-const ID_REPLY_AUTHOR: i32 = 1009;
-const ID_OPTIONS: i32 = 1010;
-const ID_MANAGE_ACCOUNTS: i32 = 1011;
-const ID_VIEW_PROFILE: i32 = 1012;
-const ID_VIEW_USER_TIMELINE: i32 = 1013;
-const ID_OPEN_LINKS: i32 = 1014;
-const ID_VIEW_MENTIONS: i32 = 1015;
-const ID_VIEW_THREAD: i32 = 1016;
-const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
+pub(crate) const ID_NEW_POST: i32 = 1001;
+pub(crate) const ID_REPLY: i32 = 1002;
+pub(crate) const ID_FAVOURITE: i32 = 1003;
+pub(crate) const ID_BOOST: i32 = 1004;
+pub(crate) const ID_LOCAL_TIMELINE: i32 = 1005;
+pub(crate) const ID_FEDERATED_TIMELINE: i32 = 1006;
+pub(crate) const ID_CLOSE_TIMELINE: i32 = 1007;
+pub(crate) const ID_REFRESH: i32 = 1008;
+pub(crate) const ID_REPLY_AUTHOR: i32 = 1009;
+pub(crate) const ID_OPTIONS: i32 = 1010;
+pub(crate) const ID_MANAGE_ACCOUNTS: i32 = 1011;
+pub(crate) const ID_VIEW_PROFILE: i32 = 1012;
+pub(crate) const ID_VIEW_USER_TIMELINE: i32 = 1013;
+pub(crate) const ID_OPEN_LINKS: i32 = 1014;
+pub(crate) const ID_VIEW_MENTIONS: i32 = 1015;
+pub(crate) const ID_VIEW_THREAD: i32 = 1016;
+pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -84,18 +88,18 @@ fn install_panic_hook() {
 	}));
 }
 
-struct AppState {
-	config: Config,
+pub(crate) struct AppState {
+	pub(crate) config: Config,
 	timeline_manager: TimelineManager,
 	network_handle: Option<NetworkHandle>,
 	streaming_url: Option<Url>,
 	access_token: Option<String>,
 	max_post_chars: Option<usize>,
 	poll_limits: PollLimits,
-	fav_menu_item: Option<MenuItem>,
-	boost_menu_item: Option<MenuItem>,
-	new_post_menu_item: Option<MenuItem>,
-	reply_menu_item: Option<MenuItem>,
+	pub(crate) fav_menu_item: Option<MenuItem>,
+	pub(crate) boost_menu_item: Option<MenuItem>,
+	pub(crate) new_post_menu_item: Option<MenuItem>,
+	pub(crate) reply_menu_item: Option<MenuItem>,
 }
 
 impl AppState {
@@ -213,69 +217,6 @@ fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, acc
 	account.client_id = Some(credentials.client_id);
 	account.client_secret = Some(credentials.client_secret);
 	Some(account.clone())
-}
-
-fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem) {
-	let file_menu = Menu::builder()
-		.append_item(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author")
-		.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts")
-		.append_separator()
-		.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings")
-		.build();
-	let post_menu = Menu::builder().build();
-	let new_post_item = post_menu
-		.append(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post", ItemKind::Normal)
-		.expect("Failed to append new post menu item");
-	let reply_item = post_menu
-		.append(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users", ItemKind::Normal)
-		.expect("Failed to append reply menu item");
-	post_menu
-		.append(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
-		.expect("Failed to append reply author menu item");
-	post_menu
-		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
-		.expect("Failed to append view mentions menu item");
-	post_menu
-		.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal)
-		.expect("Failed to append open links menu item");
-	post_menu
-		.append(
-			ID_VIEW_THREAD,
-			"View &Thread\tCtrl+Shift+T",
-			"View conversation thread for selected post",
-			ItemKind::Normal,
-		)
-		.expect("Failed to append view thread menu item");
-	post_menu.append_separator();
-
-	let fav_item = post_menu
-		.append(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post", ItemKind::Normal)
-		.expect("Failed to append favourite menu item");
-	let boost_item = post_menu
-		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
-		.expect("Failed to append boost menu item");
-	post_menu.append_separator();
-
-	let timelines_menu = Menu::builder()
-		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
-		.append_item(
-			ID_OPEN_USER_TIMELINE_BY_INPUT,
-			"Open &Timeline by Username...",
-			"Open timeline for a specific user",
-		)
-		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
-		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
-		.append_separator()
-		.append_item(ID_CLOSE_TIMELINE, "&Close Timeline", "Close current timeline")
-		.append_separator()
-		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
-		.build();
-	let menu_bar = MenuBar::builder()
-		.append(file_menu, "&Options")
-		.append(post_menu, "&Post")
-		.append(timelines_menu, "&Timelines")
-		.build();
-	(menu_bar, new_post_item, reply_item, fav_item, boost_item)
 }
 
 fn refresh_timeline(state: &AppState, live_region: &StaticText) {
@@ -1285,43 +1226,6 @@ where
 	}
 }
 
-fn update_menu_labels(state: &AppState) {
-	let status = get_selected_status(state);
-	let target = status.and_then(|s| s.reblog.as_ref().map(|r| r.as_ref()).or(Some(s)));
-
-	if let Some(fav_item) = &state.fav_menu_item {
-		let shortcut = if state.config.quick_action_keys { "F" } else { "Ctrl+Shift+F" };
-		let label = if target.map(|t| t.favourited).unwrap_or(false) {
-			format!("Un&favourite\t{shortcut}")
-		} else {
-			format!("&Favourite\t{shortcut}")
-		};
-		fav_item.set_label(&label);
-	}
-
-	if let Some(boost_item) = &state.boost_menu_item {
-		let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
-		let label = if target.map(|t| t.reblogged).unwrap_or(false) {
-			format!("Un&boost\t{shortcut}")
-		} else {
-			format!("&Boost\t{shortcut}")
-		};
-		boost_item.set_label(&label);
-	}
-
-	if let Some(new_post_item) = &state.new_post_menu_item {
-		let shortcut = if state.config.quick_action_keys { "C" } else { "Ctrl+N" };
-		let label = format!("&New Post\t{shortcut}");
-		new_post_item.set_label(&label);
-	}
-
-	if let Some(reply_item) = &state.reply_menu_item {
-		let shortcut = if state.config.quick_action_keys { "R" } else { "Ctrl+R" };
-		let label = format!("&Reply\t{shortcut}");
-		reply_item.set_label(&label);
-	}
-}
-
 fn open_timeline(
 	state: &mut AppState,
 	selector: &ListBox,
@@ -1372,7 +1276,7 @@ fn open_timeline(
 	update_menu_labels(state);
 }
 
-fn get_selected_status(state: &AppState) -> Option<&Status> {
+pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
 
