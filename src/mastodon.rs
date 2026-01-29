@@ -47,6 +47,8 @@ pub struct Status {
 	pub in_reply_to_account_id: Option<String>,
 	#[serde(default)]
 	pub mentions: Vec<Mention>,
+	#[serde(default)]
+	pub tags: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,6 +58,15 @@ pub struct Mention {
 	pub username: String,
 	pub acct: String,
 	pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Tag {
+	pub name: String,
+	pub url: String,
+	#[serde(default)]
+	pub following: bool,
 }
 
 impl Status {
@@ -655,6 +666,48 @@ impl MastodonClient {
 			.context("Instance rejected status context request")?;
 		let context: StatusContext = response.json().context("Invalid status context response")?;
 		Ok(context)
+	}
+
+	pub fn follow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
+		let url = self.base_url.join(&format!("api/v1/tags/{}/follow", tag_name))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to follow tag")?
+			.error_for_status()
+			.context("Instance rejected tag follow request")?;
+		let tag: Tag = response.json().context("Invalid tag response")?;
+		Ok(tag)
+	}
+
+	pub fn unfollow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
+		let url = self.base_url.join(&format!("api/v1/tags/{}/unfollow", tag_name))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unfollow tag")?
+			.error_for_status()
+			.context("Instance rejected tag unfollow request")?;
+		let tag: Tag = response.json().context("Invalid tag response")?;
+		Ok(tag)
+	}
+
+	pub fn get_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
+		let url = self.base_url.join(&format!("api/v1/tags/{}", tag_name))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch tag info")?
+			.error_for_status()
+			.context("Instance rejected tag info request")?;
+		let tag: Tag = response.json().context("Invalid tag response")?;
+		Ok(tag)
 	}
 }
 

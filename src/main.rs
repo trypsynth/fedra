@@ -52,6 +52,7 @@ pub(crate) const ID_OPEN_LINKS: i32 = 1014;
 pub(crate) const ID_VIEW_MENTIONS: i32 = 1015;
 pub(crate) const ID_VIEW_THREAD: i32 = 1016;
 pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
+pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
 const KEY_DELETE: i32 = 127;
 
 fn log_path() -> PathBuf {
@@ -101,6 +102,7 @@ pub(crate) struct AppState {
 	pub(crate) new_post_menu_item: Option<MenuItem>,
 	pub(crate) reply_menu_item: Option<MenuItem>,
 	pub(crate) view_profile_menu_item: Option<MenuItem>,
+	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 }
 
 impl AppState {
@@ -118,6 +120,7 @@ impl AppState {
 			new_post_menu_item: None,
 			reply_menu_item: None,
 			view_profile_menu_item: None,
+			hashtag_dialog: None,
 		}
 	}
 
@@ -160,6 +163,8 @@ enum UiCommand {
 	RemoveAccount(String),
 	ViewProfile,
 	ViewMentions,
+	ViewHashtags,
+	HashtagDialogClosed,
 	OpenLinks,
 	ViewThread,
 }
@@ -702,15 +707,17 @@ fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewProfile => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
+			let entry = match get_selected_entry(state) {
+				Some(e) => e,
 				None => {
-					live_region::announce(live_region, "No post selected");
+					live_region::announce(live_region, "No item selected");
 					return;
 				}
 			};
-			// Use the boosted status's account if this is a boost
-			let account = status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account);
+			let account = match entry {
+				TimelineEntry::Status(status) => status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account),
+				TimelineEntry::Notification(notification) => &notification.account,
+			};
 			if dialogs::show_profile(frame, account) {
 				let timeline_type =
 					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
@@ -718,14 +725,17 @@ fn handle_ui_command(
 			}
 		}
 		UiCommand::OpenUserTimeline => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
+			let entry = match get_selected_entry(state) {
+				Some(e) => e,
 				None => {
-					live_region::announce(live_region, "No post selected");
+					live_region::announce(live_region, "No item selected");
 					return;
 				}
 			};
-			let account = status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account);
+			let account = match entry {
+				TimelineEntry::Status(status) => status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account),
+				TimelineEntry::Notification(notification) => &notification.account,
+			};
 			let timeline_type =
 				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
@@ -799,6 +809,29 @@ fn handle_ui_command(
 					);
 				}
 			}
+		}
+		UiCommand::ViewHashtags => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if target.tags.is_empty() {
+				live_region::announce(live_region, "No hashtags in this post");
+				return;
+			}
+			let names: Vec<String> = target.tags.iter().map(|t| t.name.clone()).collect();
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchTagsInfo { names });
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::HashtagDialogClosed => {
+			state.hashtag_dialog = None;
 		}
 		UiCommand::OpenLinks => {
 			let status = match get_selected_status(state) {
@@ -1065,6 +1098,7 @@ fn process_network_responses(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
+	ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	let handle = match &state.network_handle {
 		Some(h) => h,
@@ -1201,6 +1235,40 @@ fn process_network_responses(
 			NetworkResponse::Replied(Err(ref err)) => {
 				live_region::announce(live_region, &format!("Failed to reply: {}", err));
 			}
+			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
+				update_tag_in_timelines(state, &name, true);
+				if let Some(dlg) = &state.hashtag_dialog {
+					dlg.update_tag(&name, true);
+				}
+				live_region::announce(live_region, &format!("Followed #{}", name));
+			}
+			NetworkResponse::TagFollowed { name, result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to follow #{}: {}", name, err));
+			}
+			NetworkResponse::TagUnfollowed { name, result: Ok(_) } => {
+				update_tag_in_timelines(state, &name, false);
+				if let Some(dlg) = &state.hashtag_dialog {
+					dlg.update_tag(&name, false);
+				}
+				live_region::announce(live_region, &format!("Unfollowed #{}", name));
+			}
+			NetworkResponse::TagUnfollowed { name, result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to unfollow #{}: {}", name, err));
+			}
+			NetworkResponse::TagsInfoFetched { result: Ok(tags) } => {
+				if let Some(handle) = &state.network_handle {
+					let net_tx = handle.command_tx.clone();
+					let ui_tx_dlg = ui_tx.clone();
+					let dlg = dialogs::HashtagDialog::new(frame, tags, net_tx, move || {
+						let _ = ui_tx_dlg.send(UiCommand::HashtagDialogClosed);
+					});
+					dlg.show();
+					state.hashtag_dialog = Some(dlg);
+				}
+			}
+			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to load hashtags: {}", err));
+			}
 		}
 	}
 	let _ = frame;
@@ -1222,6 +1290,26 @@ where
 					&& reblog.id == status_id
 				{
 					updater(reblog);
+				}
+			}
+		}
+	}
+}
+
+fn update_tag_in_timelines(state: &mut AppState, tag_name: &str, following: bool) {
+	for timeline in state.timeline_manager.iter_mut() {
+		for entry in &mut timeline.entries {
+			if let Some(status) = entry.as_status_mut() {
+				let check_status = |s: &mut Status| {
+					for tag in &mut s.tags {
+						if tag.name.eq_ignore_ascii_case(tag_name) {
+							tag.following = following;
+						}
+					}
+				};
+				check_status(status);
+				if let Some(ref mut reblog) = status.reblog {
+					check_status(reblog);
 				}
 			}
 		}
@@ -1278,7 +1366,7 @@ fn open_timeline(
 	update_menu_labels(state);
 }
 
-pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
+pub(crate) fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
 
@@ -1287,7 +1375,11 @@ pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
 		crate::config::SortOrder::OldestToNewest => timeline.entries.len().checked_sub(1)?.checked_sub(index)?,
 	};
 
-	timeline.entries.get(final_index)?.as_status()
+	timeline.entries.get(final_index)
+}
+
+pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
+	get_selected_entry(state)?.as_status()
 }
 
 fn do_favourite(state: &AppState, live_region: &StaticText) {
@@ -1461,6 +1553,7 @@ fn main() {
 		let mut state = state;
 		let timer_tick = timer.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
+		let ui_tx_timer = ui_tx.clone();
 		timer_tick.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
@@ -1488,6 +1581,7 @@ fn main() {
 				&suppress_timer,
 				&live_region_timer,
 				&quick_action_keys_drain,
+				&ui_tx_timer,
 			);
 			busy_timer.set(false);
 		});
@@ -1602,6 +1696,12 @@ fn main() {
 						80 => {
 							// p
 							let _ = ui_tx_list_key.send(UiCommand::ViewProfile);
+							event.skip(false);
+							return;
+						}
+						72 => {
+							// h
+							let _ = ui_tx_list_key.send(UiCommand::ViewHashtags);
 							event.skip(false);
 							return;
 						}
@@ -1770,6 +1870,12 @@ fn main() {
 					return;
 				}
 				let _ = ui_tx_menu.send(UiCommand::ViewMentions);
+			}
+			ID_VIEW_HASHTAGS => {
+				if shutdown_menu.get() {
+					return;
+				}
+				let _ = ui_tx_menu.send(UiCommand::ViewHashtags);
 			}
 			ID_OPEN_LINKS => {
 				if shutdown_menu.get() {

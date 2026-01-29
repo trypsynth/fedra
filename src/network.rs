@@ -55,6 +55,15 @@ pub enum NetworkCommand {
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
 	},
+	FollowTag {
+		name: String,
+	},
+	UnfollowTag {
+		name: String,
+	},
+	FetchTagsInfo {
+		names: Vec<String>,
+	},
 	Shutdown,
 }
 
@@ -81,6 +90,9 @@ pub enum NetworkResponse {
 	Boosted { status_id: String, result: Result<Status> },
 	Unboosted { status_id: String, result: Result<Status> },
 	Replied(Result<()>),
+	TagFollowed { name: String, result: Result<crate::mastodon::Tag> },
+	TagUnfollowed { name: String, result: Result<crate::mastodon::Tag> },
+	TagsInfoFetched { result: Result<Vec<crate::mastodon::Tag>> },
 }
 
 #[derive(Debug)]
@@ -127,7 +139,7 @@ fn post_with_media(
 }
 
 pub struct NetworkHandle {
-	command_tx: Sender<NetworkCommand>,
+	pub command_tx: Sender<NetworkCommand>,
 	response_rx: Receiver<NetworkResponse>,
 	_thread: JoinHandle<()>,
 }
@@ -265,6 +277,25 @@ fn network_loop(
 					Some(&in_reply_to_id),
 				);
 				let _ = responses.send(NetworkResponse::Replied(result));
+			}
+			Ok(NetworkCommand::FollowTag { name }) => {
+				let result = client.follow_tag(&access_token, &name);
+				let _ = responses.send(NetworkResponse::TagFollowed { name, result });
+			}
+			Ok(NetworkCommand::UnfollowTag { name }) => {
+				let result = client.unfollow_tag(&access_token, &name);
+				let _ = responses.send(NetworkResponse::TagUnfollowed { name, result });
+			}
+			Ok(NetworkCommand::FetchTagsInfo { names }) => {
+				let mut tags = Vec::new();
+				for name in names {
+					match client.get_tag(&access_token, &name) {
+						Ok(tag) => tags.push(tag),
+						Err(_) => {}
+					}
+				}
+				let result = Ok(tags);
+				let _ = responses.send(NetworkResponse::TagsInfoFetched { result });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

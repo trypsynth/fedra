@@ -3,7 +3,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_FAVOURITE, ID_FEDERATED_TIMELINE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS,
 	ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR,
-	ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
+	ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
 };
 
 pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem) {
@@ -12,9 +12,9 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
 		.expect("Failed to append view profile menu item");
 
-	file_menu.append_item(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts");
+	file_menu.append(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts", ItemKind::Normal);
 	file_menu.append_separator();
-	file_menu.append_item(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings");
+	file_menu.append(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings", ItemKind::Normal);
 
 	let post_menu = Menu::builder().build();
 	let new_post_item = post_menu
@@ -29,6 +29,9 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 	post_menu
 		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
 		.expect("Failed to append view mentions menu item");
+	post_menu
+		.append(ID_VIEW_HASHTAGS, "View &Hashtags\tCtrl+H", "View hashtags in selected post", ItemKind::Normal)
+		.expect("Failed to append view hashtags menu item");
 	post_menu
 		.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal)
 		.expect("Failed to append open links menu item");

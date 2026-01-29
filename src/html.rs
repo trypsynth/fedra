@@ -114,7 +114,7 @@ pub fn extract_links(html: &str) -> Vec<Link> {
 		if let Some(href) = element.value().attr("href") {
 			if let Some(class) = element.value().attr("class") {
 				let classes: Vec<&str> = class.split_whitespace().collect();
-				if classes.contains(&"mention") && !classes.contains(&"hashtag") {
+				if classes.contains(&"mention") || classes.contains(&"hashtag") {
 					continue;
 				}
 			}

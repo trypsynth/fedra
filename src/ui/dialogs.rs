@@ -1201,3 +1201,152 @@ pub fn prompt_for_mentions(frame: &Frame, mentions: &[crate::mastodon::Mention])
 	}
 	mention_list.get_selection().and_then(|sel| mentions.get(sel as usize).cloned())
 }
+
+#[derive(Clone)]
+pub struct HashtagDialog {
+	dialog: Dialog,
+	list: ListBox,
+	action_button: Button,
+	tags: Rc<RefCell<Vec<crate::mastodon::Tag>>>,
+}
+
+impl HashtagDialog {
+	pub fn new<F>(
+		frame: &Frame,
+		tags: Vec<crate::mastodon::Tag>,
+		net_tx: std::sync::mpsc::Sender<crate::network::NetworkCommand>,
+		on_close: F,
+	) -> Self
+	where
+		F: Fn() + 'static + Clone,
+	{
+		let dialog = Dialog::builder(frame, "Hashtags").with_size(500, 300).build();
+		let panel = Panel::builder(&dialog).build();
+		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		let list_label = StaticText::builder(&panel).with_label("Hashtags in post:").build();
+		let tag_list = ListBox::builder(&panel).build();
+
+		let format_tag = |tag: &crate::mastodon::Tag| -> String {
+			let status = if tag.following { " (Following)" } else { "" };
+			format!("#{namespace}{}", tag.name, namespace = status)
+		};
+
+		for tag in &tags {
+			tag_list.append(&format_tag(tag));
+		}
+		if !tags.is_empty() {
+			tag_list.set_selection(0, true);
+		}
+		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+		let action_button = Button::builder(&panel).with_label("Follow").build();
+		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+		close_button.set_default();
+		button_sizer.add(&action_button, 0, SizerFlag::Right, 8);
+		button_sizer.add_stretch_spacer(1);
+		button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+		main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+		main_sizer.add(&tag_list, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+		main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+		panel.set_sizer(main_sizer, true);
+		let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+		dialog.set_sizer(dialog_sizer, true);
+		let tags_rc = Rc::new(RefCell::new(tags));
+		let handle = HashtagDialog { dialog, list: tag_list, action_button, tags: tags_rc.clone() };
+
+		let update_button_state = {
+			let tags = tags_rc.clone();
+			let btn = action_button;
+			let list = tag_list;
+			move || {
+				if let Some(sel) = list.get_selection() {
+					if let Some(tag) = tags.borrow().get(sel as usize) {
+						btn.enable(true);
+						if tag.following {
+							btn.set_label("Unfollow");
+						} else {
+							btn.set_label("Follow");
+						}
+					} else {
+						btn.enable(false);
+					}
+				} else {
+					btn.enable(false);
+				}
+			}
+		};
+
+		update_button_state();
+
+		let update_on_sel = update_button_state.clone();
+		tag_list.on_selection_changed(move |_| {
+			update_on_sel();
+		});
+
+		let tags_action = tags_rc.clone();
+		let list_action = tag_list;
+		let net_tx_action = net_tx.clone();
+		action_button.on_click(move |_| {
+			if let Some(sel) = list_action.get_selection() {
+				let index = sel as usize;
+				let tags_borrow = tags_action.borrow();
+				if let Some(tag) = tags_borrow.get(index) {
+					let cmd = if tag.following {
+						crate::network::NetworkCommand::UnfollowTag { name: tag.name.clone() }
+					} else {
+						crate::network::NetworkCommand::FollowTag { name: tag.name.clone() }
+					};
+					let _ = net_tx_action.send(cmd);
+				}
+			}
+		});
+
+		let dlg = dialog;
+		close_button.on_click(move |_| {
+			dlg.close(true);
+		});
+
+		let on_close_win = on_close.clone();
+		dialog.on_close(move |_| {
+			on_close_win();
+		});
+		handle
+	}
+
+	pub fn show(&self) {
+		self.dialog.show(true);
+	}
+
+	pub fn update_tag(&self, name: &str, following: bool) {
+		let mut tags = self.tags.borrow_mut();
+		let mut index = None;
+		for (i, tag) in tags.iter_mut().enumerate() {
+			if tag.name.eq_ignore_ascii_case(name) {
+				tag.following = following;
+				index = Some(i);
+			}
+		}
+
+		if let Some(i) = index {
+			let format_tag = |tag: &crate::mastodon::Tag| -> String {
+				let status = if tag.following { " (Following)" } else { "" };
+				format!("#{namespace}{}", tag.name, namespace = status)
+			};
+			let sel = self.list.get_selection();
+			self.list.clear();
+			for t in tags.iter() {
+				self.list.append(&format_tag(t));
+			}
+			if let Some(s) = sel {
+				self.list.set_selection(s, true);
+			}
+			if sel == Some(i as u32) {
+				if following {
+					self.action_button.set_label("Unfollow");
+				} else {
+					self.action_button.set_label("Follow");
+				}
+			}
+		}
+	}
+}
