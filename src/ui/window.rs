@@ -141,6 +141,19 @@ pub fn bind_input_handlers(
 			return;
 		}
 		if let Some(key) = event.get_key_code() {
+			if key == 13 {
+				// Enter
+				if event.shift_down() {
+					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
+					event.skip(false);
+					return;
+				}
+				if !event.control_down() && !event.alt_down() {
+					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
+					event.skip(false);
+					return;
+				}
+			}
 			// Navigation keys (always active)
 			if !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
@@ -251,6 +264,12 @@ pub fn bind_input_handlers(
 					93 => {
 						// ]
 						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
+						event.skip(false);
+						return;
+					}
+					85 => {
+						// u
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimeline);
 						event.skip(false);
 						return;
 					}

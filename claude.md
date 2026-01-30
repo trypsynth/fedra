@@ -162,9 +162,10 @@ Configured in `rustfmt.toml`:
 | Ctrl+Shift+F | Favourite/Unfavourite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
 | Ctrl+P | View profile of selected post's author |
-| Ctrl+T | Open timeline of selected post's author |
+| Ctrl+U | Open timeline of selected post's author |
 | Ctrl+L | Open Local Timeline |
-| Ctrl+Shift+T | View thread timeline for selected post |
+| Enter | View thread timeline for selected post |
+| Shift+Enter | Open links in selected post |
 | Ctrl+O | Open Options dialog |
 | Ctrl+Alt+F | Toggle show/hide window (global hotkey) |
 | F5 | Refresh current timeline |

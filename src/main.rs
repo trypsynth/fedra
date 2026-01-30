@@ -917,6 +917,7 @@ fn handle_ui_command(
 				dialogs::prompt_for_link_selection(frame, &links)
 			};
 			if let Some(url) = url_to_open {
+				live_region::announce(live_region, "Opening link");
 				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
 			}
 		}
