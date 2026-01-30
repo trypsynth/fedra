@@ -192,19 +192,21 @@ fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle>
 
 fn toggle_window_visibility(frame: &Frame, tray_hidden: &Cell<bool>) {
 	let is_shown = frame.is_shown();
-	if is_shown {
-		tray_hidden.set(false);
-		if is_window_active(frame) {
-			frame.show(false);
-			tray_hidden.set(true);
-		} else {
-			frame.raise();
-			frame.set_focus();
+	if is_shown && is_window_active(frame) {
+		frame.show(false);
+		tray_hidden.set(true);
+		return;
+	}
+	if is_shown && !is_window_active(frame) {
+		if frame.is_iconized() {
+			frame.iconize(false);
 		}
-	} else {
+		frame.raise();
+		return;
+	}
+	if !is_shown {
 		frame.show(true);
 		frame.raise();
-		frame.set_focus();
 		tray_hidden.set(false);
 	}
 }
