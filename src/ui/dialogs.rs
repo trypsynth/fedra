@@ -947,6 +947,57 @@ pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> 
 	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
 }
 
+#[derive(Clone, Copy)]
+pub enum UserLookupAction {
+	Profile,
+	Timeline,
+}
+
+pub fn prompt_for_user_lookup(frame: &Frame) -> Option<(String, UserLookupAction)> {
+	const ID_VIEW_TIMELINE: i32 = 10040;
+	let dialog = Dialog::builder(frame, "Open User").with_size(420, 180).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let prompt_label = StaticText::builder(&panel).with_label("Username:").build();
+	let input = TextCtrl::builder(&panel).build();
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let profile_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Profile").build();
+	let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+	profile_button.set_default();
+	button_sizer.add(&profile_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&prompt_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+
+	let dialog_timeline = dialog;
+	timeline_button.on_click(move |_| {
+		dialog_timeline.end_modal(ID_VIEW_TIMELINE);
+	});
+
+	dialog.centre();
+	let result = dialog.show_modal();
+	if result == ID_CANCEL {
+		return None;
+	}
+	let value = input.get_value();
+	let trimmed = value.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
+	Some((trimmed.to_string(), action))
+}
+
 pub fn show_error(frame: &Frame, err: &anyhow::Error) {
 	let dialog = MessageDialog::builder(frame, &err.to_string(), "Fedra")
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)

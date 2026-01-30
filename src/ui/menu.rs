@@ -51,11 +51,7 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
-		.append_item(
-			ID_OPEN_USER_TIMELINE_BY_INPUT,
-			"Open &Timeline by Username...\tCtrl+U",
-			"Open timeline for a specific user",
-		)
+		.append_item(ID_OPEN_USER_TIMELINE_BY_INPUT, "Open &User...\tCtrl+U", "Open a user by username")
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_separator()

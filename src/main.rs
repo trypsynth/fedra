@@ -74,6 +74,7 @@ pub(crate) struct AppState {
 	pub(crate) reply_menu_item: Option<MenuItem>,
 	pub(crate) view_profile_menu_item: Option<MenuItem>,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
+	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
 }
 
@@ -93,6 +94,7 @@ impl AppState {
 			reply_menu_item: None,
 			view_profile_menu_item: None,
 			hashtag_dialog: None,
+			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
 		}
 	}
@@ -805,11 +807,10 @@ fn handle_ui_command(
 			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
 		}
 		UiCommand::OpenUserTimelineByInput => {
-			if let Some(input) =
-				dialogs::prompt_text(frame, "Enter username (e.g. @user@domain):", "Open Timeline by Username")
-			{
+			if let Some((input, action)) = dialogs::prompt_for_user_lookup(frame) {
 				let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
 				if let Some(network) = &state.network_handle {
+					state.pending_user_lookup_action = Some(action);
 					network.send(NetworkCommand::LookupAccount { handle });
 				} else {
 					live_region::announce(live_region, "Network not available");
@@ -1249,23 +1250,52 @@ fn process_network_responses(
 				live_region::announce(live_region, &format!("Failed to load timeline: {}", err));
 			}
 			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
-				let timeline_type =
-					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				handle_ui_command(
-					UiCommand::OpenTimeline(timeline_type),
-					state,
-					frame,
-					timelines_selector,
-					timeline_list,
-					suppress_selection,
-					live_region,
-					quick_action_keys_enabled,
-					autoload_enabled,
-					sort_order_cell,
-					tray_hidden,
-				);
+				let action = state.pending_user_lookup_action.take().unwrap_or(dialogs::UserLookupAction::Timeline);
+				match action {
+					dialogs::UserLookupAction::Profile => {
+						if dialogs::show_profile(frame, &account) {
+							let timeline_type = TimelineType::User {
+								id: account.id.clone(),
+								name: account.display_name_or_username().to_string(),
+							};
+							handle_ui_command(
+								UiCommand::OpenTimeline(timeline_type),
+								state,
+								frame,
+								timelines_selector,
+								timeline_list,
+								suppress_selection,
+								live_region,
+								quick_action_keys_enabled,
+								autoload_enabled,
+								sort_order_cell,
+								tray_hidden,
+							);
+						}
+					}
+					dialogs::UserLookupAction::Timeline => {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						handle_ui_command(
+							UiCommand::OpenTimeline(timeline_type),
+							state,
+							frame,
+							timelines_selector,
+							timeline_list,
+							suppress_selection,
+							live_region,
+							quick_action_keys_enabled,
+							autoload_enabled,
+							sort_order_cell,
+							tray_hidden,
+						);
+					}
+				}
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
+				state.pending_user_lookup_action = None;
 				live_region::announce(live_region, &format!("Failed to find user {}: {}", handle, err));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
