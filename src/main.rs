@@ -415,9 +415,12 @@ fn handle_ui_command(
 					sync_timeline_selection_from_list(active, timeline_list, state.config.sort_order);
 				}
 				state.timeline_manager.set_active(index);
-				with_suppressed_selection(suppress_selection, || {
-					timelines_selector.set_selection(index as u32, true);
-				});
+				let current_selection = timelines_selector.get_selection().map(|s| s as usize);
+				if current_selection != Some(index) {
+					with_suppressed_selection(suppress_selection, || {
+						timelines_selector.set_selection(index as u32, true);
+					});
+				}
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
