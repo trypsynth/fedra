@@ -10,13 +10,7 @@ mod streaming;
 mod timeline;
 mod ui;
 
-use std::{
-	cell::{Cell, RefCell},
-	collections::HashSet,
-	rc::Rc,
-	sync::mpsc,
-	thread,
-};
+use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -27,7 +21,7 @@ use crate::{
 	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
 	timeline::{TimelineEntry, TimelineManager, TimelineType},
 	ui::{
-		dialogs,
+		app_shell, dialogs,
 		menu::update_menu_labels,
 		timeline_view::{
 			list_index_to_entry_index, sync_timeline_selection_from_list, update_active_timeline_ui,
@@ -147,90 +141,7 @@ pub(crate) enum UiCommand {
 	ToggleWindowVisibility,
 }
 
-#[cfg(target_os = "windows")]
-struct HotkeyHandle {
-	thread_id: u32,
-	join_handle: std::thread::JoinHandle<()>,
-}
-
-#[cfg(target_os = "windows")]
-fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle> {
-	use windows::Win32::{
-		System::Threading::GetCurrentThreadId,
-		UI::{
-			Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, RegisterHotKey, UnregisterHotKey},
-			WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY},
-		},
-	};
-
-	const HOTKEY_ID: i32 = 1;
-	const HOTKEY_VK: u32 = 0x46; // 'F'
-	let (thread_id_tx, thread_id_rx) = mpsc::channel();
-	let join_handle = thread::spawn(move || {
-		let thread_id = unsafe { GetCurrentThreadId() };
-		let _ = thread_id_tx.send(thread_id);
-		let modifiers = MOD_CONTROL | MOD_ALT;
-		let registered = unsafe { RegisterHotKey(None, HOTKEY_ID, modifiers, HOTKEY_VK).is_ok() };
-		if !registered {
-			return;
-		}
-		let mut msg = MSG::default();
-		loop {
-			let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
-			if result.0 <= 0 {
-				break;
-			}
-			if msg.message == WM_HOTKEY {
-				let _ = ui_tx.send(UiCommand::ToggleWindowVisibility);
-			}
-		}
-		unsafe {
-			let _ = UnregisterHotKey(None, HOTKEY_ID);
-		}
-	});
-	let thread_id = thread_id_rx.recv().ok()?;
-	Some(HotkeyHandle { thread_id, join_handle })
-}
-
-fn toggle_window_visibility(frame: &Frame, tray_hidden: &Cell<bool>) {
-	let is_shown = frame.is_shown();
-	if is_shown && is_window_active(frame) {
-		frame.show(false);
-		tray_hidden.set(true);
-		return;
-	}
-	if is_shown && !is_window_active(frame) {
-		if frame.is_iconized() {
-			frame.iconize(false);
-		}
-		frame.raise();
-		return;
-	}
-	if !is_shown {
-		frame.show(true);
-		frame.raise();
-		tray_hidden.set(false);
-	}
-}
-
-fn is_window_active(frame: &Frame) -> bool {
-	#[cfg(target_os = "windows")]
-	{
-		use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
-
-		let handle = frame.get_handle();
-		if handle.is_null() {
-			return frame.has_focus();
-		}
-		let frame_hwnd = HWND(handle);
-		let foreground = unsafe { GetForegroundWindow() };
-		foreground == frame_hwnd
-	}
-	#[cfg(not(target_os = "windows"))]
-	{
-		frame.has_focus()
-	}
-}
+// Window visibility helpers live in ui::app_shell.
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
 	let instance_url = dialogs::prompt_for_instance(frame)?;
@@ -490,7 +401,7 @@ fn handle_ui_command(
 			timeline_list.set_string(list_index as u32, &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
-			toggle_window_visibility(frame, tray_hidden);
+			app_shell::toggle_window_visibility(frame, tray_hidden);
 		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
@@ -1649,40 +1560,7 @@ fn main() {
 			&live_region_label,
 			false,
 		);
-		let mut tray_menu = Menu::builder()
-			.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
-			.append_separator()
-			.append_item(ID_TRAY_EXIT, "Exit", "Exit Fedra")
-			.build();
-		let taskbar = TaskBarIcon::builder().with_icon_type(TaskBarIconType::CustomStatusItem).build();
-		taskbar.set_popup_menu(&mut tray_menu);
-
-		let tray_icon = ArtProvider::get_bitmap(ArtId::Information, ArtClient::Menu, Some(Size::new(16, 16)));
-		if let Some(icon) = tray_icon {
-			let _ = taskbar.set_icon(&icon, "Fedra");
-		} else if let Some(fallback) = Bitmap::new(16, 16) {
-			let _ = taskbar.set_icon(&fallback, "Fedra");
-		}
-
-		let ui_tx_tray = ui_tx.clone();
-		let frame_tray = frame;
-		taskbar.on_menu(move |event| match event.get_id() {
-			ID_TRAY_TOGGLE => {
-				let _ = ui_tx_tray.send(UiCommand::ToggleWindowVisibility);
-			}
-			ID_TRAY_EXIT => {
-				frame_tray.close(true);
-			}
-			_ => {}
-		});
-
-		let ui_tx_tray_dbl = ui_tx.clone();
-		taskbar.on_left_double_click(move |_| {
-			let _ = ui_tx_tray_dbl.send(UiCommand::ToggleWindowVisibility);
-		});
-
-		#[cfg(target_os = "windows")]
-		let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx.clone())));
+		let app_shell = app_shell::install_app_shell(&frame, ui_tx.clone());
 		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
@@ -1765,27 +1643,7 @@ fn main() {
 			sort_order_cell.clone(),
 			timer.clone(),
 		);
-		let mut tray_menu_cleanup = tray_menu;
-		let taskbar_cleanup = taskbar;
-		#[cfg(target_os = "windows")]
-		let hotkey_handle_destroy = hotkey_handle.clone();
-		frame.on_destroy(move |_| {
-			tray_menu_cleanup.destroy_menu();
-			taskbar_cleanup.destroy();
-			#[cfg(target_os = "windows")]
-			if let Some(handle) = hotkey_handle_destroy.borrow_mut().take() {
-				use windows::Win32::{
-					Foundation::{LPARAM, WPARAM},
-					UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
-				};
-				if handle.thread_id != 0 {
-					unsafe {
-						let _ = PostThreadMessageW(handle.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-					}
-				}
-				let _ = handle.join_handle.join();
-			}
-		});
+		app_shell.attach_destroy(&frame);
 		frame.show(true);
 		frame.centre();
 	});
