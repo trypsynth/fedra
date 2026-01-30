@@ -66,7 +66,10 @@ pub(crate) struct AppState {
 	pub(crate) boost_menu_item: Option<MenuItem>,
 	pub(crate) new_post_menu_item: Option<MenuItem>,
 	pub(crate) reply_menu_item: Option<MenuItem>,
+	pub(crate) reply_author_menu_item: Option<MenuItem>,
 	pub(crate) view_profile_menu_item: Option<MenuItem>,
+	pub(crate) view_hashtags_menu_item: Option<MenuItem>,
+	pub(crate) view_mentions_menu_item: Option<MenuItem>,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
@@ -86,7 +89,10 @@ impl AppState {
 			boost_menu_item: None,
 			new_post_menu_item: None,
 			reply_menu_item: None,
+			reply_author_menu_item: None,
 			view_profile_menu_item: None,
+			view_hashtags_menu_item: None,
+			view_mentions_menu_item: None,
 			hashtag_dialog: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
@@ -1515,9 +1521,12 @@ fn main() {
 		let live_region_label = window_parts.live_region_label;
 		let new_post_item = window_parts.new_post_item;
 		let reply_item = window_parts.reply_item;
+		let reply_author_item = window_parts.reply_author_item;
 		let fav_item = window_parts.fav_item;
 		let boost_item = window_parts.boost_item;
 		let view_profile_item = window_parts.view_profile_item;
+		let view_hashtags_item = window_parts.view_hashtags_item;
+		let view_mentions_item = window_parts.view_mentions_item;
 
 		let (ui_tx, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
@@ -1549,7 +1558,10 @@ fn main() {
 		state.boost_menu_item = Some(boost_item);
 		state.new_post_menu_item = Some(new_post_item);
 		state.reply_menu_item = Some(reply_item);
+		state.reply_author_menu_item = Some(reply_author_item);
 		state.view_profile_menu_item = Some(view_profile_item);
+		state.view_hashtags_menu_item = Some(view_hashtags_item);
+		state.view_mentions_menu_item = Some(view_mentions_item);
 		update_menu_labels(&state);
 		switch_to_account(
 			&mut state,

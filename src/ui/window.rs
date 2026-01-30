@@ -16,15 +16,28 @@ pub struct WindowParts {
 	pub live_region_label: StaticText,
 	pub new_post_item: MenuItem,
 	pub reply_item: MenuItem,
+	pub reply_author_item: MenuItem,
 	pub fav_item: MenuItem,
 	pub boost_item: MenuItem,
 	pub view_profile_item: MenuItem,
+	pub view_hashtags_item: MenuItem,
+	pub view_mentions_item: MenuItem,
 }
 
 pub fn build_main_window() -> WindowParts {
 	let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 	wxdragon::app::set_top_window(&frame);
-	let (menu_bar, new_post_item, reply_item, fav_item, boost_item, view_profile_item) = build_menu_bar();
+	let (
+		menu_bar,
+		new_post_item,
+		reply_item,
+		reply_author_item,
+		view_hashtags_item,
+		view_mentions_item,
+		fav_item,
+		boost_item,
+		view_profile_item,
+	) = build_menu_bar();
 	frame.set_menu_bar(menu_bar);
 	let panel = Panel::builder(&frame).build();
 	// live region
@@ -59,9 +72,12 @@ pub fn build_main_window() -> WindowParts {
 		live_region_label,
 		new_post_item,
 		reply_item,
+		reply_author_item,
 		fav_item,
 		boost_item,
 		view_profile_item,
+		view_hashtags_item,
+		view_mentions_item,
 	}
 }
 
@@ -222,6 +238,12 @@ pub fn bind_input_handlers(
 					82 => {
 						// r
 						let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
+						event.skip(false);
+						return;
+					}
+					77 => {
+						// m
+						let _ = ui_tx_list_key.send(UiCommand::ViewMentions);
 						event.skip(false);
 						return;
 					}

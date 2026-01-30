@@ -7,7 +7,7 @@ use crate::{
 	get_selected_status,
 };
 
-pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem) {
+pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem, MenuItem) {
 	let file_menu = Menu::builder().build();
 	let view_profile_item = file_menu
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
@@ -24,13 +24,13 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 	let reply_item = post_menu
 		.append(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users", ItemKind::Normal)
 		.expect("Failed to append reply menu item");
-	post_menu
+	let reply_author_item = post_menu
 		.append(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
 		.expect("Failed to append reply author menu item");
-	post_menu
+	let view_mentions_item = post_menu
 		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
 		.expect("Failed to append view mentions menu item");
-	post_menu
+	let view_hashtags_item = post_menu
 		.append(ID_VIEW_HASHTAGS, "View &Hashtags\tCtrl+H", "View hashtags in selected post", ItemKind::Normal)
 		.expect("Failed to append view hashtags menu item");
 	post_menu
@@ -66,7 +66,17 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
 		.build();
-	(menu_bar, new_post_item, reply_item, fav_item, boost_item, view_profile_item)
+	(
+		menu_bar,
+		new_post_item,
+		reply_item,
+		reply_author_item,
+		view_hashtags_item,
+		view_mentions_item,
+		fav_item,
+		boost_item,
+		view_profile_item,
+	)
 }
 
 pub fn update_menu_labels(state: &AppState) {
@@ -105,9 +115,27 @@ pub fn update_menu_labels(state: &AppState) {
 		reply_item.set_label(&label);
 	}
 
+	if let Some(reply_author_item) = &state.reply_author_menu_item {
+		let shortcut = if state.config.quick_action_keys { "Ctrl+R" } else { "Ctrl+Shift+R" };
+		let label = format!("Reply to &Author\t{shortcut}");
+		reply_author_item.set_label(&label);
+	}
+
 	if let Some(view_profile_item) = &state.view_profile_menu_item {
 		let shortcut = if state.config.quick_action_keys { "P" } else { "Ctrl+P" };
 		let label = format!("View &Profile\t{shortcut}");
 		view_profile_item.set_label(&label);
+	}
+
+	if let Some(view_hashtags_item) = &state.view_hashtags_menu_item {
+		let shortcut = if state.config.quick_action_keys { "H" } else { "Ctrl+H" };
+		let label = format!("View &Hashtags\t{shortcut}");
+		view_hashtags_item.set_label(&label);
+	}
+
+	if let Some(view_mentions_item) = &state.view_mentions_menu_item {
+		let shortcut = if state.config.quick_action_keys { "M" } else { "Ctrl+M" };
+		let label = format!("View &Mentions\t{shortcut}");
+		view_mentions_item.set_label(&label);
 	}
 }
