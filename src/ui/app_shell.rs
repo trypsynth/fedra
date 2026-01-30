@@ -75,11 +75,6 @@ pub fn install_app_shell(frame: &Frame, ui_tx: mpsc::Sender<UiCommand>) -> AppSh
 		_ => {}
 	});
 
-	let ui_tx_tray_dbl = ui_tx.clone();
-	taskbar.on_left_double_click(move |_| {
-		let _ = ui_tx_tray_dbl.send(UiCommand::ToggleWindowVisibility);
-	});
-
 	#[cfg(target_os = "windows")]
 	let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx)));
 

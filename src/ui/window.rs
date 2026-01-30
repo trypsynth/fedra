@@ -280,16 +280,6 @@ pub fn bind_input_handlers(
 		event.skip(true);
 	});
 
-	let ui_tx_list_dbl = ui_tx.clone();
-	let shutdown_list_dbl = is_shutting_down.clone();
-	timeline_list_state.on_item_double_clicked(move |event| {
-		if shutdown_list_dbl.get() {
-			return;
-		}
-		let _ = ui_tx_list_dbl.send(UiCommand::OpenLinks);
-		event.event.skip(false);
-	});
-
 	timeline_list_state.on_selection_changed(move |event| {
 		if shutdown_list.get() {
 			return;
