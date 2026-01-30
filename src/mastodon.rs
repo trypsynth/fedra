@@ -158,7 +158,7 @@ impl Status {
 				if !cw_expanded {
 					format!("Content warning: {}", spoiler)
 				} else {
-					format!("{}", content)
+					content.to_string()
 				}
 			}
 		}

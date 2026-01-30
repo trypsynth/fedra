@@ -61,15 +61,7 @@ pub(crate) struct AppState {
 	streaming_url: Option<Url>,
 	access_token: Option<String>,
 	max_post_chars: Option<usize>,
-	poll_limits: PollLimits,
-	pub(crate) fav_menu_item: Option<MenuItem>,
-	pub(crate) boost_menu_item: Option<MenuItem>,
-	pub(crate) new_post_menu_item: Option<MenuItem>,
-	pub(crate) reply_menu_item: Option<MenuItem>,
-	pub(crate) reply_author_menu_item: Option<MenuItem>,
-	pub(crate) view_profile_menu_item: Option<MenuItem>,
-	pub(crate) view_hashtags_menu_item: Option<MenuItem>,
-	pub(crate) view_mentions_menu_item: Option<MenuItem>,
+	pub(crate) poll_limits: PollLimits,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
@@ -85,14 +77,6 @@ impl AppState {
 			access_token: None,
 			max_post_chars: None,
 			poll_limits: PollLimits::default(),
-			fav_menu_item: None,
-			boost_menu_item: None,
-			new_post_menu_item: None,
-			reply_menu_item: None,
-			reply_author_menu_item: None,
-			view_profile_menu_item: None,
-			view_hashtags_menu_item: None,
-			view_mentions_menu_item: None,
 			hashtag_dialog: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
@@ -327,7 +311,15 @@ fn handle_ui_command(
 			refresh_timeline(state, live_region);
 		}
 		UiCommand::OpenTimeline(timeline_type) => {
-			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+			open_timeline(
+				state,
+				timelines_selector,
+				timeline_list,
+				timeline_type,
+				suppress_selection,
+				live_region,
+				frame,
+			);
 		}
 		UiCommand::CloseTimeline => {
 			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region);
@@ -432,7 +424,9 @@ fn handle_ui_command(
 						&state.cw_expanded,
 					);
 				}
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 			}
 		}
 		UiCommand::TimelineEntrySelectionChanged(index) => {
@@ -441,7 +435,9 @@ fn handle_ui_command(
 				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
 			}
-			update_menu_labels(state);
+			if let Some(mb) = frame.get_menu_bar() {
+				update_menu_labels(&mb, state);
+			}
 		}
 		UiCommand::ShowOptions => {
 			if let Some((
@@ -476,7 +472,9 @@ fn handle_ui_command(
 				quick_action_keys_enabled.set(quick_action_keys);
 				autoload_enabled.set(autoload);
 				sort_order_cell.set(sort_order);
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
 				let store = config::ConfigStore::new();
@@ -707,7 +705,15 @@ fn handle_ui_command(
 			if dialogs::show_profile(frame, account) {
 				let timeline_type =
 					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+				open_timeline(
+					state,
+					timelines_selector,
+					timeline_list,
+					timeline_type,
+					suppress_selection,
+					live_region,
+					frame,
+				);
 			}
 		}
 		UiCommand::OpenUserTimeline => {
@@ -724,7 +730,15 @@ fn handle_ui_command(
 			};
 			let timeline_type =
 				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-			open_timeline(state, timelines_selector, timeline_list, timeline_type, suppress_selection, live_region);
+			open_timeline(
+				state,
+				timelines_selector,
+				timeline_list,
+				timeline_type,
+				suppress_selection,
+				live_region,
+				frame,
+			);
 		}
 		UiCommand::OpenUserTimelineByInput => {
 			if let Some((input, action)) = dialogs::prompt_for_user_lookup(frame) {
@@ -863,6 +877,7 @@ fn handle_ui_command(
 				timeline_type.clone(),
 				suppress_selection,
 				live_region,
+				frame,
 			);
 			if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 				timeline.selected_id = Some(target.id.clone());
@@ -971,7 +986,9 @@ fn switch_to_account(
 		live_region::announce(live_region, &format!("Switched to {}", handle));
 	}
 	frame.set_label(&title);
-	update_menu_labels(state);
+	if let Some(mb) = frame.get_menu_bar() {
+		update_menu_labels(&mb, state);
+	}
 }
 
 fn drain_ui_commands(
@@ -1023,7 +1040,12 @@ fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineTy
 	timeline.stream_handle = streaming::start_streaming(base_url, access_token, timeline_type.clone());
 }
 
-fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress_selection: &Cell<bool>) {
+fn process_stream_events(
+	state: &mut AppState,
+	timeline_list: &ListBox,
+	suppress_selection: &Cell<bool>,
+	frame: &Frame,
+) {
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	let mut active_needs_update = false;
 	for timeline in state.timeline_manager.iter_mut() {
@@ -1084,7 +1106,9 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 			state.config.content_warning_display,
 			&state.cw_expanded,
 		);
-		update_menu_labels(state);
+		if let Some(mb) = frame.get_menu_bar() {
+			update_menu_labels(&mb, state);
+		}
 	}
 }
 
@@ -1229,7 +1253,9 @@ fn process_network_responses(
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 				live_region::announce(live_region, "Favourited");
 			}
 			NetworkResponse::Favourited { result: Err(ref err), .. } => {
@@ -1240,7 +1266,9 @@ fn process_network_responses(
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
 				});
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 				live_region::announce(live_region, "Unfavourited");
 			}
 			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
@@ -1254,7 +1282,9 @@ fn process_network_responses(
 						s.reblogs_count = inner.reblogs_count;
 					});
 				}
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 				live_region::announce(live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
@@ -1265,7 +1295,9 @@ fn process_network_responses(
 					s.reblogged = status.reblogged;
 					s.reblogs_count = status.reblogs_count;
 				});
-				update_menu_labels(state);
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
 				live_region::announce(live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
@@ -1365,6 +1397,7 @@ fn open_timeline(
 	timeline_type: TimelineType,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
+	frame: &Frame,
 ) {
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		if let Some(index) = state.timeline_manager.index_of(&timeline_type) {
@@ -1384,7 +1417,9 @@ fn open_timeline(
 				);
 			}
 		}
-		update_menu_labels(state);
+		if let Some(mb) = frame.get_menu_bar() {
+			update_menu_labels(&mb, state);
+		}
 		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
@@ -1407,7 +1442,9 @@ fn open_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
 	});
-	update_menu_labels(state);
+	if let Some(mb) = frame.get_menu_bar() {
+		update_menu_labels(&mb, state);
+	}
 }
 
 pub(crate) fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
@@ -1522,14 +1559,6 @@ fn main() {
 		let timelines_selector = window_parts.timelines_selector;
 		let timeline_list = window_parts.timeline_list;
 		let live_region_label = window_parts.live_region_label;
-		let new_post_item = window_parts.new_post_item;
-		let reply_item = window_parts.reply_item;
-		let reply_author_item = window_parts.reply_author_item;
-		let fav_item = window_parts.fav_item;
-		let boost_item = window_parts.boost_item;
-		let view_profile_item = window_parts.view_profile_item;
-		let view_hashtags_item = window_parts.view_hashtags_item;
-		let view_mentions_item = window_parts.view_mentions_item;
 
 		let (ui_tx, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
@@ -1557,15 +1586,9 @@ fn main() {
 		let autoload_enabled = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let mut state = AppState::new(config);
-		state.fav_menu_item = Some(fav_item);
-		state.boost_menu_item = Some(boost_item);
-		state.new_post_menu_item = Some(new_post_item);
-		state.reply_menu_item = Some(reply_item);
-		state.reply_author_menu_item = Some(reply_author_item);
-		state.view_profile_menu_item = Some(view_profile_item);
-		state.view_hashtags_menu_item = Some(view_hashtags_item);
-		state.view_mentions_menu_item = Some(view_mentions_item);
-		update_menu_labels(&state);
+		if let Some(mb) = frame.get_menu_bar() {
+			update_menu_labels(&mb, &state);
+		}
 		switch_to_account(
 			&mut state,
 			&frame,
@@ -1613,7 +1636,7 @@ fn main() {
 				&sort_order_drain,
 				&tray_hidden_drain,
 			);
-			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
+			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer, &frame_timer);
 			process_network_responses(
 				&frame_timer,
 				&mut state,
