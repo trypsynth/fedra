@@ -269,7 +269,7 @@ pub fn bind_input_handlers(
 					}
 					85 => {
 						// u
-						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimeline);
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
 						event.skip(false);
 						return;
 					}

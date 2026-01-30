@@ -37,12 +37,7 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 		.append(ID_OPEN_LINKS, "Open &Links\tShift+Enter", "Open links in selected post", ItemKind::Normal)
 		.expect("Failed to append open links menu item");
 	post_menu
-		.append(
-			ID_VIEW_THREAD,
-			"View &Thread\tEnter",
-			"View conversation thread for selected post",
-			ItemKind::Normal,
-		)
+		.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread for selected post", ItemKind::Normal)
 		.expect("Failed to append view thread menu item");
 	post_menu.append_separator();
 
@@ -55,10 +50,10 @@ pub fn build_menu_bar() -> (MenuBar, MenuItem, MenuItem, MenuItem, MenuItem, Men
 	post_menu.append_separator();
 
 	let timelines_menu = Menu::builder()
-		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+U", "Open timeline of selected post's author")
+		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(
 			ID_OPEN_USER_TIMELINE_BY_INPUT,
-			"Open &Timeline by Username...",
+			"Open &Timeline by Username...\tCtrl+U",
 			"Open timeline for a specific user",
 		)
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
