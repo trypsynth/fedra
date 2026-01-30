@@ -10,17 +10,7 @@ mod streaming;
 mod timeline;
 mod ui;
 
-use std::{
-	backtrace::Backtrace,
-	cell::Cell,
-	collections::HashSet,
-	fs::OpenOptions,
-	io::Write,
-	path::PathBuf,
-	rc::Rc,
-	sync::mpsc,
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -56,40 +46,6 @@ pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
 pub(crate) const ID_LOAD_MORE: i32 = 1019;
 const KEY_DELETE: i32 = 127;
-
-fn log_path() -> PathBuf {
-	if let Ok(appdata) = std::env::var("APPDATA") {
-		return PathBuf::from(appdata).join("Fedra").join("crash.log");
-	}
-	std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("crash.log")
-}
-
-fn log_event(message: &str) {
-	let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
-	let path = log_path();
-	if let Some(parent) = path.parent() {
-		let _ = std::fs::create_dir_all(parent);
-	}
-	if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-		let _ = writeln!(file, "[{}] {}", millis, message);
-	}
-}
-
-fn reset_log() {
-	let path = log_path();
-	if let Some(parent) = path.parent() {
-		let _ = std::fs::create_dir_all(parent);
-	}
-	let _ = OpenOptions::new().create(true).write(true).truncate(true).open(path);
-}
-
-fn install_panic_hook() {
-	std::panic::set_hook(Box::new(|info| {
-		log_event(&format!("panic: {}", info));
-		let backtrace = Backtrace::force_capture();
-		log_event(&format!("backtrace: {backtrace}"));
-	}));
-}
 
 pub(crate) struct AppState {
 	pub(crate) config: Config,
@@ -388,7 +344,6 @@ fn handle_ui_command(
 				live_region::announce(live_region, "No account configured");
 				return;
 			}
-			log_event("new_post: open dialog");
 			let post = match dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send) {
 				Some(p) => p,
 				None => return,
@@ -1613,9 +1568,6 @@ fn close_timeline(
 
 fn main() {
 	let _ = wxdragon::main(|_| {
-		reset_log();
-		install_panic_hook();
-		log_event("app_start");
 		let frame = Frame::builder().with_title("Fedra").with_size(Size::new(800, 600)).build();
 		wxdragon::app::set_top_window(&frame);
 		let (menu_bar, new_post_item, reply_item, fav_item, boost_item, view_profile_item) = build_menu_bar();
@@ -2110,7 +2062,6 @@ fn main() {
 		let timer_close = timer.clone();
 		frame.on_close(move |event| {
 			if !shutdown_close.get() {
-				log_event("app_close_requested");
 				shutdown_close.set(true);
 				timer_close.stop();
 			}
