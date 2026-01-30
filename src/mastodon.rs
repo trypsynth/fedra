@@ -7,7 +7,11 @@ use reqwest::{
 };
 use serde::Deserialize;
 
-use crate::{config::TimestampFormat, html::strip_html, timeline::TimelineType};
+use crate::{
+	config::{ContentWarningDisplay, TimestampFormat},
+	html::strip_html,
+	timeline::TimelineType,
+};
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
 
@@ -74,26 +78,41 @@ impl Status {
 		strip_html(&self.content)
 	}
 
-	pub fn timeline_display(&self, timestamp_format: TimestampFormat) -> String {
+	pub fn timeline_display(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
 		match &self.reblog {
 			Some(boosted) => {
 				let booster = self.account.display_name_or_username();
-				format!("{} boosted {}", booster, boosted.base_display(timestamp_format))
+				format!("{} boosted {}", booster, boosted.base_display(timestamp_format, cw_display, cw_expanded))
 			}
-			None => self.base_display(timestamp_format),
+			None => self.base_display(timestamp_format, cw_display, cw_expanded),
 		}
 	}
 
-	pub fn details_display(&self, timestamp_format: TimestampFormat) -> String {
-		self.base_display(timestamp_format)
+	pub fn details_display(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
+		self.base_display(timestamp_format, cw_display, cw_expanded)
 	}
 
-	fn base_display(&self, timestamp_format: TimestampFormat) -> String {
+	fn base_display(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
 		let mut out = String::new();
 		let author = self.account.display_name_or_username();
 		out.push_str(author);
 		out.push_str(": ");
-		let content = self.content_with_cw();
+		let content = self.content_with_cw(cw_display, cw_expanded);
 		if !content.is_empty() {
 			out.push_str(&content);
 		}
@@ -126,14 +145,22 @@ impl Status {
 		}
 	}
 
-	fn content_with_cw(&self) -> String {
+	fn content_with_cw(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> String {
 		let content = self.display_text();
-		if self.spoiler_text.trim().is_empty() {
-			content
-		} else if content.is_empty() {
-			format!("Content warning: {}", self.spoiler_text.trim())
-		} else {
-			format!("Content warning: {} - {}", self.spoiler_text.trim(), content)
+		let spoiler = self.spoiler_text.trim();
+		if spoiler.is_empty() {
+			return content;
+		}
+		match cw_display {
+			ContentWarningDisplay::Inline => format!("Content warning: {} - {}", spoiler, content),
+			ContentWarningDisplay::Hidden => content,
+			ContentWarningDisplay::WarningOnly => {
+				if !cw_expanded {
+					format!("Content warning: {}", spoiler)
+				} else {
+					format!("{}", content)
+				}
+			}
 		}
 	}
 
@@ -216,28 +243,46 @@ pub struct StatusContext {
 }
 
 impl Notification {
-	pub fn timeline_display(&self, timestamp_format: TimestampFormat) -> String {
+	pub fn timeline_display(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
 		let actor = self.account.display_name_or_username();
 		match self.kind.as_str() {
-			"mention" | "status" => self.status_text(timestamp_format).to_string(),
-			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format)),
-			"favourite" => format!("{} favourited {}", actor, self.status_text(timestamp_format)),
+			"mention" | "status" => self.status_text(timestamp_format, cw_display, cw_expanded).to_string(),
+			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded)),
+			"favourite" => {
+				format!("{} favourited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
+			}
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
-			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format)),
-			_ => match self.status_text_if_any(timestamp_format) {
+			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format, cw_display, cw_expanded)),
+			_ => match self.status_text_if_any(timestamp_format, cw_display, cw_expanded) {
 				Some(text) => format!("{} {}: {}", actor, self.kind, text),
 				None => format!("{} {}", actor, self.kind),
 			},
 		}
 	}
 
-	fn status_text(&self, timestamp_format: TimestampFormat) -> String {
-		self.status_text_if_any(timestamp_format).unwrap_or_else(|| "No status content".to_string())
+	fn status_text(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
+		self.status_text_if_any(timestamp_format, cw_display, cw_expanded)
+			.unwrap_or_else(|| "No status content".to_string())
 	}
 
-	fn status_text_if_any(&self, timestamp_format: TimestampFormat) -> Option<String> {
-		self.status.as_ref().map(|status| status.details_display(timestamp_format))
+	fn status_text_if_any(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> Option<String> {
+		self.status.as_ref().map(|status| status.details_display(timestamp_format, cw_display, cw_expanded))
 	}
 }
 

@@ -13,6 +13,7 @@ mod ui;
 use std::{
 	backtrace::Backtrace,
 	cell::Cell,
+	collections::HashSet,
 	fs::OpenOptions,
 	io::Write,
 	path::PathBuf,
@@ -25,7 +26,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, Config, SortOrder, TimestampFormat},
+	config::{Account, Config, ContentWarningDisplay, SortOrder, TimestampFormat},
 	mastodon::{MastodonClient, PollLimits, Status},
 	network::{NetworkCommand, NetworkHandle, NetworkResponse, TimelineData},
 	timeline::{Timeline, TimelineEntry, TimelineManager, TimelineType},
@@ -104,6 +105,7 @@ pub(crate) struct AppState {
 	pub(crate) reply_menu_item: Option<MenuItem>,
 	pub(crate) view_profile_menu_item: Option<MenuItem>,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
+	cw_expanded: HashSet<String>,
 }
 
 impl AppState {
@@ -122,6 +124,7 @@ impl AppState {
 			reply_menu_item: None,
 			view_profile_menu_item: None,
 			hashtag_dialog: None,
+			cw_expanded: HashSet::new(),
 		}
 	}
 
@@ -169,6 +172,7 @@ enum UiCommand {
 	OpenLinks,
 	ViewThread,
 	LoadMore,
+	ToggleContentWarning,
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -248,6 +252,8 @@ fn update_timeline_ui(
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
+	cw_display: ContentWarningDisplay,
+	cw_expanded: &HashSet<String>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
@@ -257,7 +263,8 @@ fn update_timeline_ui(
 	let count = timeline_list.get_count() as usize;
 	if count == entries.len() {
 		for (i, entry) in iter.enumerate() {
-			let text = entry.display_text(timestamp_format);
+			let is_expanded = cw_expanded.contains(entry.id());
+			let text = entry.display_text(timestamp_format, cw_display, is_expanded);
 			if let Some(current) = timeline_list.get_string(i as u32) {
 				if current != text {
 					timeline_list.set_string(i as u32, &text);
@@ -269,7 +276,8 @@ fn update_timeline_ui(
 	} else {
 		timeline_list.clear();
 		for entry in iter {
-			timeline_list.append(&entry.display_text(timestamp_format));
+			let is_expanded = cw_expanded.contains(entry.id());
+			timeline_list.append(&entry.display_text(timestamp_format, cw_display, is_expanded));
 		}
 	}
 }
@@ -347,9 +355,11 @@ fn update_active_timeline_ui(
 	suppress_selection: &Cell<bool>,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
+	cw_display: ContentWarningDisplay,
+	cw_expanded: &HashSet<String>,
 ) {
 	with_suppressed_selection(suppress_selection, || {
-		update_timeline_ui(timeline_list, &timeline.entries, sort_order, timestamp_format);
+		update_timeline_ui(timeline_list, &timeline.entries, sort_order, timestamp_format, cw_display, cw_expanded);
 		apply_timeline_selection(timeline_list, timeline, sort_order);
 	});
 }
@@ -491,17 +501,63 @@ fn handle_ui_command(
 				}
 			}
 		}
+		UiCommand::ToggleContentWarning => {
+			if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
+				return;
+			}
+			let active = match state.timeline_manager.active_mut() {
+				Some(t) => t,
+				None => return,
+			};
+			let list_index = match active.selected_index {
+				Some(index) => index,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let entry_index = match list_index_to_entry_index(list_index, active.entries.len(), state.config.sort_order)
+			{
+				Some(index) => index,
+				None => return,
+			};
+			let entry = match active.entries.get(entry_index) {
+				Some(entry) => entry,
+				None => return,
+			};
+			let status = match entry.as_status() {
+				Some(status) => status,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if target.spoiler_text.trim().is_empty() {
+				live_region::announce(live_region, "No content warning");
+				return;
+			}
+			let entry_id = entry.id();
+			let expanded = state.cw_expanded.contains(entry_id);
+			if expanded {
+				state.cw_expanded.remove(entry_id);
+			} else {
+				state.cw_expanded.insert(entry_id.to_string());
+			}
+			let is_expanded = state.cw_expanded.contains(entry_id);
+			let text =
+				entry.display_text(state.config.timestamp_format, state.config.content_warning_display, is_expanded);
+			timeline_list.set_string(list_index as u32, &text);
+		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
 					sync_timeline_selection_from_list(active, timeline_list, state.config.sort_order);
 				}
 				state.timeline_manager.set_active(index);
-
 				with_suppressed_selection(suppress_selection, || {
 					timelines_selector.set_selection(index as u32, true);
 				});
-
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
@@ -509,6 +565,8 @@ fn handle_ui_command(
 						suppress_selection,
 						state.config.sort_order,
 						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
 					);
 				}
 				update_menu_labels(state);
@@ -528,6 +586,7 @@ fn handle_ui_command(
 				always_show_link_dialog,
 				quick_action_keys,
 				autoload,
+				content_warning_display,
 				sort_order,
 				timestamp_format,
 			)) = dialogs::prompt_for_options(
@@ -536,15 +595,21 @@ fn handle_ui_command(
 				state.config.always_show_link_dialog,
 				state.config.quick_action_keys,
 				state.config.autoload,
+				state.config.content_warning_display,
 				state.config.sort_order,
 				state.config.timestamp_format,
 			) {
-				let needs_refresh =
-					state.config.sort_order != sort_order || state.config.timestamp_format != timestamp_format;
+				let needs_refresh = state.config.sort_order != sort_order
+					|| state.config.timestamp_format != timestamp_format
+					|| state.config.content_warning_display != content_warning_display;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
 				state.config.autoload = autoload;
+				state.config.content_warning_display = content_warning_display;
+				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
+					state.cw_expanded.clear();
+				}
 				quick_action_keys_enabled.set(quick_action_keys);
 				autoload_enabled.set(autoload);
 				sort_order_cell.set(sort_order);
@@ -562,6 +627,8 @@ fn handle_ui_command(
 						suppress_selection,
 						state.config.sort_order,
 						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
 					);
 				}
 			}
@@ -956,6 +1023,7 @@ fn switch_to_account(
 	}
 	state.network_handle = None;
 	state.timeline_manager = TimelineManager::new();
+	state.cw_expanded.clear();
 
 	let (url, token) = match state.active_account().and_then(|a| {
 		let url = Url::parse(&a.instance).ok()?;
@@ -1140,6 +1208,8 @@ fn process_stream_events(state: &mut AppState, timeline_list: &ListBox, suppress
 			suppress_selection,
 			state.config.sort_order,
 			state.config.timestamp_format,
+			state.config.content_warning_display,
+			&state.cw_expanded,
 		);
 		update_menu_labels(state);
 	}
@@ -1183,7 +1253,12 @@ fn process_network_responses(
 						if is_active {
 							if state.config.sort_order == SortOrder::NewestToOldest {
 								for entry in &new_entries {
-									timeline_list.append(&entry.display_text(state.config.timestamp_format));
+									let is_expanded = state.cw_expanded.contains(entry.id());
+									timeline_list.append(&entry.display_text(
+										state.config.timestamp_format,
+										state.config.content_warning_display,
+										is_expanded,
+									));
 								}
 							} else {
 								update_active_timeline_ui(
@@ -1192,17 +1267,24 @@ fn process_network_responses(
 									suppress_selection,
 									state.config.sort_order,
 									state.config.timestamp_format,
+									state.config.content_warning_display,
+									&state.cw_expanded,
 								);
 							}
 						}
-					} else if is_active {
-						update_active_timeline_ui(
-							timeline_list,
-							timeline,
-							suppress_selection,
-							state.config.sort_order,
-							state.config.timestamp_format,
-						);
+					} else {
+						timeline.entries = new_entries;
+						if is_active {
+							update_active_timeline_ui(
+								timeline_list,
+								timeline,
+								suppress_selection,
+								state.config.sort_order,
+								state.config.timestamp_format,
+								state.config.content_warning_display,
+								&state.cw_expanded,
+							);
+						}
 					}
 					timeline.loading_more = false;
 				}
@@ -1393,6 +1475,8 @@ fn open_timeline(
 					suppress_selection,
 					state.config.sort_order,
 					state.config.timestamp_format,
+					state.config.content_warning_display,
+					&state.cw_expanded,
 				);
 			}
 		}
@@ -1521,6 +1605,8 @@ fn close_timeline(
 			suppress_selection,
 			state.config.sort_order,
 			state.config.timestamp_format,
+			state.config.content_warning_display,
+			&state.cw_expanded,
 		);
 	}
 }
@@ -1659,6 +1745,8 @@ fn main() {
 						&suppress_timer,
 						state.config.sort_order,
 						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
 					);
 				}
 				last_ui_refresh = std::time::Instant::now();
@@ -1814,12 +1902,24 @@ fn main() {
 							event.skip(false);
 							return;
 						}
+						88 => {
+							// x
+							let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
+							event.skip(false);
+							return;
+						}
 						_ => {}
 					}
 				}
 
 				if event.control_down() {
 					match key {
+						88 => {
+							// x
+							let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
+							event.skip(false);
+							return;
+						}
 						91 => {
 							// [
 							let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);

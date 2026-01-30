@@ -28,6 +28,8 @@ pub struct Config {
 	pub sort_order: SortOrder,
 	#[serde(default)]
 	pub timestamp_format: TimestampFormat,
+	#[serde(default)]
+	pub content_warning_display: ContentWarningDisplay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -42,6 +44,14 @@ pub enum TimestampFormat {
 	#[default]
 	Relative,
 	Absolute,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ContentWarningDisplay {
+	#[default]
+	Inline,
+	Hidden,
+	WarningOnly,
 }
 
 fn default_enter_to_send() -> bool {
@@ -72,6 +82,7 @@ impl Default for Config {
 			autoload: true,
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
+			content_warning_display: ContentWarningDisplay::default(),
 		}
 	}
 }

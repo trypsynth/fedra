@@ -1,5 +1,5 @@
 use crate::{
-	config::TimestampFormat,
+	config::{ContentWarningDisplay, TimestampFormat},
 	mastodon::{Notification, Status},
 	streaming::StreamHandle,
 };
@@ -77,10 +77,17 @@ impl TimelineEntry {
 		}
 	}
 
-	pub fn display_text(&self, timestamp_format: TimestampFormat) -> String {
+	pub fn display_text(
+		&self,
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		cw_expanded: bool,
+	) -> String {
 		match self {
-			TimelineEntry::Status(status) => status.timeline_display(timestamp_format),
-			TimelineEntry::Notification(notification) => notification.timeline_display(timestamp_format),
+			TimelineEntry::Status(status) => status.timeline_display(timestamp_format, cw_display, cw_expanded),
+			TimelineEntry::Notification(notification) => {
+				notification.timeline_display(timestamp_format, cw_display, cw_expanded)
+			}
 		}
 	}
 

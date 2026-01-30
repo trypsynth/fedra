@@ -4,7 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, SortOrder, TimestampFormat},
+	config::{Account, ContentWarningDisplay, SortOrder, TimestampFormat},
 	html::Link,
 	mastodon::{Account as MastodonAccount, PollLimits, Status},
 	network::NetworkCommand,
@@ -539,9 +539,10 @@ pub fn prompt_for_options(
 	always_show_link_dialog: bool,
 	quick_action_keys: bool,
 	autoload: bool,
+	content_warning_display: ContentWarningDisplay,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, bool, bool, SortOrder, TimestampFormat)> {
+) -> Option<(bool, bool, bool, bool, ContentWarningDisplay, SortOrder, TimestampFormat)> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -553,6 +554,18 @@ pub fn prompt_for_options(
 	quick_action_checkbox.set_value(quick_action_keys);
 	let autoload_checkbox = CheckBox::builder(&panel).with_label("Autoload posts when scrolling").build();
 	autoload_checkbox.set_value(autoload);
+	let cw_label = StaticText::builder(&panel).with_label("Content warning display:").build();
+	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
+	let cw_choice = ComboBox::builder(&panel).with_choices(cw_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let cw_index = match content_warning_display {
+		ContentWarningDisplay::Inline => 0,
+		ContentWarningDisplay::Hidden => 1,
+		ContentWarningDisplay::WarningOnly => 2,
+	};
+	cw_choice.set_selection(cw_index);
+	let cw_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	cw_sizer.add(&cw_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	cw_sizer.add(&cw_choice, 1, SizerFlag::Expand, 0);
 	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
@@ -568,6 +581,7 @@ pub fn prompt_for_options(
 	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&autoload_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_stretch_spacer(1);
@@ -586,11 +600,18 @@ pub fn prompt_for_options(
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
+	let new_cw_display = match cw_choice.get_selection() {
+		Some(0) => ContentWarningDisplay::Inline,
+		Some(1) => ContentWarningDisplay::Hidden,
+		Some(2) => ContentWarningDisplay::WarningOnly,
+		_ => content_warning_display,
+	};
 	Some((
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
 		quick_action_checkbox.get_value(),
 		autoload_checkbox.get_value(),
+		new_cw_display,
 		new_sort,
 		new_timestamp,
 	))
