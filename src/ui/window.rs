@@ -184,8 +184,21 @@ pub fn bind_input_handlers(
 				}
 			}
 
+			if event.control_down() && event.shift_down() && key == 81 {
+				// Ctrl+Shift+Q
+				let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(true));
+				event.skip(false);
+				return;
+			}
+
 			if quick_action_keys_list.get() && !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
+					81 => {
+						// q
+						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(false));
+						event.skip(false);
+						return;
+					}
 					70 => {
 						// f
 						let _ = ui_tx_list_key.send(UiCommand::Favourite);

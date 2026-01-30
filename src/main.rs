@@ -129,6 +129,7 @@ pub(crate) enum UiCommand {
 	LoadMore,
 	ToggleContentWarning,
 	ToggleWindowVisibility,
+	SetQuickActionKeysEnabled(bool),
 }
 
 // Window visibility helpers live in ui::app_shell.
@@ -400,6 +401,13 @@ fn handle_ui_command(
 		}
 		UiCommand::ToggleWindowVisibility => {
 			app_shell::toggle_window_visibility(frame, tray_hidden);
+		}
+		UiCommand::SetQuickActionKeysEnabled(enabled) => {
+			state.config.quick_action_keys = enabled;
+			quick_action_keys_enabled.set(enabled);
+			let _ = config::ConfigStore::new().save(&state.config);
+			let msg = if enabled { "Quick keys enabled" } else { "Quick keys disabled" };
+			live_region::announce(live_region, msg);
 		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
