@@ -166,6 +166,7 @@ Configured in `rustfmt.toml`:
 | Ctrl+L | Open Local Timeline |
 | Ctrl+Shift+T | View thread timeline for selected post |
 | Ctrl+O | Open Options dialog |
+| Ctrl+Alt+F | Toggle show/hide window (global hotkey) |
 | F5 | Refresh current timeline |
 | Delete | Close current timeline (except Home) |
 

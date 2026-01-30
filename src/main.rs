@@ -10,7 +10,13 @@ mod streaming;
 mod timeline;
 mod ui;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc};
+use std::{
+	cell::{Cell, RefCell},
+	collections::HashSet,
+	rc::Rc,
+	sync::mpsc,
+	thread,
+};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -50,6 +56,8 @@ pub(crate) const ID_VIEW_THREAD: i32 = 1016;
 pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
 pub(crate) const ID_LOAD_MORE: i32 = 1019;
+pub(crate) const ID_TRAY_TOGGLE: i32 = 1020;
+pub(crate) const ID_TRAY_EXIT: i32 = 1021;
 pub(crate) const KEY_DELETE: i32 = 127;
 
 pub(crate) struct AppState {
@@ -134,6 +142,90 @@ pub(crate) enum UiCommand {
 	ViewThread,
 	LoadMore,
 	ToggleContentWarning,
+	ToggleWindowVisibility,
+}
+
+#[cfg(target_os = "windows")]
+struct HotkeyHandle {
+	thread_id: u32,
+	join_handle: std::thread::JoinHandle<()>,
+}
+
+#[cfg(target_os = "windows")]
+fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle> {
+	use windows::Win32::{
+		System::Threading::GetCurrentThreadId,
+		UI::{
+			Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, RegisterHotKey, UnregisterHotKey},
+			WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY},
+		},
+	};
+
+	const HOTKEY_ID: i32 = 1;
+	const HOTKEY_VK: u32 = 0x46; // 'F'
+	let (thread_id_tx, thread_id_rx) = mpsc::channel();
+	let join_handle = thread::spawn(move || {
+		let thread_id = unsafe { GetCurrentThreadId() };
+		let _ = thread_id_tx.send(thread_id);
+		let modifiers = MOD_CONTROL | MOD_ALT;
+		let registered = unsafe { RegisterHotKey(None, HOTKEY_ID, modifiers, HOTKEY_VK).is_ok() };
+		if !registered {
+			return;
+		}
+		let mut msg = MSG::default();
+		loop {
+			let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+			if result.0 <= 0 {
+				break;
+			}
+			if msg.message == WM_HOTKEY {
+				let _ = ui_tx.send(UiCommand::ToggleWindowVisibility);
+			}
+		}
+		unsafe {
+			let _ = UnregisterHotKey(None, HOTKEY_ID);
+		}
+	});
+	let thread_id = thread_id_rx.recv().ok()?;
+	Some(HotkeyHandle { thread_id, join_handle })
+}
+
+fn toggle_window_visibility(frame: &Frame, tray_hidden: &Cell<bool>) {
+	let is_shown = frame.is_shown();
+	if is_shown {
+		tray_hidden.set(false);
+		if is_window_active(frame) {
+			frame.show(false);
+			tray_hidden.set(true);
+		} else {
+			frame.raise();
+			frame.set_focus();
+		}
+	} else {
+		frame.show(true);
+		frame.raise();
+		frame.set_focus();
+		tray_hidden.set(false);
+	}
+}
+
+fn is_window_active(frame: &Frame) -> bool {
+	#[cfg(target_os = "windows")]
+	{
+		use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
+
+		let handle = frame.get_handle();
+		if handle.is_null() {
+			return frame.has_focus();
+		}
+		let frame_hwnd = HWND(handle);
+		let foreground = unsafe { GetForegroundWindow() };
+		foreground == frame_hwnd
+	}
+	#[cfg(not(target_os = "windows"))]
+	{
+		frame.has_focus()
+	}
 }
 
 fn setup_new_account(frame: &Frame) -> Option<Account> {
@@ -219,6 +311,7 @@ fn handle_ui_command(
 	quick_action_keys_enabled: &Cell<bool>,
 	autoload_enabled: &Cell<bool>,
 	sort_order_cell: &Cell<SortOrder>,
+	tray_hidden: &Cell<bool>,
 ) {
 	match cmd {
 		UiCommand::NewPost => {
@@ -392,6 +485,9 @@ fn handle_ui_command(
 				entry.display_text(state.config.timestamp_format, state.config.content_warning_display, is_expanded);
 			timeline_list.set_string(list_index as u32, &text);
 		}
+		UiCommand::ToggleWindowVisibility => {
+			toggle_window_visibility(frame, tray_hidden);
+		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
@@ -499,6 +595,7 @@ fn handle_ui_command(
 							quick_action_keys_enabled,
 							autoload_enabled,
 							sort_order_cell,
+							tray_hidden,
 						);
 					}
 				}
@@ -514,6 +611,7 @@ fn handle_ui_command(
 						quick_action_keys_enabled,
 						autoload_enabled,
 						sort_order_cell,
+						tray_hidden,
 					);
 				}
 				dialogs::ManageAccountsResult::Switch(id) => {
@@ -528,6 +626,7 @@ fn handle_ui_command(
 						quick_action_keys_enabled,
 						autoload_enabled,
 						sort_order_cell,
+						tray_hidden,
 					);
 				}
 				dialogs::ManageAccountsResult::None => {}
@@ -564,6 +663,7 @@ fn handle_ui_command(
 				quick_action_keys_enabled,
 				autoload_enabled,
 				sort_order_cell,
+				tray_hidden,
 			);
 		}
 		UiCommand::SwitchPrevAccount => {
@@ -589,6 +689,7 @@ fn handle_ui_command(
 				quick_action_keys_enabled,
 				autoload_enabled,
 				sort_order_cell,
+				tray_hidden,
 			);
 		}
 		UiCommand::SwitchNextTimeline => {
@@ -611,6 +712,7 @@ fn handle_ui_command(
 				quick_action_keys_enabled,
 				autoload_enabled,
 				sort_order_cell,
+				tray_hidden,
 			);
 		}
 		UiCommand::SwitchPrevTimeline => {
@@ -633,6 +735,7 @@ fn handle_ui_command(
 				quick_action_keys_enabled,
 				autoload_enabled,
 				sort_order_cell,
+				tray_hidden,
 			);
 		}
 		UiCommand::RemoveAccount(id) => {
@@ -767,6 +870,7 @@ fn handle_ui_command(
 						quick_action_keys_enabled,
 						autoload_enabled,
 						sort_order_cell,
+						tray_hidden,
 					);
 				}
 			}
@@ -957,6 +1061,7 @@ fn drain_ui_commands(
 	quick_action_keys_enabled: &Cell<bool>,
 	autoload_enabled: &Cell<bool>,
 	sort_order_cell: &Cell<SortOrder>,
+	tray_hidden: &Cell<bool>,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
 		handle_ui_command(
@@ -970,6 +1075,7 @@ fn drain_ui_commands(
 			quick_action_keys_enabled,
 			autoload_enabled,
 			sort_order_cell,
+			tray_hidden,
 		);
 	}
 }
@@ -1068,6 +1174,7 @@ fn process_network_responses(
 	quick_action_keys_enabled: &Cell<bool>,
 	autoload_enabled: &Cell<bool>,
 	sort_order_cell: &Cell<SortOrder>,
+	tray_hidden: &Cell<bool>,
 	ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	let handle = match &state.network_handle {
@@ -1152,6 +1259,7 @@ fn process_network_responses(
 					quick_action_keys_enabled,
 					autoload_enabled,
 					sort_order_cell,
+					tray_hidden,
 				);
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
@@ -1471,6 +1579,7 @@ fn main() {
 		let is_shutting_down = Rc::new(Cell::new(false));
 		let suppress_selection = Rc::new(Cell::new(false));
 		let timer_busy = Rc::new(Cell::new(false));
+		let tray_hidden = Rc::new(Cell::new(false));
 
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
@@ -1507,6 +1616,40 @@ fn main() {
 			&live_region_label,
 			false,
 		);
+		let mut tray_menu = Menu::builder()
+			.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
+			.append_separator()
+			.append_item(ID_TRAY_EXIT, "Exit", "Exit Fedra")
+			.build();
+		let taskbar = TaskBarIcon::builder().with_icon_type(TaskBarIconType::CustomStatusItem).build();
+		taskbar.set_popup_menu(&mut tray_menu);
+
+		let tray_icon = ArtProvider::get_bitmap(ArtId::Information, ArtClient::Menu, Some(Size::new(16, 16)));
+		if let Some(icon) = tray_icon {
+			let _ = taskbar.set_icon(&icon, "Fedra");
+		} else if let Some(fallback) = Bitmap::new(16, 16) {
+			let _ = taskbar.set_icon(&fallback, "Fedra");
+		}
+
+		let ui_tx_tray = ui_tx.clone();
+		let frame_tray = frame;
+		taskbar.on_menu(move |event| match event.get_id() {
+			ID_TRAY_TOGGLE => {
+				let _ = ui_tx_tray.send(UiCommand::ToggleWindowVisibility);
+			}
+			ID_TRAY_EXIT => {
+				frame_tray.close(true);
+			}
+			_ => {}
+		});
+
+		let ui_tx_tray_dbl = ui_tx.clone();
+		taskbar.on_left_double_click(move |_| {
+			let _ = ui_tx_tray_dbl.send(UiCommand::ToggleWindowVisibility);
+		});
+
+		#[cfg(target_os = "windows")]
+		let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx.clone())));
 		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
@@ -1520,6 +1663,7 @@ fn main() {
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_enabled.clone();
 		let sort_order_drain = sort_order_cell.clone();
+		let tray_hidden_drain = tray_hidden.clone();
 		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = std::time::Instant::now();
 		timer_tick.on_tick(move |_| {
@@ -1541,6 +1685,7 @@ fn main() {
 				&quick_action_keys_drain,
 				&autoload_drain,
 				&sort_order_drain,
+				&tray_hidden_drain,
 			);
 			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer);
 			process_network_responses(
@@ -1553,6 +1698,7 @@ fn main() {
 				&quick_action_keys_drain,
 				&autoload_drain,
 				&sort_order_drain,
+				&tray_hidden_drain,
 				&ui_tx_timer,
 			);
 
@@ -1586,6 +1732,27 @@ fn main() {
 			sort_order_cell.clone(),
 			timer.clone(),
 		);
+		let mut tray_menu_cleanup = tray_menu;
+		let taskbar_cleanup = taskbar;
+		#[cfg(target_os = "windows")]
+		let hotkey_handle_destroy = hotkey_handle.clone();
+		frame.on_destroy(move |_| {
+			tray_menu_cleanup.destroy_menu();
+			taskbar_cleanup.destroy();
+			#[cfg(target_os = "windows")]
+			if let Some(handle) = hotkey_handle_destroy.borrow_mut().take() {
+				use windows::Win32::{
+					Foundation::{LPARAM, WPARAM},
+					UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
+				};
+				if handle.thread_id != 0 {
+					unsafe {
+						let _ = PostThreadMessageW(handle.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+					}
+				}
+				let _ = handle.join_handle.join();
+			}
+		});
 		frame.show(true);
 		frame.centre();
 	});
