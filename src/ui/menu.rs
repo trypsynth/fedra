@@ -1,10 +1,10 @@
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_FAVOURITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE,
-	ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY,
-	ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	get_selected_status,
+	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVOURITE, ID_FEDERATED_TIMELINE,
+	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
+	ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
+	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -39,6 +39,14 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu
 		.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread for selected post", ItemKind::Normal)
 		.expect("Failed to append view thread menu item");
+	post_menu.append_separator();
+
+	post_menu
+		.append(ID_EDIT_POST, "&Edit Post\tCtrl+E", "Edit selected post", ItemKind::Normal)
+		.expect("Failed to append edit post menu item");
+	post_menu
+		.append(ID_DELETE_POST, "&Delete Post\tCtrl+Delete", "Delete selected post", ItemKind::Normal)
+		.expect("Failed to append delete post menu item");
 	post_menu.append_separator();
 
 	post_menu
@@ -132,5 +140,17 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let shortcut = if state.config.quick_action_keys { "M" } else { "Ctrl+M" };
 		let label = format!("View &Mentions\t{shortcut}");
 		view_mentions_item.set_label(&label);
+	}
+
+	if let Some(edit_post_item) = menu_bar.find_item(ID_EDIT_POST) {
+		let shortcut = if state.config.quick_action_keys { "E" } else { "Ctrl+E" };
+		let label = format!("&Edit Post\t{shortcut}");
+		edit_post_item.set_label(&label);
+	}
+
+	if let Some(delete_post_item) = menu_bar.find_item(ID_DELETE_POST) {
+		let shortcut = if state.config.quick_action_keys { "D" } else { "Ctrl+Delete" };
+		let label = format!("&Delete Post\t{shortcut}");
+		delete_post_item.set_label(&label);
 	}
 }

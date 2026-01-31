@@ -53,6 +53,8 @@ pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
 pub(crate) const ID_LOAD_MORE: i32 = 1019;
 pub(crate) const ID_VOTE: i32 = 1024;
+pub(crate) const ID_DELETE_POST: i32 = 1025;
+pub(crate) const ID_EDIT_POST: i32 = 1026;
 pub(crate) const ID_TRAY_TOGGLE: i32 = 1020;
 pub(crate) const ID_TRAY_EXIT: i32 = 1021;
 pub(crate) const KEY_DELETE: i32 = 127;
@@ -70,6 +72,7 @@ pub(crate) struct AppState {
 	client: Option<MastodonClient>,
 	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
+	current_user_id: Option<String>,
 }
 
 impl AppState {
@@ -87,6 +90,7 @@ impl AppState {
 			client: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
+			current_user_id: None,
 		}
 	}
 
@@ -110,6 +114,8 @@ impl AppState {
 pub(crate) enum UiCommand {
 	NewPost,
 	Reply { reply_all: bool },
+	DeletePost,
+	EditPost,
 	Favourite,
 	Boost,
 	Refresh,
@@ -303,6 +309,94 @@ fn handle_ui_command(
 						.map(|item| network::MediaUpload { path: item.path, description: item.description })
 						.collect(),
 					poll: reply.poll.map(|poll| network::PollData {
+						options: poll.options,
+						expires_in: poll.expires_in,
+						multiple: poll.multiple,
+					}),
+				});
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::DeletePost => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if let Some(current_user) = &state.current_user_id {
+				if &target.account.id != current_user {
+					live_region::announce(live_region, "You can only delete your own posts");
+					return;
+				}
+			} else {
+				live_region::announce(live_region, "Cannot verify ownership");
+				return;
+			}
+
+			let confirm = MessageDialog::builder(frame, "Are you sure you want to delete this post?", "Delete Post")
+				.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
+				.build();
+			if confirm.show_modal() == ID_YES {
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::DeleteStatus { status_id: target.id.clone() });
+				} else {
+					live_region::announce(live_region, "Network not available");
+				}
+			}
+		}
+		UiCommand::EditPost => {
+			let (status, max_post_chars, enter_to_send) =
+				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
+			let status = match status {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+			if let Some(current_user) = &state.current_user_id {
+				if &target.account.id != current_user {
+					live_region::announce(live_region, "You can only edit your own posts");
+					return;
+				}
+			} else {
+				live_region::announce(live_region, "Cannot verify ownership");
+				return;
+			}
+
+			let edit = match dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
+			{
+				Some(r) => r,
+				None => return,
+			};
+
+			if let Some(handle) = &state.network_handle {
+				let media = edit
+					.media
+					.into_iter()
+					.map(|item| {
+						if item.is_existing {
+							network::EditMedia::Existing(item.path)
+						} else {
+							network::EditMedia::New(network::MediaUpload {
+								path: item.path,
+								description: item.description,
+							})
+						}
+					})
+					.collect();
+
+				handle.send(NetworkCommand::EditStatus {
+					status_id: target.id.clone(),
+					content: edit.content,
+					spoiler_text: edit.spoiler_text,
+					media,
+					poll: edit.poll.map(|poll| network::PollData {
 						options: poll.options,
 						expires_in: poll.expires_in,
 						multiple: poll.multiple,
@@ -1001,14 +1095,23 @@ fn switch_to_account(
 			state.max_post_chars = Some(info.max_post_chars);
 			state.poll_limits = info.poll_limits;
 		}
-		if (state.active_account().and_then(|a| a.acct.as_deref()).is_none()
-			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none())
-			&& let Ok(account) = client.verify_credentials(&token)
-			&& let Some(active) = state.active_account_mut()
-		{
-			active.acct = Some(account.acct);
-			active.display_name = Some(account.display_name);
-			let _ = config::ConfigStore::new().save(&state.config);
+
+		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
+			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
+			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none();
+
+		if needs_verify {
+			if let Ok(account) = client.verify_credentials(&token)
+				&& let Some(active) = state.active_account_mut()
+			{
+				active.acct = Some(account.acct);
+				active.display_name = Some(account.display_name);
+				active.user_id = Some(account.id.clone());
+				state.current_user_id = Some(account.id);
+				let _ = config::ConfigStore::new().save(&state.config);
+			}
+		} else if let Some(active) = state.active_account() {
+			state.current_user_id = active.user_id.clone();
 		}
 	}
 
@@ -1391,6 +1494,43 @@ fn process_network_responses(
 			NetworkResponse::Replied(Err(ref err)) => {
 				live_region::announce(live_region, &format!("Failed to reply: {}", err));
 			}
+			NetworkResponse::StatusDeleted { status_id, result: Ok(_) } => {
+				remove_status_from_timelines(state, &status_id);
+				if let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						state.config.sort_order,
+						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
+					);
+				}
+				live_region::announce(live_region, "Deleted");
+			}
+			NetworkResponse::StatusDeleted { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to delete: {}", err));
+			}
+			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
+				let status_clone = status.clone();
+				update_status_in_timelines(state, &status.id, move |s| *s = status_clone.clone());
+				if let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						state.config.sort_order,
+						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
+					);
+				}
+				live_region::announce(live_region, "Edited");
+			}
+			NetworkResponse::StatusEdited { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to edit: {}", err));
+			}
 			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, true);
 				if let Some(dlg) = &state.hashtag_dialog {
@@ -1495,6 +1635,24 @@ fn update_poll_in_timelines(state: &mut AppState, poll: &crate::mastodon::Poll) 
 				}
 			}
 		}
+	}
+}
+
+fn remove_status_from_timelines(state: &mut AppState, status_id: &str) {
+	for timeline in state.timeline_manager.iter_mut() {
+		timeline.entries.retain(|entry| {
+			if let Some(status) = entry.as_status() {
+				if status.id == status_id {
+					return false;
+				}
+				if let Some(reblog) = &status.reblog
+					&& reblog.id == status_id
+				{
+					return false;
+				}
+			}
+			true
+		});
 	}
 }
 

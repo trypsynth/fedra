@@ -96,6 +96,7 @@ pub struct Account {
 	pub client_secret: Option<String>,
 	pub acct: Option<String>,
 	pub display_name: Option<String>,
+	pub user_id: Option<String>,
 }
 
 impl Account {
@@ -108,6 +109,7 @@ impl Account {
 			client_secret: None,
 			acct: None,
 			display_name: None,
+			user_id: None,
 		}
 	}
 }

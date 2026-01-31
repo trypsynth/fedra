@@ -103,6 +103,7 @@ pub struct PostResult {
 pub struct PostMedia {
 	pub path: String,
 	pub description: Option<String>,
+	pub is_existing: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -135,8 +136,16 @@ fn visibility_index(visibility: PostVisibility) -> usize {
 fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	media_list.clear();
 	for item in items {
-		let label = Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path);
-		media_list.append(label);
+		let label = if item.is_existing {
+			if let Some(desc) = &item.description {
+				format!("Existing: {}", desc)
+			} else {
+				"Existing Media".to_string()
+			}
+		} else {
+			Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path).to_string()
+		};
+		media_list.append(&label);
 	}
 }
 
@@ -440,7 +449,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 				let new_len = {
 					let mut items = items_add.borrow_mut();
 					for path in paths {
-						items.push(PostMedia { path, description: None });
+						items.push(PostMedia { path, description: None, is_existing: false });
 					}
 					refresh_media_list(&media_list_add, &items);
 					items.len()
@@ -732,6 +741,7 @@ fn prompt_for_compose(
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
 	config: ComposeDialogConfig,
+	initial_media: Vec<PostMedia>,
 ) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let title_prefix = config.title_prefix;
@@ -806,7 +816,18 @@ fn prompt_for_compose(
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(Vec::new()));
+	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial_media));
+	{
+		let count = media_items.borrow().len();
+		let label = if count == 0 {
+			"No media attached.".to_string()
+		} else if count == 1 {
+			"1 item attached.".to_string()
+		} else {
+			format!("{} items attached.", count)
+		};
+		media_count_label.set_label(&label);
+	}
 	let media_items_manage = media_items.clone();
 	let media_count_update = media_count_label;
 	let media_parent = dialog;
@@ -965,6 +986,7 @@ pub fn prompt_for_post(
 			initial_cw: None,
 			default_visibility: PostVisibility::Public,
 		},
+		Vec::new(),
 	)
 }
 
@@ -1028,6 +1050,44 @@ pub fn prompt_for_reply(
 			initial_cw,
 			default_visibility,
 		},
+		Vec::new(),
+	)
+}
+
+pub fn prompt_for_edit(
+	frame: &Frame,
+	status: &Status,
+	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
+	enter_to_send: bool,
+) -> Option<PostResult> {
+	let default_visibility = match status.visibility.as_str() {
+		"public" => PostVisibility::Public,
+		"unlisted" => PostVisibility::Unlisted,
+		"private" => PostVisibility::Private,
+		"direct" => PostVisibility::Direct,
+		_ => PostVisibility::Public,
+	};
+	let initial_cw = if status.spoiler_text.trim().is_empty() { None } else { Some(status.spoiler_text.clone()) };
+	let initial_media = status
+		.media_attachments
+		.iter()
+		.map(|m| PostMedia { path: m.id.clone(), description: m.description.clone(), is_existing: true })
+		.collect();
+
+	prompt_for_compose(
+		frame,
+		max_chars,
+		poll_limits,
+		enter_to_send,
+		ComposeDialogConfig {
+			title_prefix: "Edit Post".to_string(),
+			ok_label: "Save".to_string(),
+			initial_content: status.display_text(),
+			initial_cw,
+			default_visibility,
+		},
+		initial_media,
 	)
 }
 

@@ -952,6 +952,57 @@ impl MastodonClient {
 		let poll: Poll = response.json().context("Invalid poll response")?;
 		Ok(poll)
 	}
+
+	pub fn delete_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}", status_id))?;
+		let response = self
+			.http
+			.delete(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to delete status")?
+			.error_for_status()
+			.context("Instance rejected delete request")?;
+		let status: Status = response.json().context("Invalid delete response")?;
+		Ok(status)
+	}
+
+	pub fn edit_status(
+		&self,
+		access_token: &str,
+		status_id: &str,
+		status: &str,
+		spoiler_text: Option<&str>,
+		media_ids: &[String],
+		poll: Option<&crate::network::PollData>,
+	) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}", status_id))?;
+		let mut params = vec![("status".to_string(), status.to_string())];
+		if let Some(spoiler) = spoiler_text {
+			params.push(("spoiler_text".to_string(), spoiler.to_string()));
+		}
+		for media_id in media_ids {
+			params.push(("media_ids[]".to_string(), media_id.clone()));
+		}
+		if let Some(poll) = poll {
+			for option in &poll.options {
+				params.push(("poll[options][]".to_string(), option.clone()));
+			}
+			params.push(("poll[expires_in]".to_string(), poll.expires_in.to_string()));
+			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
+		}
+		let response = self
+			.http
+			.put(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to edit status")?
+			.error_for_status()
+			.context("Instance rejected edit request")?;
+		let status: Status = response.json().context("Invalid edit response")?;
+		Ok(status)
+	}
 }
 
 #[derive(Debug, Deserialize)]

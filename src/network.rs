@@ -109,6 +109,16 @@ pub enum NetworkCommand {
 		poll_id: String,
 		choices: Vec<usize>,
 	},
+	DeleteStatus {
+		status_id: String,
+	},
+	EditStatus {
+		status_id: String,
+		content: String,
+		spoiler_text: Option<String>,
+		media: Vec<EditMedia>,
+		poll: Option<PollData>,
+	},
 	Shutdown,
 }
 
@@ -116,6 +126,12 @@ pub enum NetworkCommand {
 pub struct MediaUpload {
 	pub path: String,
 	pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum EditMedia {
+	New(MediaUpload),
+	Existing(String),
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +170,14 @@ pub enum NetworkResponse {
 		result: Result<Status>,
 	},
 	Replied(Result<()>),
+	StatusDeleted {
+		status_id: String,
+		result: Result<Status>,
+	},
+	StatusEdited {
+		_status_id: String,
+		result: Result<Status>,
+	},
 	TagFollowed {
 		name: String,
 		result: Result<crate::mastodon::Tag>,
@@ -221,6 +245,37 @@ fn post_with_media(
 		poll.as_ref(),
 		in_reply_to_id,
 	)
+}
+
+fn edit_with_media(
+	client: &MastodonClient,
+	access_token: &str,
+	status_id: &str,
+	content: &str,
+	spoiler_text: Option<&str>,
+	media: Vec<EditMedia>,
+	poll: Option<PollData>,
+) -> Result<Status> {
+	let mut media_ids = Vec::new();
+	let mut upload_failed = None;
+	for item in media {
+		match item {
+			EditMedia::New(upload) => {
+				match client.upload_media(access_token, &upload.path, upload.description.as_deref()) {
+					Ok(id) => media_ids.push(id),
+					Err(err) => {
+						upload_failed = Some(err);
+						break;
+					}
+				}
+			}
+			EditMedia::Existing(id) => media_ids.push(id),
+		}
+	}
+	if let Some(err) = upload_failed {
+		return Err(err);
+	}
+	client.edit_status(access_token, status_id, content, spoiler_text, &media_ids, poll.as_ref())
 }
 
 pub struct NetworkHandle {
@@ -324,6 +379,15 @@ fn network_loop(
 					None,
 				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
+			}
+			Ok(NetworkCommand::EditStatus { status_id, content, spoiler_text, media, poll }) => {
+				let result =
+					edit_with_media(&client, &access_token, &status_id, &content, spoiler_text.as_deref(), media, poll);
+				let _ = responses.send(NetworkResponse::StatusEdited { _status_id: status_id, result });
+			}
+			Ok(NetworkCommand::DeleteStatus { status_id }) => {
+				let result = client.delete_status(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::StatusDeleted { status_id, result });
 			}
 			Ok(NetworkCommand::Favourite { status_id }) => {
 				let result = client.favourite(&access_token, &status_id);

@@ -3,10 +3,10 @@ use std::{cell::Cell, rc::Rc, sync::mpsc::Sender};
 use wxdragon::prelude::*;
 
 use crate::{
-	ID_BOOST, ID_CLOSE_TIMELINE, ID_FAVOURITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE,
-	ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY,
-	ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	KEY_DELETE, UiCommand, config::SortOrder, live_region, ui::menu::build_menu_bar,
+	ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVOURITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
+	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
+	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD,
+	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand, config::SortOrder, live_region, ui::menu::build_menu_bar,
 };
 
 pub struct WindowParts {
@@ -191,6 +191,48 @@ pub fn bind_input_handlers(
 				return;
 			}
 
+			if event.control_down() {
+				match key {
+					88 => {
+						// x
+						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
+						event.skip(false);
+						return;
+					}
+					69 => {
+						// e
+						let _ = ui_tx_list_key.send(UiCommand::EditPost);
+						event.skip(false);
+						return;
+					}
+					91 => {
+						// [
+						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
+						event.skip(false);
+						return;
+					}
+					93 => {
+						// ]
+						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
+						event.skip(false);
+						return;
+					}
+					85 => {
+						// u
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
+						event.skip(false);
+						return;
+					}
+					KEY_DELETE => {
+						// Delete
+						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
+						event.skip(false);
+						return;
+					}
+					_ => {}
+				}
+			}
+
 			if quick_action_keys_list.get() && !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
 					81 => {
@@ -214,6 +256,18 @@ pub fn bind_input_handlers(
 					67 => {
 						// c
 						let _ = ui_tx_list_key.send(UiCommand::NewPost);
+						event.skip(false);
+						return;
+					}
+					68 => {
+						// d
+						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
+						event.skip(false);
+						return;
+					}
+					69 => {
+						// e
+						let _ = ui_tx_list_key.send(UiCommand::EditPost);
 						event.skip(false);
 						return;
 					}
@@ -244,36 +298,6 @@ pub fn bind_input_handlers(
 					88 => {
 						// x
 						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
-						event.skip(false);
-						return;
-					}
-					_ => {}
-				}
-			}
-
-			if event.control_down() {
-				match key {
-					88 => {
-						// x
-						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
-						event.skip(false);
-						return;
-					}
-					91 => {
-						// [
-						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
-						event.skip(false);
-						return;
-					}
-					93 => {
-						// ]
-						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
-						event.skip(false);
-						return;
-					}
-					85 => {
-						// u
-						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
 						event.skip(false);
 						return;
 					}
@@ -375,6 +399,18 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::Boost);
+		}
+		ID_DELETE_POST => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::DeletePost);
+		}
+		ID_EDIT_POST => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::EditPost);
 		}
 		ID_REFRESH => {
 			if shutdown_menu.get() {
