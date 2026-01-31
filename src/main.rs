@@ -1880,6 +1880,7 @@ fn main() {
 				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
 				.build();
 			dialog.show_modal();
+			frame.close(true);
 			return;
 		}
 		if config.accounts.is_empty() {
