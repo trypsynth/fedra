@@ -10,7 +10,7 @@ const fn date_to_timestamp(year: u32, month: u32, day: u32) -> u64 {
 		days += if leap { 366 } else { 365 };
 		y += 1;
 	}
-	let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+	let is_leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
 	let mut m = 1;
 	while m < month {
 		days += match m {

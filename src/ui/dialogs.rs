@@ -1319,6 +1319,8 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 pub struct ProfileDialog {
 	dialog: Dialog,
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
+	profile_text: TextCtrl,
+	account: Rc<MastodonAccount>,
 }
 
 impl ProfileDialog {
@@ -1337,8 +1339,9 @@ impl ProfileDialog {
 		let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
 		let panel = Panel::builder(&dialog).build();
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-		let profile_text =
-			TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly).build();
+		let profile_text = TextCtrl::builder(&panel)
+			.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly | TextCtrlStyle::DontWrap)
+			.build();
 		profile_text.set_value(&account.profile_display());
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let actions_button = Button::builder(&panel).with_label("Actions...").build();
@@ -1497,7 +1500,7 @@ impl ProfileDialog {
 		});
 
 		dialog.centre();
-		ProfileDialog { dialog, relationship }
+		ProfileDialog { dialog, relationship, profile_text, account: Rc::new(account) }
 	}
 
 	pub fn show(&self) {
@@ -1505,7 +1508,39 @@ impl ProfileDialog {
 	}
 
 	pub fn update_relationship(&self, relationship: crate::mastodon::Relationship) {
-		*self.relationship.borrow_mut() = Some(relationship);
+		*self.relationship.borrow_mut() = Some(relationship.clone());
+		let mut text = self.account.profile_display();
+		text.push_str("\r\n\r\nRelationship:\r\n");
+
+		let follow_status = match (relationship.following, relationship.followed_by) {
+			(true, true) => "You follow each other.",
+			(true, false) => "You follow this person.",
+			(false, true) => "This person follows you.",
+			(false, false) => "You do not follow each other.",
+		};
+		text.push_str(&format!("{}\r\n", follow_status));
+
+		if relationship.requested {
+			text.push_str("You have requested to follow this person.\r\n");
+		}
+		if relationship.blocking {
+			text.push_str("You have blocked this person.\r\n");
+		}
+		if relationship.muting {
+			text.push_str("You have muted this person.\r\n");
+		}
+		if relationship.domain_blocking {
+			text.push_str("You have blocked this person's domain.\r\n");
+		}
+
+		if !relationship.note.is_empty() {
+			let note = crate::html::strip_html(&relationship.note);
+			if !note.trim().is_empty() {
+				text.push_str("\r\nNote:\r\n");
+				text.push_str(&note);
+			}
+		}
+		self.profile_text.set_value(&text);
 	}
 }
 
