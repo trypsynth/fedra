@@ -167,6 +167,9 @@ impl Status {
 			meta.push(when);
 		}
 		meta.push(self.visibility_display());
+		meta.push(format!("{} replies", self.replies_count));
+		meta.push(format!("{} boosts", self.reblogs_count));
+		meta.push(format!("{} favourites", self.favourites_count));
 		if let Some(client) = self.client_name() {
 			meta.push(format!("via {}", client));
 		}
