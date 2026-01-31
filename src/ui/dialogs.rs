@@ -664,13 +664,13 @@ pub fn prompt_for_options(
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	let enter_checkbox = CheckBox::builder(&panel).with_label("Enter to send").build();
+	let enter_checkbox = CheckBox::builder(&panel).with_label("Use &enter to send posts").build();
 	enter_checkbox.set_value(enter_to_send);
-	let link_checkbox = CheckBox::builder(&panel).with_label("Always show link selection dialog").build();
+	let link_checkbox = CheckBox::builder(&panel).with_label("Always prompt to open &links").build();
 	link_checkbox.set_value(always_show_link_dialog);
-	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use quick action keys in timelines").build();
+	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
-	let autoload_checkbox = CheckBox::builder(&panel).with_label("Autoload posts when scrolling").build();
+	let autoload_checkbox = CheckBox::builder(&panel).with_label("&Autoload posts when scrolling").build();
 	autoload_checkbox.set_value(autoload);
 	let cw_label = StaticText::builder(&panel).with_label("Content warning display:").build();
 	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
@@ -684,7 +684,7 @@ pub fn prompt_for_options(
 	let cw_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	cw_sizer.add(&cw_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	cw_sizer.add(&cw_choice, 1, SizerFlag::Expand, 0);
-	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative timestamps").build();
+	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative &timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
