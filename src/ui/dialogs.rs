@@ -533,6 +533,115 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	Some(items.borrow().clone())
 }
 
+pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &str) -> Option<Vec<usize>> {
+	let dialog = Dialog::builder(frame, "Vote").with_size(400, 500).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let post_display = TextCtrl::builder(&panel)
+		.with_value(post_text)
+		.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
+		.build();
+	main_sizer.add(&post_display, 1, SizerFlag::Expand | SizerFlag::All, 8);
+
+	let info_text = if poll.expired {
+		"This poll has expired."
+	} else if poll.voted.unwrap_or(false) {
+		"You have already voted on this poll."
+	} else if poll.multiple {
+		"Select options (multiple allowed):"
+	} else {
+		"Select an option:"
+	};
+	let info_label = StaticText::builder(&panel).with_label(info_text).build();
+	main_sizer.add(&info_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	let options_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let mut checkboxes = Vec::new();
+	let mut radio_buttons = Vec::new();
+	if poll.multiple {
+		for option in &poll.options {
+			let cb = CheckBox::builder(&panel).with_label(&option.title).build();
+			if poll.expired || poll.voted.unwrap_or(false) {
+				cb.enable(false);
+			}
+			options_sizer.add(&cb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 4);
+			checkboxes.push(cb);
+		}
+	} else {
+		for (i, option) in poll.options.iter().enumerate() {
+			let style = if i == 0 { RadioButtonStyle::GroupStart } else { RadioButtonStyle::Default };
+			let rb = RadioButton::builder(&panel).with_label(&option.title).with_style(style).build();
+			if poll.expired || poll.voted.unwrap_or(false) {
+				rb.enable(false);
+			}
+			options_sizer.add(&rb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 4);
+			radio_buttons.push(rb);
+		}
+	}
+	main_sizer.add_sizer(&options_sizer, 1, SizerFlag::Expand | SizerFlag::All, 8);
+
+	if poll.expired || poll.voted.unwrap_or(false) {
+		let total_votes = poll.votes_count.max(1) as f32;
+		let results_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		for option in &poll.options {
+			let votes = option.votes_count.unwrap_or(0);
+			let percent = (votes as f32 / total_votes * 100.0) as i32;
+			let label = format!("{}: {} votes ({}%)", option.title, votes, percent);
+			let text = StaticText::builder(&panel).with_label(&label).build();
+			results_sizer.add(&text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 4);
+		}
+		main_sizer.add_sizer(&results_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	}
+
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let vote_button = Button::builder(&panel).with_id(ID_OK).with_label("Vote").build();
+	vote_button.set_default();
+	let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+
+	if poll.expired || poll.voted.unwrap_or(false) {
+		vote_button.enable(false);
+	}
+
+	button_sizer.add(&vote_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.centre();
+
+	let result = dialog.show_modal();
+	if result != ID_OK {
+		return None;
+	}
+
+	let mut selected_indices = Vec::new();
+	if poll.multiple {
+		for (i, cb) in checkboxes.iter().enumerate() {
+			if cb.get_value() {
+				selected_indices.push(i);
+			}
+		}
+	} else {
+		for (i, rb) in radio_buttons.iter().enumerate() {
+			if rb.get_value() {
+				selected_indices.push(i);
+			}
+		}
+	}
+
+	if selected_indices.is_empty() {
+		return None;
+	}
+
+	Some(selected_indices)
+}
+
 pub fn prompt_for_options(
 	frame: &Frame,
 	enter_to_send: bool,

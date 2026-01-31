@@ -454,6 +454,12 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::LoadMore);
 		}
+		crate::ID_VOTE => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::Vote);
+		}
 		_ => {}
 	});
 

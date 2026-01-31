@@ -52,6 +52,7 @@ pub(crate) const ID_VIEW_THREAD: i32 = 1016;
 pub(crate) const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
 pub(crate) const ID_VIEW_HASHTAGS: i32 = 1018;
 pub(crate) const ID_LOAD_MORE: i32 = 1019;
+pub(crate) const ID_VOTE: i32 = 1024;
 pub(crate) const ID_TRAY_TOGGLE: i32 = 1020;
 pub(crate) const ID_TRAY_EXIT: i32 = 1021;
 pub(crate) const KEY_DELETE: i32 = 127;
@@ -133,6 +134,7 @@ pub(crate) enum UiCommand {
 	ProfileDialogClosed,
 	OpenLinks,
 	ViewThread,
+	Vote,
 	LoadMore,
 	ToggleContentWarning,
 	ToggleWindowVisibility,
@@ -936,6 +938,31 @@ fn handle_ui_command(
 			};
 			handle.send(NetworkCommand::FetchThread { timeline_type, focus: target });
 		}
+		UiCommand::Vote => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let poll = match &target.poll {
+				Some(p) => p,
+				None => {
+					live_region::announce(live_region, "No poll in this post");
+					return;
+				}
+			};
+			let post_text = target.display_text();
+			if let Some(choices) = dialogs::prompt_for_vote(frame, poll, &post_text) {
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::VotePoll { poll_id: poll.id.clone(), choices });
+				} else {
+					live_region::announce(live_region, "Network not available");
+				}
+			}
+		}
 	}
 }
 
@@ -1426,9 +1453,49 @@ fn process_network_responses(
 					dlg.update_relationship(rel);
 				}
 			}
+			NetworkResponse::PollVoted { result } => match result {
+				Ok(poll) => {
+					update_poll_in_timelines(state, &poll);
+					if let Some(active) = state.timeline_manager.active_mut() {
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							state.config.sort_order,
+							state.config.timestamp_format,
+							state.config.content_warning_display,
+							&state.cw_expanded,
+						);
+					}
+					live_region::announce(live_region, "Vote submitted");
+				}
+				Err(err) => {
+					live_region::announce(live_region, &format!("Failed to vote: {}", err));
+				}
+			},
 		}
 	}
 	let _ = frame;
+}
+
+fn update_poll_in_timelines(state: &mut AppState, poll: &crate::mastodon::Poll) {
+	for timeline in state.timeline_manager.iter_mut() {
+		for entry in &mut timeline.entries {
+			if let Some(status) = entry.as_status_mut() {
+				if let Some(p) = &mut status.poll
+					&& p.id == poll.id
+				{
+					*p = poll.clone();
+				}
+				if let Some(reblog) = &mut status.reblog
+					&& let Some(p) = &mut reblog.poll
+					&& p.id == poll.id
+				{
+					*p = poll.clone();
+				}
+			}
+		}
+	}
 }
 
 fn update_status_in_timelines<F>(state: &mut AppState, status_id: &str, updater: F)

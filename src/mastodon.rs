@@ -53,6 +53,28 @@ pub struct Status {
 	pub mentions: Vec<Mention>,
 	#[serde(default)]
 	pub tags: Vec<Tag>,
+	pub poll: Option<Poll>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Poll {
+	pub id: String,
+	pub expires_at: Option<String>,
+	pub expired: bool,
+	pub multiple: bool,
+	pub votes_count: u64,
+	pub voters_count: Option<u64>,
+	pub options: Vec<PollOption>,
+	pub voted: Option<bool>,
+	pub own_votes: Option<Vec<u32>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct PollOption {
+	pub title: String,
+	pub votes_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -135,6 +157,9 @@ impl Status {
 		}
 		if let Some(media) = self.media_summary() {
 			out.push_str(&media);
+		}
+		if let Some(poll_text) = self.poll_summary() {
+			out.push_str(&format!(" {}", poll_text));
 		}
 		// Metadata line: time, visibility, client
 		let mut meta = Vec::new();
@@ -219,6 +244,28 @@ impl Status {
 			summary.push_str(&format!(" [{}]", alt_texts));
 		}
 		Some(summary)
+	}
+
+	fn poll_summary(&self) -> Option<String> {
+		let poll = self.poll.as_ref()?;
+		let show_results = poll.voted.unwrap_or(false) || poll.expired;
+
+		if show_results {
+			let total = poll.votes_count.max(1) as f64;
+			let options: Vec<String> = poll
+				.options
+				.iter()
+				.map(|opt| {
+					let votes = opt.votes_count.unwrap_or(0);
+					let pct = (votes as f64 / total * 100.0).round() as u64;
+					format!("{}: {}%", opt.title, pct)
+				})
+				.collect();
+			Some(format!("[Poll Results: {}]", options.join(", ")))
+		} else {
+			let options: Vec<String> = poll.options.iter().map(|opt| opt.title.clone()).collect();
+			Some(format!("[Poll: {}]", options.join(", ")))
+		}
 	}
 }
 
@@ -885,6 +932,25 @@ impl MastodonClient {
 			.context("Instance rejected unmute request")?;
 		let relationship: Relationship = response.json().context("Invalid relationship response")?;
 		Ok(relationship)
+	}
+
+	pub fn vote_poll(&self, access_token: &str, poll_id: &str, choices: &[usize]) -> Result<Poll> {
+		let url = self.base_url.join(&format!("api/v1/polls/{}/votes", poll_id))?;
+		let mut params = Vec::new();
+		for choice in choices {
+			params.push(("choices[]", choice.to_string()));
+		}
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to vote on poll")?
+			.error_for_status()
+			.context("Instance rejected vote request")?;
+		let poll: Poll = response.json().context("Invalid poll response")?;
+		Ok(poll)
 	}
 }
 

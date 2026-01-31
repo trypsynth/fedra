@@ -105,6 +105,10 @@ pub enum NetworkCommand {
 	FetchTagsInfo {
 		names: Vec<String>,
 	},
+	VotePoll {
+		poll_id: String,
+		choices: Vec<usize>,
+	},
 	Shutdown,
 }
 
@@ -167,6 +171,9 @@ pub enum NetworkResponse {
 	RelationshipLoaded {
 		_account_id: String,
 		result: Result<crate::mastodon::Relationship>,
+	},
+	PollVoted {
+		result: Result<crate::mastodon::Poll>,
 	},
 	TagsInfoFetched {
 		result: Result<Vec<crate::mastodon::Tag>>,
@@ -432,6 +439,10 @@ fn network_loop(
 				let result =
 					client.get_relationships(&access_token, &[account_id.clone()]).map(|mut rels| rels.remove(0));
 				let _ = responses.send(NetworkResponse::RelationshipLoaded { _account_id: account_id, result });
+			}
+			Ok(NetworkCommand::VotePoll { poll_id, choices }) => {
+				let result = client.vote_poll(&access_token, &poll_id, &choices);
+				let _ = responses.send(NetworkResponse::PollVoted { result });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

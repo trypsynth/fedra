@@ -42,6 +42,10 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu.append_separator();
 
 	post_menu
+		.append(crate::ID_VOTE, "&Vote", "Vote on poll in selected post", ItemKind::Normal)
+		.expect("Failed to append vote menu item");
+
+	post_menu
 		.append(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post", ItemKind::Normal)
 		.expect("Failed to append favourite menu item");
 	post_menu
