@@ -4,7 +4,7 @@ use wxdragon::prelude::ListBox;
 
 use crate::{
 	config::{ContentWarningDisplay, SortOrder, TimestampFormat},
-	timeline::{Timeline, TimelineEntry},
+	timeline::{Timeline, TimelineEntry, TimelineType},
 };
 
 pub fn update_timeline_ui(
@@ -84,6 +84,7 @@ pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline
 		return;
 	}
 	let entries_len = timeline.entries.len();
+	let is_thread = matches!(timeline.timeline_type, TimelineType::Thread { .. });
 	let selection = timeline
 		.selected_id
 		.as_deref()
@@ -95,9 +96,19 @@ pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline
 				.and_then(|entry_index| entry_index_to_list_index(entry_index, entries_len, sort_order))
 		})
 		.or_else(|| timeline.selected_index.filter(|&sel| sel < entries_len))
-		.unwrap_or_else(|| match sort_order {
-			SortOrder::NewestToOldest => 0,
-			SortOrder::OldestToNewest => entries_len - 1,
+		.unwrap_or_else(|| {
+			if is_thread {
+				// For threads, select the first (oldest) post so users can read sequentially
+				match sort_order {
+					SortOrder::NewestToOldest => entries_len - 1,
+					SortOrder::OldestToNewest => 0,
+				}
+			} else {
+				match sort_order {
+					SortOrder::NewestToOldest => 0,
+					SortOrder::OldestToNewest => entries_len - 1,
+				}
+			}
 		});
 	timeline.selected_index = Some(selection);
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)

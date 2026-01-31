@@ -1020,10 +1020,6 @@ fn handle_ui_command(
 				live_region,
 				frame,
 			);
-			if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-				timeline.selected_id = Some(target.id.clone());
-				timeline.selected_index = None;
-			}
 			let handle = match &state.network_handle {
 				Some(h) => h,
 				None => {
