@@ -73,6 +73,23 @@ pub struct Tag {
 	pub following: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Relationship {
+	pub id: String,
+	pub following: bool,
+	pub showing_reblogs: bool,
+	pub notifying: bool,
+	pub followed_by: bool,
+	pub blocking: bool,
+	pub muting: bool,
+	pub muting_notifications: bool,
+	pub requested: bool,
+	pub domain_blocking: bool,
+	pub endorsed: bool,
+	pub note: String,
+}
+
 impl Status {
 	pub fn display_text(&self) -> String {
 		strip_html(&self.content)
@@ -753,6 +770,121 @@ impl MastodonClient {
 			.context("Instance rejected tag info request")?;
 		let tag: Tag = response.json().context("Invalid tag response")?;
 		Ok(tag)
+	}
+
+	pub fn get_relationships(&self, access_token: &str, account_ids: &[String]) -> Result<Vec<Relationship>> {
+		let mut url = self.base_url.join("api/v1/accounts/relationships")?;
+		{
+			let mut query = url.query_pairs_mut();
+			for id in account_ids {
+				query.append_pair("id[]", id);
+			}
+		}
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch relationships")?
+			.error_for_status()
+			.context("Instance rejected relationships request")?;
+		let relationships: Vec<Relationship> = response.json().context("Invalid relationships response")?;
+		Ok(relationships)
+	}
+
+	#[allow(dead_code)]
+	pub fn follow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		self.follow_account_with_options(access_token, account_id, true)
+	}
+
+	pub fn follow_account_with_options(
+		&self,
+		access_token: &str,
+		account_id: &str,
+		reblogs: bool,
+	) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/follow", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&[("reblogs", if reblogs { "true" } else { "false" })])
+			.send()
+			.context("Failed to follow account")?
+			.error_for_status()
+			.context("Instance rejected follow request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn unfollow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/unfollow", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unfollow account")?
+			.error_for_status()
+			.context("Instance rejected unfollow request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn block_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/block", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to block account")?
+			.error_for_status()
+			.context("Instance rejected block request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn unblock_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/unblock", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unblock account")?
+			.error_for_status()
+			.context("Instance rejected unblock request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn mute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/mute", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to mute account")?
+			.error_for_status()
+			.context("Instance rejected mute request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{}/unmute", account_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unmute account")?
+			.error_for_status()
+			.context("Instance rejected unmute request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
 	}
 }
 

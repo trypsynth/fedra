@@ -12,6 +12,18 @@ use crate::{
 	timeline::TimelineType,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelationshipAction {
+	Follow,
+	Unfollow,
+	Block,
+	Unblock,
+	Mute,
+	Unmute,
+	ShowBoosts,
+	HideBoosts,
+}
+
 #[derive(Debug)]
 pub enum NetworkCommand {
 	FetchTimeline {
@@ -61,6 +73,35 @@ pub enum NetworkCommand {
 	UnfollowTag {
 		name: String,
 	},
+	FollowAccount {
+		account_id: String,
+		target_name: String,
+		reblogs: bool,
+		action: RelationshipAction,
+	},
+	UnfollowAccount {
+		account_id: String,
+		target_name: String,
+	},
+	BlockAccount {
+		account_id: String,
+		target_name: String,
+	},
+	UnblockAccount {
+		account_id: String,
+		target_name: String,
+	},
+	MuteAccount {
+		account_id: String,
+		target_name: String,
+	},
+	UnmuteAccount {
+		account_id: String,
+		target_name: String,
+	},
+	FetchRelationship {
+		account_id: String,
+	},
 	FetchTagsInfo {
 		names: Vec<String>,
 	},
@@ -82,17 +123,54 @@ pub struct PollData {
 
 #[derive(Debug)]
 pub enum NetworkResponse {
-	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
-	AccountLookupResult { handle: String, result: Result<Account> },
+	TimelineLoaded {
+		timeline_type: TimelineType,
+		result: Result<TimelineData>,
+		max_id: Option<String>,
+	},
+	AccountLookupResult {
+		handle: String,
+		result: Result<Account>,
+	},
 	PostComplete(Result<()>),
-	Favourited { status_id: String, result: Result<Status> },
-	Unfavourited { status_id: String, result: Result<Status> },
-	Boosted { status_id: String, result: Result<Status> },
-	Unboosted { status_id: String, result: Result<Status> },
+	Favourited {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Unfavourited {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Boosted {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Unboosted {
+		status_id: String,
+		result: Result<Status>,
+	},
 	Replied(Result<()>),
-	TagFollowed { name: String, result: Result<crate::mastodon::Tag> },
-	TagUnfollowed { name: String, result: Result<crate::mastodon::Tag> },
-	TagsInfoFetched { result: Result<Vec<crate::mastodon::Tag>> },
+	TagFollowed {
+		name: String,
+		result: Result<crate::mastodon::Tag>,
+	},
+	TagUnfollowed {
+		name: String,
+		result: Result<crate::mastodon::Tag>,
+	},
+	RelationshipUpdated {
+		_account_id: String,
+		target_name: String,
+		action: RelationshipAction,
+		result: Result<crate::mastodon::Relationship>,
+	},
+	RelationshipLoaded {
+		_account_id: String,
+		result: Result<crate::mastodon::Relationship>,
+	},
+	TagsInfoFetched {
+		result: Result<Vec<crate::mastodon::Tag>>,
+	},
 }
 
 #[derive(Debug)]
@@ -295,6 +373,65 @@ fn network_loop(
 				}
 				let result = Ok(tags);
 				let _ = responses.send(NetworkResponse::TagsInfoFetched { result });
+			}
+			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
+				let result = client.follow_account_with_options(&access_token, &account_id, reblogs);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action,
+					result,
+				});
+			}
+			Ok(NetworkCommand::UnfollowAccount { account_id, target_name }) => {
+				let result = client.unfollow_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action: RelationshipAction::Unfollow,
+					result,
+				});
+			}
+			Ok(NetworkCommand::BlockAccount { account_id, target_name }) => {
+				let result = client.block_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action: RelationshipAction::Block,
+					result,
+				});
+			}
+			Ok(NetworkCommand::UnblockAccount { account_id, target_name }) => {
+				let result = client.unblock_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action: RelationshipAction::Unblock,
+					result,
+				});
+			}
+			Ok(NetworkCommand::MuteAccount { account_id, target_name }) => {
+				let result = client.mute_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action: RelationshipAction::Mute,
+					result,
+				});
+			}
+			Ok(NetworkCommand::UnmuteAccount { account_id, target_name }) => {
+				let result = client.unmute_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::RelationshipUpdated {
+					_account_id: account_id,
+					target_name,
+					action: RelationshipAction::Unmute,
+					result,
+				});
+			}
+			Ok(NetworkCommand::FetchRelationship { account_id }) => {
+				let result =
+					client.get_relationships(&access_token, &[account_id.clone()]).map(|mut rels| rels.remove(0));
+				let _ = responses.send(NetworkResponse::RelationshipLoaded { _account_id: account_id, result });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

@@ -1146,35 +1146,198 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 	result.borrow().clone()
 }
 
-/// Returns true if the user clicked "View Timeline". Probably change this later.
-pub fn show_profile(frame: &Frame, account: &MastodonAccount) -> bool {
-	let title = format!("Profile for {}", account.display_name_or_username());
-	let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
-	let panel = Panel::builder(&dialog).build();
-	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	let profile_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly).build();
-	profile_text.set_value(&account.profile_display());
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let timeline_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Timeline").build();
-	let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("&Close").build();
-	close_button.set_default();
-	button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
-	main_sizer.add(&profile_text, 1, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(
-		&button_sizer,
-		0,
-		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
-		8,
-	);
-	panel.set_sizer(main_sizer, true);
-	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
-	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_escape_id(ID_CANCEL);
-	dialog.centre();
-	dialog.show_modal() == ID_OK
+#[derive(Clone)]
+pub struct ProfileDialog {
+	dialog: Dialog,
+	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
+}
+
+impl ProfileDialog {
+	pub fn new<F, C>(
+		frame: &Frame,
+		account: MastodonAccount,
+		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
+		on_view_timeline: F,
+		on_close: C,
+	) -> Self
+	where
+		F: Fn() + 'static + Clone,
+		C: Fn() + 'static + Clone,
+	{
+		let title = format!("Profile for {}", account.display_name_or_username());
+		let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
+		let panel = Panel::builder(&dialog).build();
+		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		let profile_text =
+			TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly).build();
+		profile_text.set_value(&account.profile_display());
+		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+		let actions_button = Button::builder(&panel).with_label("Actions...").build();
+		let timeline_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Timeline").build();
+		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("&Close").build();
+		close_button.set_default();
+		button_sizer.add(&actions_button, 0, SizerFlag::Right, 8);
+		button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
+		button_sizer.add_stretch_spacer(1);
+		button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+		main_sizer.add(&profile_text, 1, SizerFlag::Expand | SizerFlag::All, 8);
+		main_sizer.add_sizer(
+			&button_sizer,
+			0,
+			SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+			8,
+		);
+		panel.set_sizer(main_sizer, true);
+		let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+		dialog.set_sizer(dialog_sizer, true);
+		dialog.set_escape_id(ID_CANCEL);
+
+		let relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>> = Rc::new(RefCell::new(None));
+		let account_id = account.id.clone();
+		let target_name = account.display_name_or_username().to_string();
+		let relationship_action = relationship.clone();
+		let actions_btn = actions_button;
+
+		const ID_ACTION_FOLLOW: i32 = 6001;
+		const ID_ACTION_UNFOLLOW: i32 = 6002;
+		const ID_ACTION_BLOCK: i32 = 6003;
+		const ID_ACTION_UNBLOCK: i32 = 6004;
+		const ID_ACTION_MUTE: i32 = 6005;
+		const ID_ACTION_UNMUTE: i32 = 6006;
+		const ID_ACTION_OPEN_BROWSER: i32 = 6007;
+		const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
+		const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
+
+		let account_url = account.url.clone();
+		actions_btn.on_click(move |_| {
+			let mut menu = Menu::builder().build();
+			{
+				let rel = relationship_action.borrow();
+				if let Some(r) = rel.as_ref() {
+					if r.following {
+						menu.append(ID_ACTION_UNFOLLOW, "Unfollow", "", ItemKind::Normal);
+						if r.showing_reblogs {
+							menu.append(ID_ACTION_HIDE_BOOSTS, "Hide Boosts", "", ItemKind::Normal);
+						} else {
+							menu.append(ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
+						}
+					} else {
+						menu.append(ID_ACTION_FOLLOW, "Follow", "", ItemKind::Normal);
+					}
+					if r.muting {
+						menu.append(ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
+					} else {
+						menu.append(ID_ACTION_MUTE, "Mute", "", ItemKind::Normal);
+					}
+					if r.blocking {
+						menu.append(ID_ACTION_UNBLOCK, "Unblock", "", ItemKind::Normal);
+					} else {
+						menu.append(ID_ACTION_BLOCK, "Block", "", ItemKind::Normal);
+					}
+					menu.append_separator();
+				}
+			}
+			menu.append(ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
+			panel.popup_menu(&mut menu, None);
+		});
+
+		let account_id_handler = account_id;
+		let target_name_handler = target_name;
+		let panel_handler = panel;
+		let net_tx_handler = net_tx.clone();
+
+		panel_handler.on_menu_selected(move |event| {
+			let id = event.get_id();
+			if id == ID_ACTION_OPEN_BROWSER {
+				let _ =
+					wxdragon::utils::launch_default_browser(&account_url, wxdragon::utils::BrowserLaunchFlags::Default);
+				return;
+			}
+
+			let cmd = match id {
+				ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+					reblogs: true,
+					action: crate::network::RelationshipAction::Follow,
+				},
+				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+				},
+				ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+					reblogs: true,
+					action: crate::network::RelationshipAction::ShowBoosts,
+				},
+				ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+					reblogs: false,
+					action: crate::network::RelationshipAction::HideBoosts,
+				},
+				ID_ACTION_BLOCK => {
+					let confirm = MessageDialog::builder(
+						&panel_handler,
+						"Are you sure you want to block this user?",
+						"Block User",
+					)
+					.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
+					.build();
+					if confirm.show_modal() != ID_YES {
+						return;
+					}
+					NetworkCommand::BlockAccount {
+						account_id: account_id_handler.clone(),
+						target_name: target_name_handler.clone(),
+					}
+				}
+				ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+				},
+				ID_ACTION_MUTE => NetworkCommand::MuteAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+				},
+				ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount {
+					account_id: account_id_handler.clone(),
+					target_name: target_name_handler.clone(),
+				},
+				_ => return,
+			};
+			let _ = net_tx_handler.send(cmd);
+		});
+		let dlg_timeline = dialog;
+		let on_view_timeline = on_view_timeline.clone();
+		timeline_button.on_click(move |_| {
+			on_view_timeline();
+			dlg_timeline.close(true);
+		});
+
+		let dlg_close = dialog;
+		close_button.on_click(move |_| {
+			dlg_close.close(true);
+		});
+
+		let on_close_win = on_close.clone();
+		dialog.on_close(move |_| {
+			on_close_win();
+		});
+
+		dialog.centre();
+		ProfileDialog { dialog, relationship }
+	}
+
+	pub fn show(&self) {
+		self.dialog.show(true);
+	}
+
+	pub fn update_relationship(&self, relationship: crate::mastodon::Relationship) {
+		*self.relationship.borrow_mut() = Some(relationship);
+	}
 }
 
 pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String> {

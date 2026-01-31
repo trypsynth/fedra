@@ -63,6 +63,8 @@ pub(crate) struct AppState {
 	max_post_chars: Option<usize>,
 	pub(crate) poll_limits: PollLimits,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
+	pub(crate) profile_dialog: Option<ui::dialogs::ProfileDialog>,
+	client: Option<MastodonClient>,
 	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
 }
@@ -78,6 +80,8 @@ impl AppState {
 			max_post_chars: None,
 			poll_limits: PollLimits::default(),
 			hashtag_dialog: None,
+			profile_dialog: None,
+			client: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
 		}
@@ -124,6 +128,7 @@ pub(crate) enum UiCommand {
 	ViewMentions,
 	ViewHashtags,
 	HashtagDialogClosed,
+	ProfileDialogClosed,
 	OpenLinks,
 	ViewThread,
 	LoadMore,
@@ -218,6 +223,7 @@ fn handle_ui_command(
 	autoload_enabled: &Cell<bool>,
 	sort_order_cell: &Cell<SortOrder>,
 	tray_hidden: &Cell<bool>,
+	ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	match cmd {
 		UiCommand::NewPost => {
@@ -526,6 +532,7 @@ fn handle_ui_command(
 							autoload_enabled,
 							sort_order_cell,
 							tray_hidden,
+							ui_tx,
 						);
 					}
 				}
@@ -542,6 +549,7 @@ fn handle_ui_command(
 						autoload_enabled,
 						sort_order_cell,
 						tray_hidden,
+						ui_tx,
 					);
 				}
 				dialogs::ManageAccountsResult::Switch(id) => {
@@ -557,6 +565,7 @@ fn handle_ui_command(
 						autoload_enabled,
 						sort_order_cell,
 						tray_hidden,
+						ui_tx,
 					);
 				}
 				dialogs::ManageAccountsResult::None => {}
@@ -594,6 +603,7 @@ fn handle_ui_command(
 				autoload_enabled,
 				sort_order_cell,
 				tray_hidden,
+				ui_tx,
 			);
 		}
 		UiCommand::SwitchPrevAccount => {
@@ -620,6 +630,7 @@ fn handle_ui_command(
 				autoload_enabled,
 				sort_order_cell,
 				tray_hidden,
+				ui_tx,
 			);
 		}
 		UiCommand::SwitchNextTimeline => {
@@ -643,6 +654,7 @@ fn handle_ui_command(
 				autoload_enabled,
 				sort_order_cell,
 				tray_hidden,
+				ui_tx,
 			);
 		}
 		UiCommand::SwitchPrevTimeline => {
@@ -666,6 +678,7 @@ fn handle_ui_command(
 				autoload_enabled,
 				sort_order_cell,
 				tray_hidden,
+				ui_tx,
 			);
 		}
 		UiCommand::RemoveAccount(id) => {
@@ -710,18 +723,30 @@ fn handle_ui_command(
 				TimelineEntry::Status(status) => status.reblog.as_ref().map(|r| &r.account).unwrap_or(&status.account),
 				TimelineEntry::Notification(notification) => &notification.account,
 			};
-			if dialogs::show_profile(frame, account) {
+
+			if let Some(net) = &state.network_handle {
+				net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+				let net_tx = net.command_tx.clone();
+				let ui_tx_timeline = ui_tx.clone();
 				let timeline_type =
 					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				open_timeline(
-					state,
-					timelines_selector,
-					timeline_list,
-					timeline_type,
-					suppress_selection,
-					live_region,
+				let ui_tx_close = ui_tx.clone();
+
+				let dlg = dialogs::ProfileDialog::new(
 					frame,
+					account.clone(),
+					net_tx,
+					move || {
+						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+					},
+					move || {
+						let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+					},
 				);
+				dlg.show();
+				state.profile_dialog = Some(dlg);
+			} else {
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 		UiCommand::OpenUserTimeline => {
@@ -774,10 +799,8 @@ fn handle_ui_command(
 			}
 			if let Some(mention) = dialogs::prompt_for_mentions(frame, &target.mentions) {
 				let mut account = None;
-				if let (Some(base_url), Some(token)) = (state.streaming_url.clone(), state.access_token.clone())
-					&& let Ok(client) = MastodonClient::new(base_url)
-				{
-					match client.get_account(&token, &mention.id) {
+				if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
+					match client.get_account(token, &mention.id) {
 						Ok(full) => account = Some(full),
 						Err(err) => {
 							dialogs::show_error(frame, &err);
@@ -799,24 +822,32 @@ fn handle_ui_command(
 					locked: false,
 					bot: false,
 				});
-				if dialogs::show_profile(frame, &account) {
+
+				if let Some(net) = &state.network_handle {
+					net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+					let net_tx = net.command_tx.clone();
+					let ui_tx_timeline = ui_tx.clone();
 					let timeline_type = TimelineType::User {
 						id: account.id.clone(),
 						name: account.display_name_or_username().to_string(),
 					};
-					handle_ui_command(
-						UiCommand::OpenTimeline(timeline_type),
-						state,
+					let ui_tx_close = ui_tx.clone();
+
+					let dlg = dialogs::ProfileDialog::new(
 						frame,
-						timelines_selector,
-						timeline_list,
-						suppress_selection,
-						live_region,
-						quick_action_keys_enabled,
-						autoload_enabled,
-						sort_order_cell,
-						tray_hidden,
+						account.clone(),
+						net_tx,
+						move || {
+							let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+						},
+						move || {
+							let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+						},
 					);
+					dlg.show();
+					state.profile_dialog = Some(dlg);
+				} else {
+					live_region::announce(live_region, "Network not available");
 				}
 			}
 		}
@@ -842,6 +873,9 @@ fn handle_ui_command(
 		}
 		UiCommand::HashtagDialogClosed => {
 			state.hashtag_dialog = None;
+		}
+		UiCommand::ProfileDialogClosed => {
+			state.profile_dialog = None;
 		}
 		UiCommand::OpenLinks => {
 			let status = match get_selected_status(state) {
@@ -933,6 +967,7 @@ fn switch_to_account(
 	state.network_handle = network::start_network(url.clone(), token.clone()).ok();
 
 	if let Ok(client) = MastodonClient::new(url.clone()) {
+		state.client = Some(client.clone());
 		if let Ok(info) = client.get_instance_info() {
 			state.max_post_chars = Some(info.max_post_chars);
 			state.poll_limits = info.poll_limits;
@@ -1011,6 +1046,7 @@ fn drain_ui_commands(
 	autoload_enabled: &Cell<bool>,
 	sort_order_cell: &Cell<SortOrder>,
 	tray_hidden: &Cell<bool>,
+	ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
 		handle_ui_command(
@@ -1025,6 +1061,7 @@ fn drain_ui_commands(
 			autoload_enabled,
 			sort_order_cell,
 			tray_hidden,
+			ui_tx,
 		);
 	}
 }
@@ -1205,24 +1242,31 @@ fn process_network_responses(
 				let action = state.pending_user_lookup_action.take().unwrap_or(dialogs::UserLookupAction::Timeline);
 				match action {
 					dialogs::UserLookupAction::Profile => {
-						if dialogs::show_profile(frame, &account) {
+						if let Some(net) = &state.network_handle {
+							net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+							let net_tx = net.command_tx.clone();
+							let ui_tx_timeline = ui_tx.clone();
 							let timeline_type = TimelineType::User {
 								id: account.id.clone(),
 								name: account.display_name_or_username().to_string(),
 							};
-							handle_ui_command(
-								UiCommand::OpenTimeline(timeline_type),
-								state,
+							let ui_tx_close = ui_tx.clone();
+
+							let dlg = dialogs::ProfileDialog::new(
 								frame,
-								timelines_selector,
-								timeline_list,
-								suppress_selection,
-								live_region,
-								quick_action_keys_enabled,
-								autoload_enabled,
-								sort_order_cell,
-								tray_hidden,
+								account.clone(),
+								net_tx,
+								move || {
+									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+								},
+								move || {
+									let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+								},
 							);
+							dlg.show();
+							state.profile_dialog = Some(dlg);
+						} else {
+							live_region::announce(live_region, "Network not available");
 						}
 					}
 					dialogs::UserLookupAction::Timeline => {
@@ -1242,6 +1286,7 @@ fn process_network_responses(
 							autoload_enabled,
 							sort_order_cell,
 							tray_hidden,
+							ui_tx,
 						);
 					}
 				}
@@ -1351,6 +1396,35 @@ fn process_network_responses(
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
 				live_region::announce(live_region, &format!("Failed to load hashtags: {}", err));
 			}
+			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
+				Ok(rel) => {
+					if let Some(dlg) = &state.profile_dialog {
+						dlg.update_relationship(rel);
+					}
+					let msg = match action {
+						network::RelationshipAction::Follow => format!("Followed {}", target_name),
+						network::RelationshipAction::Unfollow => format!("Unfollowed {}", target_name),
+						network::RelationshipAction::Block => format!("Blocked {}", target_name),
+						network::RelationshipAction::Unblock => format!("Unblocked {}", target_name),
+						network::RelationshipAction::Mute => format!("Muted {}", target_name),
+						network::RelationshipAction::Unmute => format!("Unmuted {}", target_name),
+						network::RelationshipAction::ShowBoosts => format!("Showing boosts from {}", target_name),
+						network::RelationshipAction::HideBoosts => format!("Hiding boosts from {}", target_name),
+					};
+					live_region::announce(live_region, &msg);
+				}
+				Err(err) => {
+					live_region::announce(live_region, &format!("Failed to update relationship: {}", err));
+				}
+			},
+			NetworkResponse::RelationshipLoaded { _account_id: _, result } => match result {
+				Ok(rel) => {
+					if let Some(dlg) = &state.profile_dialog {
+						dlg.update_relationship(rel);
+					}
+				}
+				Err(_) => {}
+			},
 		}
 	}
 	let _ = frame;
@@ -1643,6 +1717,7 @@ fn main() {
 				&autoload_drain,
 				&sort_order_drain,
 				&tray_hidden_drain,
+				&ui_tx_timer,
 			);
 			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer, &frame_timer);
 			process_network_responses(
