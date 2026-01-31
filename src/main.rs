@@ -37,6 +37,8 @@ pub(crate) const ID_FAVOURITE: i32 = 1003;
 pub(crate) const ID_BOOST: i32 = 1004;
 pub(crate) const ID_LOCAL_TIMELINE: i32 = 1005;
 pub(crate) const ID_FEDERATED_TIMELINE: i32 = 1006;
+pub(crate) const ID_BOOKMARKS_TIMELINE: i32 = 1022;
+pub(crate) const ID_FAVOURITES_TIMELINE: i32 = 1023;
 pub(crate) const ID_CLOSE_TIMELINE: i32 = 1007;
 pub(crate) const ID_REFRESH: i32 = 1008;
 pub(crate) const ID_REPLY_AUTHOR: i32 = 1009;
@@ -1417,14 +1419,13 @@ fn process_network_responses(
 					live_region::announce(live_region, &format!("Failed to update relationship: {}", err));
 				}
 			},
-			NetworkResponse::RelationshipLoaded { _account_id: _, result } => match result {
-				Ok(rel) => {
-					if let Some(dlg) = &state.profile_dialog {
-						dlg.update_relationship(rel);
-					}
+			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
+				if let Ok(rel) = result
+					&& let Some(dlg) = &state.profile_dialog
+				{
+					dlg.update_relationship(rel);
 				}
-				Err(_) => {}
-			},
+			}
 		}
 	}
 	let _ = frame;

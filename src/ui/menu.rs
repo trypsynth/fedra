@@ -54,6 +54,8 @@ pub fn build_menu_bar() -> MenuBar {
 		.append_item(ID_OPEN_USER_TIMELINE_BY_INPUT, "Open &User...\tCtrl+U", "Open a user by username")
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
+		.append_item(crate::ID_BOOKMARKS_TIMELINE, "&Bookmarks", "Open bookmarks timeline")
+		.append_item(crate::ID_FAVOURITES_TIMELINE, "F&avourites", "Open favourites timeline")
 		.append_separator()
 		.append_item(ID_LOAD_MORE, "Load &More\t.", "Load more posts from server")
 		.append_separator()

@@ -406,6 +406,18 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Federated));
 		}
+		crate::ID_BOOKMARKS_TIMELINE => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Bookmarks));
+		}
+		crate::ID_FAVOURITES_TIMELINE => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Favourites));
+		}
 		ID_CLOSE_TIMELINE => {
 			if shutdown_menu.get() {
 				return;
