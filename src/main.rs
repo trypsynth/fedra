@@ -2,6 +2,7 @@
 
 mod auth;
 mod config;
+mod expiration;
 mod html;
 mod live_region;
 mod mastodon;
@@ -1867,15 +1868,20 @@ fn main() {
 		let timelines_selector = window_parts.timelines_selector;
 		let timeline_list = window_parts.timeline_list;
 		let live_region_label = window_parts.live_region_label;
-
 		let (ui_tx, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
 		let suppress_selection = Rc::new(Cell::new(false));
 		let timer_busy = Rc::new(Cell::new(false));
 		let tray_hidden = Rc::new(Cell::new(false));
-
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
+		if let Err(msg) = expiration::check_beta_expiration() {
+			let dialog = MessageDialog::builder(&frame, &msg, "Fedra Beta Expired")
+				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
+				.build();
+			dialog.show_modal();
+			return;
+		}
 		if config.accounts.is_empty() {
 			match setup_new_account(&frame) {
 				Some(account) => {
@@ -1889,7 +1895,6 @@ fn main() {
 				}
 			}
 		}
-
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_enabled = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
