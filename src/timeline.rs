@@ -11,7 +11,7 @@ pub enum TimelineType {
 	Local,
 	Federated,
 	Bookmarks,
-	Favourites,
+	Favorites,
 	User { id: String, name: String },
 	Thread { id: String, name: String },
 }
@@ -24,7 +24,7 @@ impl TimelineType {
 			TimelineType::Local => "Local".to_string(),
 			TimelineType::Federated => "Federated".to_string(),
 			TimelineType::Bookmarks => "Bookmarks".to_string(),
-			TimelineType::Favourites => "Favourites".to_string(),
+			TimelineType::Favorites => "Favorites".to_string(),
 			TimelineType::User { name, .. } => name.clone(),
 			TimelineType::Thread { name, .. } => name.clone(),
 		}
@@ -36,7 +36,7 @@ impl TimelineType {
 			TimelineType::Notifications => "api/v1/notifications".to_string(),
 			TimelineType::Local | TimelineType::Federated => "api/v1/timelines/public".to_string(),
 			TimelineType::Bookmarks => "api/v1/bookmarks".to_string(),
-			TimelineType::Favourites => "api/v1/favourites".to_string(),
+			TimelineType::Favorites => "api/v1/favourites".to_string(),
 			TimelineType::User { id, .. } => format!("api/v1/accounts/{}/statuses", id),
 			TimelineType::Thread { id, .. } => format!("api/v1/statuses/{}/context", id),
 		}
@@ -55,7 +55,7 @@ impl TimelineType {
 			TimelineType::Notifications => Some("user"),
 			TimelineType::Local => Some("public:local"),
 			TimelineType::Federated => Some("public"),
-			TimelineType::Bookmarks | TimelineType::Favourites => None,
+			TimelineType::Bookmarks | TimelineType::Favorites => None,
 			TimelineType::User { .. } => None, // No streaming for user timelines
 			TimelineType::Thread { .. } => None,
 		}

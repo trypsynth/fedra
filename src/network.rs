@@ -46,10 +46,10 @@ pub enum NetworkCommand {
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
 	},
-	Favourite {
+	Favorite {
 		status_id: String,
 	},
-	Unfavourite {
+	Unfavorite {
 		status_id: String,
 	},
 	Boost {
@@ -153,11 +153,11 @@ pub enum NetworkResponse {
 		result: Result<Account>,
 	},
 	PostComplete(Result<()>),
-	Favourited {
+	Favorited {
 		status_id: String,
 		result: Result<Status>,
 	},
-	Unfavourited {
+	Unfavorited {
 		status_id: String,
 		result: Result<Status>,
 	},
@@ -389,13 +389,13 @@ fn network_loop(
 				let result = client.delete_status(&access_token, &status_id);
 				let _ = responses.send(NetworkResponse::StatusDeleted { status_id, result });
 			}
-			Ok(NetworkCommand::Favourite { status_id }) => {
-				let result = client.favourite(&access_token, &status_id);
-				let _ = responses.send(NetworkResponse::Favourited { status_id, result });
+			Ok(NetworkCommand::Favorite { status_id }) => {
+				let result = client.favorite(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Favorited { status_id, result });
 			}
-			Ok(NetworkCommand::Unfavourite { status_id }) => {
-				let result = client.unfavourite(&access_token, &status_id);
-				let _ = responses.send(NetworkResponse::Unfavourited { status_id, result });
+			Ok(NetworkCommand::Unfavorite { status_id }) => {
+				let result = client.unfavorite(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Unfavorited { status_id, result });
 			}
 			Ok(NetworkCommand::Boost { status_id }) => {
 				let result = client.reblog(&access_token, &status_id);

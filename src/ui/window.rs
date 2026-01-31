@@ -3,7 +3,7 @@ use std::{cell::Cell, rc::Rc, sync::mpsc::Sender};
 use wxdragon::prelude::*;
 
 use crate::{
-	ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVOURITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
+	ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
 	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD,
 	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand, config::SortOrder, live_region, ui::menu::build_menu_bar,
@@ -243,7 +243,7 @@ pub fn bind_input_handlers(
 					}
 					70 => {
 						// f
-						let _ = ui_tx_list_key.send(UiCommand::Favourite);
+						let _ = ui_tx_list_key.send(UiCommand::Favorite);
 						event.skip(false);
 						return;
 					}
@@ -388,11 +388,11 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: false });
 		}
-		ID_FAVOURITE => {
+		ID_FAVORITE => {
 			if shutdown_menu.get() {
 				return;
 			}
-			let _ = ui_tx_menu.send(UiCommand::Favourite);
+			let _ = ui_tx_menu.send(UiCommand::Favorite);
 		}
 		ID_BOOST => {
 			if shutdown_menu.get() {
@@ -448,11 +448,11 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Bookmarks));
 		}
-		crate::ID_FAVOURITES_TIMELINE => {
+		crate::ID_FAVORITES_TIMELINE => {
 			if shutdown_menu.get() {
 				return;
 			}
-			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Favourites));
+			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Favorites));
 		}
 		ID_CLOSE_TIMELINE => {
 			if shutdown_menu.get() {

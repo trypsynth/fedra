@@ -1,7 +1,7 @@
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVOURITE, ID_FEDERATED_TIMELINE,
+	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVORITE, ID_FEDERATED_TIMELINE,
 	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
 	ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
 	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
@@ -54,8 +54,8 @@ pub fn build_menu_bar() -> MenuBar {
 		.expect("Failed to append vote menu item");
 
 	post_menu
-		.append(ID_FAVOURITE, "&Favourite\tCtrl+Shift+F", "Favourite or unfavourite selected post", ItemKind::Normal)
-		.expect("Failed to append favourite menu item");
+		.append(ID_FAVORITE, "&Favorite\tCtrl+Shift+F", "Favorite or unfavorite selected post", ItemKind::Normal)
+		.expect("Failed to append favorite menu item");
 	post_menu
 		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
 		.expect("Failed to append boost menu item");
@@ -67,7 +67,7 @@ pub fn build_menu_bar() -> MenuBar {
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_item(crate::ID_BOOKMARKS_TIMELINE, "&Bookmarks", "Open bookmarks timeline")
-		.append_item(crate::ID_FAVOURITES_TIMELINE, "F&avourites", "Open favourites timeline")
+		.append_item(crate::ID_FAVORITES_TIMELINE, "F&avorites", "Open favorites timeline")
 		.append_separator()
 		.append_item(ID_LOAD_MORE, "Load &More\t.", "Load more posts from server")
 		.append_separator()
@@ -86,12 +86,12 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	let status = get_selected_status(state);
 	let target = status.and_then(|s| s.reblog.as_ref().map(|r| r.as_ref()).or(Some(s)));
 
-	if let Some(fav_item) = menu_bar.find_item(ID_FAVOURITE) {
+	if let Some(fav_item) = menu_bar.find_item(ID_FAVORITE) {
 		let shortcut = if state.config.quick_action_keys { "F" } else { "Ctrl+Shift+F" };
 		let label = if target.map(|t| t.favourited).unwrap_or(false) {
-			format!("Un&favourite\t{shortcut}")
+			format!("Un&favorite\t{shortcut}")
 		} else {
-			format!("&Favourite\t{shortcut}")
+			format!("&Favorite\t{shortcut}")
 		};
 		fav_item.set_label(&label);
 	}

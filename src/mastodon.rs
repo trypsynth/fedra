@@ -169,7 +169,7 @@ impl Status {
 		meta.push(self.visibility_display());
 		meta.push(format!("{} replies", self.replies_count));
 		meta.push(format!("{} boosts", self.reblogs_count));
-		meta.push(format!("{} favourites", self.favourites_count));
+		meta.push(format!("{} favorites", self.favourites_count));
 		if let Some(client) = self.client_name() {
 			meta.push(format!("via {}", client));
 		}
@@ -321,7 +321,7 @@ impl Notification {
 			"mention" | "status" => self.status_text(timestamp_format, cw_display, cw_expanded).to_string(),
 			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded)),
 			"favourite" => {
-				format!("{} favourited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
+				format!("{} favorited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
 			}
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
@@ -692,31 +692,31 @@ impl MastodonClient {
 		Ok(account)
 	}
 
-	pub fn favourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
+	pub fn favorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
 		let response = self
 			.http
 			.post(url)
 			.bearer_auth(access_token)
 			.send()
-			.context("Failed to favourite status")?
+			.context("Failed to favorite status")?
 			.error_for_status()
-			.context("Instance rejected favourite request")?;
-		let status: Status = response.json().context("Invalid favourite response")?;
+			.context("Instance rejected favorite request")?;
+		let status: Status = response.json().context("Invalid favorite response")?;
 		Ok(status)
 	}
 
-	pub fn unfavourite(&self, access_token: &str, status_id: &str) -> Result<Status> {
+	pub fn unfavorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/unfavourite", status_id))?;
 		let response = self
 			.http
 			.post(url)
 			.bearer_auth(access_token)
 			.send()
-			.context("Failed to unfavourite status")?
+			.context("Failed to unfavorite status")?
 			.error_for_status()
-			.context("Instance rejected unfavourite request")?;
-		let status: Status = response.json().context("Invalid unfavourite response")?;
+			.context("Instance rejected unfavorite request")?;
+		let status: Status = response.json().context("Invalid unfavorite response")?;
 		Ok(status)
 	}
 

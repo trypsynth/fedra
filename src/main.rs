@@ -34,12 +34,12 @@ use crate::{
 
 pub(crate) const ID_NEW_POST: i32 = 1001;
 pub(crate) const ID_REPLY: i32 = 1002;
-pub(crate) const ID_FAVOURITE: i32 = 1003;
+pub(crate) const ID_FAVORITE: i32 = 1003;
 pub(crate) const ID_BOOST: i32 = 1004;
 pub(crate) const ID_LOCAL_TIMELINE: i32 = 1005;
 pub(crate) const ID_FEDERATED_TIMELINE: i32 = 1006;
 pub(crate) const ID_BOOKMARKS_TIMELINE: i32 = 1022;
-pub(crate) const ID_FAVOURITES_TIMELINE: i32 = 1023;
+pub(crate) const ID_FAVORITES_TIMELINE: i32 = 1023;
 pub(crate) const ID_CLOSE_TIMELINE: i32 = 1007;
 pub(crate) const ID_REFRESH: i32 = 1008;
 pub(crate) const ID_REPLY_AUTHOR: i32 = 1009;
@@ -117,7 +117,7 @@ pub(crate) enum UiCommand {
 	Reply { reply_all: bool },
 	DeletePost,
 	EditPost,
-	Favourite,
+	Favorite,
 	Boost,
 	Refresh,
 	OpenTimeline(TimelineType),
@@ -407,8 +407,8 @@ fn handle_ui_command(
 				live_region::announce(live_region, "Network not available");
 			}
 		}
-		UiCommand::Favourite => {
-			do_favourite(state, live_region);
+		UiCommand::Favorite => {
+			do_favorite(state, live_region);
 		}
 		UiCommand::Boost => {
 			do_boost(state, live_region);
@@ -1434,7 +1434,7 @@ fn process_network_responses(
 			NetworkResponse::PostComplete(Err(ref err)) => {
 				live_region::announce(live_region, &format!("Failed to post: {}", err));
 			}
-			NetworkResponse::Favourited { status_id, result: Ok(status) } => {
+			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
@@ -1442,12 +1442,12 @@ fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Favourited");
+				live_region::announce(live_region, "Favorited");
 			}
-			NetworkResponse::Favourited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to favourite: {}", err));
+			NetworkResponse::Favorited { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to favorite: {}", err));
 			}
-			NetworkResponse::Unfavourited { status_id, result: Ok(status) } => {
+			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.favourited = status.favourited;
 					s.favourites_count = status.favourites_count;
@@ -1455,10 +1455,10 @@ fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unfavourited");
+				live_region::announce(live_region, "Unfavorited");
 			}
-			NetworkResponse::Unfavourited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unfavourite: {}", err));
+			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to unfavorite: {}", err));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -1772,7 +1772,7 @@ pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
 	get_selected_entry(state)?.as_status()
 }
 
-fn do_favourite(state: &AppState, live_region: &StaticText) {
+fn do_favorite(state: &AppState, live_region: &StaticText) {
 	let status = match get_selected_status(state) {
 		Some(s) => s,
 		None => {
@@ -1791,9 +1791,9 @@ fn do_favourite(state: &AppState, live_region: &StaticText) {
 	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
 	let status_id = target.id.clone();
 	if target.favourited {
-		handle.send(NetworkCommand::Unfavourite { status_id });
+		handle.send(NetworkCommand::Unfavorite { status_id });
 	} else {
-		handle.send(NetworkCommand::Favourite { status_id });
+		handle.send(NetworkCommand::Favorite { status_id });
 	}
 }
 

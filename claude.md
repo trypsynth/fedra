@@ -113,7 +113,7 @@ Configured in `rustfmt.toml`:
 
 ### Timelines
 - **Home timeline** - Posts from accounts you follow (opens by default)
-- **Notifications** - Mentions, follows, favourites, boosts (opens by default)
+- **Notifications** - Mentions, follows, favorites, boosts (opens by default)
 - **Local timeline** - Posts from your instance (opens by default)
 - **Federated timeline** - Posts from all known instances
 - Real-time streaming updates for all timelines
@@ -138,7 +138,7 @@ Configured in `rustfmt.toml`:
 - Same send behavior as posting (Enter or Ctrl+Enter based on settings)
 
 ### Interactions
-- Favourite/unfavourite posts
+- Favorite/unfavorite posts
 - Boost/unboost posts
 - Speech feedback for all actions
 
@@ -149,7 +149,7 @@ Configured in `rustfmt.toml`:
 
 ### Accessibility
 - Native wxWidgets controls for screen reader compatibility
-- Speech synthesis feedback for actions (posted, favourited, boosted, errors)
+- Speech synthesis feedback for actions (posted, favorited, boosted, errors)
 - Full keyboard navigation
 
 ## Keyboard Shortcuts
@@ -159,7 +159,7 @@ Configured in `rustfmt.toml`:
 | Ctrl+N | New Post |
 | Ctrl+R | Reply to all (includes all mentioned users) |
 | Ctrl+Shift+R | Reply to author only |
-| Ctrl+Shift+F | Favourite/Unfavourite selected post |
+| Ctrl+Shift+F | Favorite/Unfavorite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
 | Ctrl+P | View profile of selected post's author |
 | Ctrl+T | Open timeline of selected post's author |
