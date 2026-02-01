@@ -2,7 +2,6 @@
 
 mod auth;
 mod config;
-mod expiration;
 mod html;
 mod live_region;
 mod mastodon;
@@ -1871,14 +1870,6 @@ fn main() {
 		let tray_hidden = Rc::new(Cell::new(false));
 		let store = config::ConfigStore::new();
 		let mut config = store.load();
-		if let Err(msg) = expiration::check_beta_expiration() {
-			let dialog = MessageDialog::builder(&frame, &msg, "Fedra Beta Expired")
-				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
-				.build();
-			dialog.show_modal();
-			frame.close(true);
-			return;
-		}
 		if config.accounts.is_empty() {
 			match setup_new_account(&frame) {
 				Some(account) => {
