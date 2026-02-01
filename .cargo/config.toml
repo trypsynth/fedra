@@ -1,2 +1,2 @@
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+[target.'cfg(target_env = "msvc")']
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/nodefaultlib:libucrt.lib", "-C", "link-arg=ucrt.lib"]
