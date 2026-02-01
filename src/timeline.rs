@@ -140,11 +140,12 @@ impl Timeline {
 pub struct TimelineManager {
 	timelines: Vec<Timeline>,
 	active_index: usize,
+	history: Vec<TimelineType>,
 }
 
 impl TimelineManager {
 	pub fn new() -> Self {
-		Self { timelines: Vec::new(), active_index: 0 }
+		Self { timelines: Vec::new(), active_index: 0, history: Vec::new() }
 	}
 
 	pub fn open(&mut self, timeline_type: TimelineType) -> bool {
@@ -160,9 +161,21 @@ impl TimelineManager {
 			return false;
 		}
 		if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == *timeline_type) {
+			let closing_active = index == self.active_index;
+
 			self.timelines.remove(index);
-			if self.active_index >= self.timelines.len() && !self.timelines.is_empty() {
-				self.active_index = self.timelines.len() - 1;
+			self.history.retain(|t| t != timeline_type);
+
+			if closing_active {
+				if !self.go_back() {
+					if self.active_index >= self.timelines.len() && !self.timelines.is_empty() {
+						self.active_index = self.timelines.len() - 1;
+					} else if self.active_index > 0 {
+						self.active_index -= 1;
+					}
+				}
+			} else if index < self.active_index {
+				self.active_index -= 1;
 			}
 			return true;
 		}
@@ -178,7 +191,10 @@ impl TimelineManager {
 	}
 
 	pub fn set_active(&mut self, index: usize) {
-		if index < self.timelines.len() {
+		if index < self.timelines.len() && index != self.active_index {
+			if let Some(current) = self.timelines.get(self.active_index) {
+				self.history.push(current.timeline_type.clone());
+			}
 			self.active_index = index;
 		}
 	}
@@ -205,6 +221,16 @@ impl TimelineManager {
 
 	pub fn len(&self) -> usize {
 		self.timelines.len()
+	}
+
+	pub fn go_back(&mut self) -> bool {
+		while let Some(last_type) = self.history.pop() {
+			if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == last_type) {
+				self.active_index = index;
+				return true;
+			}
+		}
+		false
 	}
 }
 

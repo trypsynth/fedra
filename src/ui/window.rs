@@ -142,6 +142,12 @@ pub fn bind_input_handlers(
 			// Navigation keys (always active)
 			if !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
+					8 => {
+						// Backspace
+						let _ = ui_tx_list_key.send(UiCommand::GoBack);
+						event.skip(false);
+						return;
+					}
 					314 => {
 						// Left Arrow
 						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevTimeline);
@@ -151,12 +157,6 @@ pub fn bind_input_handlers(
 					316 => {
 						// Right Arrow
 						let _ = ui_tx_list_key.send(UiCommand::SwitchNextTimeline);
-						event.skip(false);
-						return;
-					}
-					46 => {
-						// .
-						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
 						event.skip(false);
 						return;
 					}
@@ -193,6 +193,24 @@ pub fn bind_input_handlers(
 
 			if event.control_down() {
 				match key {
+					87 => {
+						// w
+						let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+						event.skip(false);
+						return;
+					}
+					8 => {
+						// Backspace
+						let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+						event.skip(false);
+						return;
+					}
+					k if (49..=57).contains(&k) => {
+						// 1-9
+						let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex((k - 49) as usize));
+						event.skip(false);
+						return;
+					}
 					88 => {
 						// x
 						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
@@ -220,6 +238,12 @@ pub fn bind_input_handlers(
 					85 => {
 						// u
 						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
+						event.skip(false);
+						return;
+					}
+					46 => {
+						// .
+						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
 						event.skip(false);
 						return;
 					}
@@ -298,6 +322,18 @@ pub fn bind_input_handlers(
 					88 => {
 						// x
 						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
+						event.skip(false);
+						return;
+					}
+					46 => {
+						// .
+						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+						event.skip(false);
+						return;
+					}
+					k if (49..=57).contains(&k) => {
+						// 1-9
+						let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex((k - 49) as usize));
 						event.skip(false);
 						return;
 					}

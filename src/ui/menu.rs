@@ -153,4 +153,10 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let label = format!("&Delete Post\t{shortcut}");
 		delete_post_item.set_label(&label);
 	}
+
+	if let Some(load_more_item) = menu_bar.find_item(ID_LOAD_MORE) {
+		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };
+		let label = format!("Load &More\t{shortcut}");
+		load_more_item.set_label(&label);
+	}
 }

@@ -145,6 +145,8 @@ pub(crate) enum UiCommand {
 	ToggleContentWarning,
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
+	GoBack,
+	SwitchTimelineByIndex(usize),
 }
 
 // Window visibility helpers live in ui::app_shell.
@@ -512,6 +514,55 @@ fn handle_ui_command(
 			let _ = config::ConfigStore::new().save(&state.config);
 			let msg = if enabled { "Quick keys enabled" } else { "Quick keys disabled" };
 			live_region::announce(live_region, msg);
+		}
+		UiCommand::GoBack => {
+			if let Some(active) = state.timeline_manager.active_mut() {
+				sync_timeline_selection_from_list(active, timeline_list, state.config.sort_order);
+			}
+
+			if state.timeline_manager.go_back() {
+				let index = state.timeline_manager.active_index();
+				with_suppressed_selection(suppress_selection, || {
+					timelines_selector.set_selection(index as u32, true);
+				});
+
+				if let Some(active) = state.timeline_manager.active_mut() {
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						state.config.sort_order,
+						state.config.timestamp_format,
+						state.config.content_warning_display,
+						&state.cw_expanded,
+					);
+				}
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
+			} else {
+				live_region::announce(live_region, "No previous timeline");
+			}
+		}
+		UiCommand::SwitchTimelineByIndex(index) => {
+			if index < state.timeline_manager.len() {
+				handle_ui_command(
+					UiCommand::TimelineSelectionChanged(index),
+					state,
+					frame,
+					timelines_selector,
+					timeline_list,
+					suppress_selection,
+					live_region,
+					quick_action_keys_enabled,
+					autoload_enabled,
+					sort_order_cell,
+					tray_hidden,
+					ui_tx,
+				);
+			} else {
+				live_region::announce(live_region, "No timeline at this position");
+			}
 		}
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
