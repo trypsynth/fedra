@@ -1,10 +1,10 @@
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_FAVORITE, ID_FEDERATED_TIMELINE,
-	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
-	ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
+	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
+	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS,
+	ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -13,6 +13,7 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
 		.expect("Failed to append view profile menu item");
 	file_menu.append(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts", ItemKind::Normal);
+	file_menu.append(ID_EDIT_PROFILE, "Edit &Profile...", "Edit current account profile", ItemKind::Normal);
 	file_menu.append_separator();
 	file_menu.append(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings", ItemKind::Normal);
 	let post_menu = Menu::builder().build();

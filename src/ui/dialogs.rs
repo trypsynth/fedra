@@ -1315,7 +1315,7 @@ pub struct ProfileDialog {
 	dialog: Dialog,
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
 	profile_text: TextCtrl,
-	account: Rc<MastodonAccount>,
+	account: Rc<RefCell<MastodonAccount>>,
 }
 
 impl ProfileDialog {
@@ -1361,8 +1361,7 @@ impl ProfileDialog {
 		dialog.set_escape_id(ID_CANCEL);
 
 		let relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>> = Rc::new(RefCell::new(None));
-		let account_id = account.id.clone();
-		let target_name = account.display_name_or_username().to_string();
+		let account_rc = Rc::new(RefCell::new(account));
 		let relationship_action = relationship.clone();
 		let actions_btn = actions_button;
 
@@ -1376,7 +1375,6 @@ impl ProfileDialog {
 		const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
 		const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
 
-		let account_url = account.url.clone();
 		actions_btn.on_click(move |_| {
 			let mut menu = Menu::builder().build();
 			{
@@ -1409,39 +1407,41 @@ impl ProfileDialog {
 			panel.popup_menu(&mut menu, None);
 		});
 
-		let account_id_handler = account_id;
-		let target_name_handler = target_name;
+		let account_handler = account_rc.clone();
 		let panel_handler = panel;
 		let net_tx_handler = net_tx.clone();
 
 		panel_handler.on_menu_selected(move |event| {
 			let id = event.get_id();
+			let account = account_handler.borrow();
+			let account_id = account.id.clone();
+			let target_name = account.display_name_or_username().to_string();
+
 			if id == ID_ACTION_OPEN_BROWSER {
 				let _ =
-					wxdragon::utils::launch_default_browser(&account_url, wxdragon::utils::BrowserLaunchFlags::Default);
+					wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
 				return;
 			}
 
 			let cmd = match id {
 				ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
+					account_id: account_id.clone(),
+					target_name: target_name.clone(),
 					reblogs: true,
 					action: crate::network::RelationshipAction::Follow,
 				},
-				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
-				},
+				ID_ACTION_UNFOLLOW => {
+					NetworkCommand::UnfollowAccount { account_id: account_id.clone(), target_name: target_name.clone() }
+				}
 				ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
+					account_id: account_id.clone(),
+					target_name: target_name.clone(),
 					reblogs: true,
 					action: crate::network::RelationshipAction::ShowBoosts,
 				},
 				ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
+					account_id: account_id.clone(),
+					target_name: target_name.clone(),
 					reblogs: false,
 					action: crate::network::RelationshipAction::HideBoosts,
 				},
@@ -1456,23 +1456,17 @@ impl ProfileDialog {
 					if confirm.show_modal() != ID_YES {
 						return;
 					}
-					NetworkCommand::BlockAccount {
-						account_id: account_id_handler.clone(),
-						target_name: target_name_handler.clone(),
-					}
+					NetworkCommand::BlockAccount { account_id: account_id.clone(), target_name: target_name.clone() }
 				}
-				ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
-				},
-				ID_ACTION_MUTE => NetworkCommand::MuteAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
-				},
-				ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount {
-					account_id: account_id_handler.clone(),
-					target_name: target_name_handler.clone(),
-				},
+				ID_ACTION_UNBLOCK => {
+					NetworkCommand::UnblockAccount { account_id: account_id.clone(), target_name: target_name.clone() }
+				}
+				ID_ACTION_MUTE => {
+					NetworkCommand::MuteAccount { account_id: account_id.clone(), target_name: target_name.clone() }
+				}
+				ID_ACTION_UNMUTE => {
+					NetworkCommand::UnmuteAccount { account_id: account_id.clone(), target_name: target_name.clone() }
+				}
 				_ => return,
 			};
 			let _ = net_tx_handler.send(cmd);
@@ -1495,16 +1489,58 @@ impl ProfileDialog {
 		});
 
 		dialog.centre();
-		ProfileDialog { dialog, relationship, profile_text, account: Rc::new(account) }
+		ProfileDialog { dialog, relationship, profile_text, account: account_rc }
 	}
 
 	pub fn show(&self) {
 		self.dialog.show(true);
 	}
 
+	pub fn update_account(&self, account: MastodonAccount) {
+		self.account.replace(account.clone());
+		self.dialog.set_label(&format!("Profile for {}", account.display_name_or_username()));
+
+		let mut text = account.profile_display();
+
+		if let Some(rel) = self.relationship.borrow().clone() {
+			text.push_str("\r\n\r\nRelationship:\r\n");
+			let follow_status = match (rel.following, rel.followed_by) {
+				(true, true) => "You follow each other.",
+				(true, false) => "You follow this person.",
+				(false, true) => "This person follows you.",
+				(false, false) => "You do not follow each other.",
+			};
+			text.push_str(&format!("{}\r\n", follow_status));
+
+			if rel.requested {
+				text.push_str("You have requested to follow this person.\r\n");
+			}
+			if rel.blocking {
+				text.push_str("You have blocked this person.\r\n");
+			}
+			if rel.muting {
+				text.push_str("You have muted this person.\r\n");
+			}
+			if rel.domain_blocking {
+				text.push_str("You have blocked this person's domain.\r\n");
+			}
+
+			if !rel.note.is_empty() {
+				let note = crate::html::strip_html(&rel.note);
+				if !note.trim().is_empty() {
+					text.push_str("\r\nNote:\r\n");
+					text.push_str(&note);
+				}
+			}
+		}
+
+		self.profile_text.set_value(&text);
+	}
+
 	pub fn update_relationship(&self, relationship: crate::mastodon::Relationship) {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
-		let mut text = self.account.profile_display();
+		let account = self.account.borrow();
+		let mut text = account.profile_display();
 		text.push_str("\r\n\r\nRelationship:\r\n");
 
 		let follow_status = match (relationship.following, relationship.followed_by) {
@@ -1798,4 +1834,297 @@ impl HashtagDialog {
 			}
 		}
 	}
+}
+
+pub fn prompt_for_profile_edit(
+	frame: &Frame,
+	current: &crate::mastodon::Account,
+) -> Option<crate::network::ProfileUpdate> {
+	let dialog = Dialog::builder(frame, "Edit Profile").with_size(600, 600).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let scroll_win = ScrolledWindow::builder(&panel).build();
+	scroll_win.set_scroll_rate(0, 10);
+	let content_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	// Display Name
+	let name_label = StaticText::builder(&scroll_win).with_label("Display Name:").build();
+	let name_text = TextCtrl::builder(&scroll_win).with_value(current.display_name_or_username()).build();
+	name_text.set_name("Display Name");
+	content_sizer.add(&name_label, 0, SizerFlag::All, 5);
+	content_sizer.add(&name_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 5);
+
+	// Bio
+	let note_label = StaticText::builder(&scroll_win).with_label("Bio:").build();
+	let note_text = TextCtrl::builder(&scroll_win)
+		.with_value(&crate::html::strip_html(&current.note))
+		.with_style(TextCtrlStyle::MultiLine)
+		.with_size(Size::new(-1, 100))
+		.build();
+	note_text.set_name("Bio");
+	content_sizer.add(&note_label, 0, SizerFlag::All, 5);
+	content_sizer.add(&note_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 5);
+
+	// Avatar & Header
+	let images_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+
+	let avatar_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let avatar_label = StaticText::builder(&scroll_win).with_label("Avatar:").build();
+	let avatar_path = TextCtrl::builder(&scroll_win).with_style(TextCtrlStyle::ReadOnly).build();
+	avatar_path.set_name("Avatar Path");
+	let avatar_btn = Button::builder(&scroll_win).with_label("Change Avatar...").build();
+	avatar_sizer.add(&avatar_label, 0, SizerFlag::All, 5);
+	avatar_sizer.add(&avatar_path, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	avatar_sizer.add(&avatar_btn, 0, SizerFlag::All, 5);
+
+	let header_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let header_label = StaticText::builder(&scroll_win).with_label("Header:").build();
+	let header_path = TextCtrl::builder(&scroll_win).with_style(TextCtrlStyle::ReadOnly).build();
+	header_path.set_name("Header Path");
+	let header_btn = Button::builder(&scroll_win).with_label("Change Header...").build();
+	header_sizer.add(&header_label, 0, SizerFlag::All, 5);
+	header_sizer.add(&header_path, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	header_sizer.add(&header_btn, 0, SizerFlag::All, 5);
+
+	images_sizer.add_sizer(&avatar_sizer, 1, SizerFlag::Expand, 0);
+	images_sizer.add_sizer(&header_sizer, 1, SizerFlag::Expand, 0);
+	content_sizer.add_sizer(&images_sizer, 0, SizerFlag::Expand, 0);
+
+	// Flags
+	let locked_cb = CheckBox::builder(&scroll_win).with_label("Locked (require follow approval)").build();
+	locked_cb.set_value(current.locked);
+	content_sizer.add(&locked_cb, 0, SizerFlag::All, 5);
+
+	let bot_cb = CheckBox::builder(&scroll_win).with_label("Bot account").build();
+	bot_cb.set_value(current.bot);
+	content_sizer.add(&bot_cb, 0, SizerFlag::All, 5);
+
+	let discoverable_cb = CheckBox::builder(&scroll_win).with_label("Discoverable in directory").build();
+	discoverable_cb.set_value(current.discoverable.unwrap_or(false));
+	content_sizer.add(&discoverable_cb, 0, SizerFlag::All, 5);
+
+	// Fields
+	content_sizer.add(
+		&StaticText::builder(&scroll_win).with_label("Extra Fields").build(),
+		0,
+		SizerFlag::All | SizerFlag::Top,
+		10,
+	);
+
+	let mut field_controls = Vec::new();
+	for i in 0..4 {
+		let row_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+		let (name_val, val_val) = if i < current.fields.len() {
+			(current.fields[i].name.clone(), crate::html::strip_html(&current.fields[i].value))
+		} else {
+			(String::new(), String::new())
+		};
+
+		let title_lbl = format!("Label {}:", i + 1);
+		let content_lbl = format!("Content {}:", i + 1);
+
+		let field_sizer = BoxSizer::builder(Orientation::Vertical).build();
+		let title_text = StaticText::builder(&scroll_win).with_label(&title_lbl).build();
+		let name_ctrl = TextCtrl::builder(&scroll_win).with_value(&name_val).build();
+		name_ctrl.set_name(&title_lbl);
+
+		field_sizer.add(&title_text, 0, SizerFlag::All, 2);
+		field_sizer.add(&name_ctrl, 0, SizerFlag::Expand | SizerFlag::All, 2);
+
+		let content_sizer_inner = BoxSizer::builder(Orientation::Vertical).build();
+		let content_text = StaticText::builder(&scroll_win).with_label(&content_lbl).build();
+		let val_ctrl = TextCtrl::builder(&scroll_win).with_value(&val_val).build();
+		val_ctrl.set_name(&content_lbl);
+
+		content_sizer_inner.add(&content_text, 0, SizerFlag::All, 2);
+		content_sizer_inner.add(&val_ctrl, 0, SizerFlag::Expand | SizerFlag::All, 2);
+
+		row_sizer.add_sizer(&field_sizer, 1, SizerFlag::Expand, 0);
+		row_sizer.add_sizer(&content_sizer_inner, 2, SizerFlag::Expand, 0);
+
+		content_sizer.add_sizer(&row_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+		field_controls.push((name_ctrl, val_ctrl));
+	}
+
+	let mut privacy_choice_opt: Option<Choice> = None;
+
+	let mut sensitive_cb_opt: Option<CheckBox> = None;
+
+	let mut lang_text_opt: Option<TextCtrl> = None;
+
+	if let Some(source) = &current.source {
+		content_sizer.add(
+			&StaticText::builder(&scroll_win).with_label("Posting Defaults:").build(),
+			0,
+			SizerFlag::All | SizerFlag::Top,
+			10,
+		);
+
+		let privacy_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+
+		let privacy_label = StaticText::builder(&scroll_win).with_label("Privacy:").build();
+
+		let privacy_choices: Vec<String> =
+			vec!["Public".to_string(), "Unlisted".to_string(), "Followers only".to_string()];
+
+		let privacy_choice = Choice::builder(&scroll_win).with_choices(privacy_choices).build();
+
+		let sel = match source.privacy.as_deref() {
+			Some("unlisted") => 1,
+
+			Some("private") => 2,
+
+			_ => 0,
+		};
+
+		privacy_choice.set_selection(sel);
+
+		privacy_sizer.add(&privacy_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
+
+		privacy_sizer.add(&privacy_choice, 1, SizerFlag::Expand, 0);
+
+		content_sizer.add_sizer(&privacy_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+
+		let sensitive_cb = CheckBox::builder(&scroll_win).with_label("Mark media as sensitive by default").build();
+
+		sensitive_cb.set_value(source.sensitive.unwrap_or(false));
+
+		content_sizer.add(&sensitive_cb, 0, SizerFlag::All, 5);
+
+		let lang_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+
+		let lang_label = StaticText::builder(&scroll_win).with_label("Language (ISO code):").build();
+
+		let lang_text = TextCtrl::builder(&scroll_win).with_value(source.language.as_deref().unwrap_or("")).build();
+
+		lang_sizer.add(&lang_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
+
+		lang_sizer.add(&lang_text, 1, SizerFlag::Expand, 0);
+
+		content_sizer.add_sizer(&lang_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+
+		privacy_choice_opt = Some(privacy_choice);
+
+		sensitive_cb_opt = Some(sensitive_cb);
+
+		lang_text_opt = Some(lang_text);
+	}
+
+	scroll_win.set_sizer(content_sizer, true);
+
+	main_sizer.add(&scroll_win, 1, SizerFlag::Expand, 0);
+
+	let btn_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+
+	let ok_btn = Button::builder(&panel).with_id(ID_OK).with_label("Save Changes").build();
+
+	ok_btn.set_default();
+
+	let cancel_btn = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+
+	btn_sizer.add_stretch_spacer(1);
+
+	btn_sizer.add(&ok_btn, 0, SizerFlag::Right, 8);
+
+	btn_sizer.add(&cancel_btn, 0, SizerFlag::Right, 8);
+
+	main_sizer.add_sizer(&btn_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+
+	panel.set_sizer(main_sizer, true);
+
+	let dlg_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	dlg_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+
+	dialog.set_sizer(dlg_sizer, true);
+
+	dialog.centre();
+
+	let avatar_path_ref = avatar_path;
+
+	let panel_ref = panel;
+
+	avatar_btn.on_click(move |_| {
+		let dlg = FileDialog::builder(&panel_ref)
+			.with_message("Select Avatar")
+			.with_wildcard("Image files|*.png;*.jpg;*.jpeg;*.gif")
+			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist)
+			.build();
+
+		if dlg.show_modal() == ID_OK
+			&& let Some(path) = dlg.get_path()
+		{
+			avatar_path_ref.set_value(&path);
+		}
+	});
+
+	let header_path_ref = header_path;
+
+	let panel_ref = panel;
+
+	header_btn.on_click(move |_| {
+		let dlg = FileDialog::builder(&panel_ref)
+			.with_message("Select Header")
+			.with_wildcard("Image files|*.png;*.jpg;*.jpeg;*.gif")
+			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist)
+			.build();
+
+		if dlg.show_modal() == ID_OK
+			&& let Some(path) = dlg.get_path()
+		{
+			header_path_ref.set_value(&path);
+		}
+	});
+
+	if dialog.show_modal() != ID_OK {
+		return None;
+	}
+
+	let display_name = name_text.get_value();
+	let note = note_text.get_value();
+	let avatar = avatar_path.get_value();
+	let header = header_path.get_value();
+	let locked = locked_cb.get_value();
+	let bot = bot_cb.get_value();
+	let discoverable = discoverable_cb.get_value();
+
+	let mut fields_attributes = Vec::new();
+	for (name_ctrl, val_ctrl) in &field_controls {
+		let name = name_ctrl.get_value();
+		let val = val_ctrl.get_value();
+		// Always send all fields to preserve indices (0..3) so the server knows which to update/clear
+		fields_attributes.push((name, val));
+	}
+
+	let source = if let (Some(privacy_choice), Some(sensitive_cb), Some(lang_text)) =
+		(privacy_choice_opt, sensitive_cb_opt, lang_text_opt)
+	{
+		let privacy = match privacy_choice.get_selection() {
+			Some(0) => "public",
+			Some(1) => "unlisted",
+			Some(2) => "private",
+			_ => "public",
+		}
+		.to_string();
+		Some(crate::mastodon::Source {
+			privacy: Some(privacy),
+			sensitive: Some(sensitive_cb.get_value()),
+			language: Some(lang_text.get_value()),
+		})
+	} else {
+		None
+	};
+
+	Some(crate::network::ProfileUpdate {
+		display_name: Some(display_name),
+		note: Some(note),
+		avatar: if avatar.is_empty() { None } else { Some(avatar) },
+		header: if header.is_empty() { None } else { Some(header) },
+		locked: Some(locked),
+		bot: Some(bot),
+		discoverable: Some(discoverable),
+		fields_attributes: Some(fields_attributes),
+		source,
+	})
 }

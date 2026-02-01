@@ -102,6 +102,9 @@ pub enum NetworkCommand {
 	FetchRelationship {
 		account_id: String,
 	},
+	FetchAccount {
+		account_id: String,
+	},
 	FetchTagsInfo {
 		names: Vec<String>,
 	},
@@ -119,7 +122,24 @@ pub enum NetworkCommand {
 		media: Vec<EditMedia>,
 		poll: Option<PollData>,
 	},
+	FetchCredentials,
+	UpdateProfile {
+		update: ProfileUpdate,
+	},
 	Shutdown,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProfileUpdate {
+	pub display_name: Option<String>,
+	pub note: Option<String>,
+	pub avatar: Option<String>,
+	pub header: Option<String>,
+	pub locked: Option<bool>,
+	pub bot: Option<bool>,
+	pub discoverable: Option<bool>,
+	pub fields_attributes: Option<Vec<(String, String)>>,
+	pub source: Option<crate::mastodon::Source>,
 }
 
 #[derive(Debug, Clone)]
@@ -196,11 +216,20 @@ pub enum NetworkResponse {
 		_account_id: String,
 		result: Result<crate::mastodon::Relationship>,
 	},
+	AccountFetched {
+		result: Result<Account>,
+	},
 	PollVoted {
 		result: Result<crate::mastodon::Poll>,
 	},
 	TagsInfoFetched {
 		result: Result<Vec<crate::mastodon::Tag>>,
+	},
+	CredentialsFetched {
+		result: Result<Account>,
+	},
+	ProfileUpdated {
+		result: Result<Account>,
 	},
 }
 
@@ -515,9 +544,34 @@ fn network_loop(
 					client.get_relationships(&access_token, &[account_id.clone()]).map(|mut rels| rels.remove(0));
 				let _ = responses.send(NetworkResponse::RelationshipLoaded { _account_id: account_id, result });
 			}
+			Ok(NetworkCommand::FetchAccount { account_id }) => {
+				let result = client.get_account(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::AccountFetched { result });
+			}
 			Ok(NetworkCommand::VotePoll { poll_id, choices }) => {
 				let result = client.vote_poll(&access_token, &poll_id, &choices);
 				let _ = responses.send(NetworkResponse::PollVoted { result });
+			}
+			Ok(NetworkCommand::FetchCredentials) => {
+				let result = client.verify_credentials(&access_token);
+				let _ = responses.send(NetworkResponse::CredentialsFetched { result });
+			}
+			Ok(NetworkCommand::UpdateProfile { update }) => {
+				let result = client.update_credentials(
+					&access_token,
+					update.display_name.as_deref(),
+					update.note.as_deref(),
+					update.avatar.as_deref(),
+					update.header.as_deref(),
+					update.locked,
+					update.bot,
+					update.discoverable,
+					update.fields_attributes.as_deref(),
+					update.source.as_ref().and_then(|s| s.privacy.as_deref()),
+					update.source.as_ref().and_then(|s| s.sensitive),
+					update.source.as_ref().and_then(|s| s.language.as_deref()),
+				);
+				let _ = responses.send(NetworkResponse::ProfileUpdated { result });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

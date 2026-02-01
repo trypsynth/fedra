@@ -55,6 +55,7 @@ pub(crate) const ID_LOAD_MORE: i32 = 1019;
 pub(crate) const ID_VOTE: i32 = 1024;
 pub(crate) const ID_DELETE_POST: i32 = 1025;
 pub(crate) const ID_EDIT_POST: i32 = 1026;
+pub(crate) const ID_EDIT_PROFILE: i32 = 1027;
 pub(crate) const ID_TRAY_TOGGLE: i32 = 1020;
 pub(crate) const ID_TRAY_EXIT: i32 = 1021;
 pub(crate) const KEY_DELETE: i32 = 127;
@@ -152,6 +153,7 @@ pub(crate) enum UiCommand {
 	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
 	CancelAuth,
 	CloseAndNavigateBack,
+	EditProfile,
 }
 
 // Window visibility helpers live in ui::app_shell.
@@ -951,6 +953,7 @@ fn handle_ui_command(
 
 			if let Some(net) = &state.network_handle {
 				net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+				net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
 				let net_tx = net.command_tx.clone();
 				let ui_tx_timeline = ui_tx.clone();
 				let timeline_type =
@@ -1046,6 +1049,8 @@ fn handle_ui_command(
 					created_at: String::new(),
 					locked: false,
 					bot: false,
+					discoverable: None,
+					source: None,
 				});
 
 				match action {
@@ -1202,6 +1207,13 @@ fn handle_ui_command(
 				} else {
 					live_region::announce(live_region, "Network not available");
 				}
+			}
+		}
+		UiCommand::EditProfile => {
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchCredentials);
+			} else {
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 	}
@@ -1740,6 +1752,13 @@ fn process_network_responses(
 					dlg.update_relationship(rel);
 				}
 			}
+			NetworkResponse::AccountFetched { result } => {
+				if let Ok(account) = result
+					&& let Some(dlg) = &state.profile_dialog
+				{
+					dlg.update_account(account);
+				}
+			}
 			NetworkResponse::PollVoted { result } => match result {
 				Ok(poll) => {
 					update_poll_in_timelines(state, &poll);
@@ -1760,6 +1779,23 @@ fn process_network_responses(
 					live_region::announce(live_region, &format!("Failed to vote: {}", err));
 				}
 			},
+			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
+				if let Some(update) = dialogs::prompt_for_profile_edit(frame, &account)
+					&& let Some(handle) = &state.network_handle
+				{
+					handle.send(NetworkCommand::UpdateProfile { update });
+				}
+			}
+			NetworkResponse::CredentialsFetched { result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to fetch profile: {}", err));
+			}
+			NetworkResponse::ProfileUpdated { result: Ok(_) } => {
+				live_region::announce(live_region, "Profile updated");
+				let _ = ui_tx.send(UiCommand::Refresh);
+			}
+			NetworkResponse::ProfileUpdated { result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to update profile: {}", err));
+			}
 		}
 	}
 	let _ = frame;

@@ -419,6 +419,17 @@ pub struct Account {
 	pub locked: bool,
 	#[serde(default)]
 	pub bot: bool,
+	#[serde(default)]
+	pub discoverable: Option<bool>,
+	#[serde(default)]
+	pub source: Option<Source>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Source {
+	pub privacy: Option<String>,
+	pub sensitive: Option<bool>,
+	pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1023,6 +1034,76 @@ impl MastodonClient {
 			.error_for_status()
 			.context("Instance rejected delete request")?;
 		Ok(())
+	}
+
+	pub fn update_credentials(
+		&self,
+		access_token: &str,
+		display_name: Option<&str>,
+		note: Option<&str>,
+		avatar: Option<&str>,
+		header: Option<&str>,
+		locked: Option<bool>,
+		bot: Option<bool>,
+		discoverable: Option<bool>,
+		fields_attributes: Option<&[(String, String)]>,
+		source_privacy: Option<&str>,
+		source_sensitive: Option<bool>,
+		source_language: Option<&str>,
+	) -> Result<Account> {
+		let url = self.base_url.join("api/v1/accounts/update_credentials")?;
+		let mut form = multipart::Form::new();
+
+		if let Some(v) = display_name {
+			form = form.text("display_name", v.to_string());
+		}
+		if let Some(v) = note {
+			form = form.text("note", v.to_string());
+		}
+		if let Some(v) = avatar {
+			let part = multipart::Part::file(v).context("Failed to read avatar file")?;
+			form = form.part("avatar", part);
+		}
+		if let Some(v) = header {
+			let part = multipart::Part::file(v).context("Failed to read header file")?;
+			form = form.part("header", part);
+		}
+		if let Some(v) = locked {
+			form = form.text("locked", v.to_string());
+		}
+		if let Some(v) = bot {
+			form = form.text("bot", v.to_string());
+		}
+		if let Some(v) = discoverable {
+			form = form.text("discoverable", v.to_string());
+		}
+		if let Some(fields) = fields_attributes {
+			for (i, (name, value)) in fields.iter().enumerate() {
+				form = form.text(format!("fields_attributes[{}][name]", i), name.to_string());
+				form = form.text(format!("fields_attributes[{}][value]", i), value.to_string());
+			}
+		}
+		if let Some(v) = source_privacy {
+			form = form.text("source[privacy]", v.to_string());
+		}
+		if let Some(v) = source_sensitive {
+			form = form.text("source[sensitive]", v.to_string());
+		}
+		if let Some(v) = source_language {
+			form = form.text("source[language]", v.to_string());
+		}
+
+		let response = self
+			.http
+			.patch(url)
+			.bearer_auth(access_token)
+			.multipart(form)
+			.send()
+			.context("Failed to update credentials")?
+			.error_for_status()
+			.context("Instance rejected credentials update")?;
+		let account: Account = response.json().context("Invalid account response")?;
+		Ok(account)
 	}
 
 	pub fn edit_status(
