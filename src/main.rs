@@ -10,7 +10,7 @@ mod streaming;
 mod timeline;
 mod ui;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc};
+use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc, thread};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -69,6 +69,7 @@ pub(crate) struct AppState {
 	pub(crate) poll_limits: PollLimits,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 	pub(crate) profile_dialog: Option<ui::dialogs::ProfileDialog>,
+	pub(crate) pending_auth_dialog: Option<Dialog>,
 	client: Option<MastodonClient>,
 	pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	cw_expanded: HashSet<String>,
@@ -87,6 +88,7 @@ impl AppState {
 			poll_limits: PollLimits::default(),
 			hashtag_dialog: None,
 			profile_dialog: None,
+			pending_auth_dialog: None,
 			client: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
@@ -147,35 +149,53 @@ pub(crate) enum UiCommand {
 	SetQuickActionKeysEnabled(bool),
 	GoBack,
 	SwitchTimelineByIndex(usize),
+	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
+	CancelAuth,
 }
 
 // Window visibility helpers live in ui::app_shell.
 
-fn setup_new_account(frame: &Frame) -> Option<Account> {
-	let instance_url = dialogs::prompt_for_instance(frame)?;
+fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiCommand>, state: &mut AppState) -> bool {
+	let instance_url = match dialogs::prompt_for_instance(frame) {
+		Some(url) => url,
+		None => return false,
+	};
 	let client = match MastodonClient::new(instance_url.clone()) {
 		Ok(client) => client,
 		Err(err) => {
 			dialogs::show_error(frame, &err);
-			return None;
+			return true;
 		}
 	};
-	let mut account = Account::new(instance_url.to_string());
-	// Try OAuth with local listener
-	if let Ok(result) = auth::oauth_with_local_listener(&client, "Fedra") {
-		account.access_token = Some(result.access_token);
-		account.client_id = Some(result.client_id);
-		account.client_secret = Some(result.client_secret);
-		return Some(account);
-	}
-	// Fall back to out-of-band OAuth
-	if let Some(acc) = try_oob_oauth(frame, &client, &instance_url, &mut account) {
-		return Some(acc);
-	}
-	// Fall back to manual token entry
-	let token = dialogs::prompt_for_access_token(frame, &instance_url)?;
-	account.access_token = Some(token);
-	Some(account)
+
+	let instance_url_clone = instance_url.clone();
+	let ui_tx_thread = ui_tx.clone();
+	thread::spawn(move || {
+		let result = auth::oauth_with_local_listener(&client, "Fedra").map_err(|e| e.to_string());
+		let _ = ui_tx_thread.send(UiCommand::OAuthResult { result, instance_url: instance_url_clone });
+	});
+
+	let dialog = Dialog::builder(frame, "Authentication").with_size(300, 150).build();
+	let panel = Panel::builder(&dialog).build();
+	let sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let label = StaticText::builder(&panel)
+		.with_label("Waiting for authentication in browser...\nPlease complete the login process.")
+		.build();
+	let cancel_button = Button::builder(&panel).with_label("Cancel").build();
+
+	let ui_tx_cancel = ui_tx.clone();
+	cancel_button.on_click(move |_| {
+		let _ = ui_tx_cancel.send(UiCommand::CancelAuth);
+	});
+
+	sizer.add(&label, 1, SizerFlag::Expand | SizerFlag::All, 20);
+	sizer.add(&cancel_button, 0, SizerFlag::AlignRight | SizerFlag::All, 10);
+	panel.set_sizer(sizer, true);
+
+	dialog.show(true);
+	state.pending_auth_dialog = Some(dialog);
+
+	true
 }
 
 fn try_oob_oauth(frame: &Frame, client: &MastodonClient, instance_url: &Url, account: &mut Account) -> Option<Account> {
@@ -665,25 +685,7 @@ fn handle_ui_command(
 			);
 			match result {
 				dialogs::ManageAccountsResult::Add => {
-					if let Some(account) = setup_new_account(frame) {
-						let id = account.id.clone();
-						state.config.accounts.push(account);
-						let _ = config::ConfigStore::new().save(&state.config);
-						handle_ui_command(
-							UiCommand::SwitchAccount(id),
-							state,
-							frame,
-							timelines_selector,
-							timeline_list,
-							suppress_selection,
-							live_region,
-							quick_action_keys_enabled,
-							autoload_enabled,
-							sort_order_cell,
-							tray_hidden,
-							ui_tx,
-						);
-					}
+					let _ = start_add_account_flow(frame, ui_tx, state);
 				}
 				dialogs::ManageAccountsResult::Remove(id) => {
 					handle_ui_command(
@@ -839,15 +841,12 @@ fn handle_ui_command(
 			let _ = config::ConfigStore::new().save(&state.config);
 			if is_active {
 				if state.config.accounts.is_empty() {
-					if let Some(account) = setup_new_account(frame) {
-						let id = account.id.clone();
-						state.config.accounts.push(account);
-						state.config.active_account_id = Some(id);
-						let _ = config::ConfigStore::new().save(&state.config);
-					} else {
+					if !start_add_account_flow(frame, ui_tx, state) {
 						frame.close(true);
 						return;
 					}
+					// If flow started, we return and wait for OAuthResult
+					return;
 				}
 				switch_to_account(
 					state,
@@ -858,6 +857,79 @@ fn handle_ui_command(
 					live_region,
 					true,
 				);
+			}
+		}
+		UiCommand::OAuthResult { result, instance_url } => {
+			if let Some(dialog) = state.pending_auth_dialog.take() {
+				dialog.destroy();
+			}
+			// frame.enable(true) is not needed as we don't disable it anymore
+			frame.raise();
+
+			let mut account = Account::new(instance_url.to_string());
+			let client = match MastodonClient::new(instance_url.clone()) {
+				Ok(c) => c,
+				Err(e) => {
+					dialogs::show_error(frame, &anyhow::anyhow!(e));
+					if state.config.accounts.is_empty() {
+						frame.close(true);
+					}
+					return;
+				}
+			};
+
+			let success = match result {
+				Ok(res) => {
+					account.access_token = Some(res.access_token);
+					account.client_id = Some(res.client_id);
+					account.client_secret = Some(res.client_secret);
+					true
+				}
+				Err(_) => {
+					// Fallback to OOB
+					if let Some(acc) = try_oob_oauth(frame, &client, &instance_url, &mut account) {
+						account = acc;
+						true
+					} else {
+						// Fallback to Manual
+						if let Some(token) = dialogs::prompt_for_access_token(frame, &instance_url) {
+							account.access_token = Some(token);
+							true
+						} else {
+							false
+						}
+					}
+				}
+			};
+
+			if success {
+				let id = account.id.clone();
+				state.config.accounts.push(account);
+				let _ = config::ConfigStore::new().save(&state.config);
+				handle_ui_command(
+					UiCommand::SwitchAccount(id),
+					state,
+					frame,
+					timelines_selector,
+					timeline_list,
+					suppress_selection,
+					live_region,
+					quick_action_keys_enabled,
+					autoload_enabled,
+					sort_order_cell,
+					tray_hidden,
+					ui_tx,
+				);
+			} else if state.config.accounts.is_empty() {
+				frame.close(true);
+			}
+		}
+		UiCommand::CancelAuth => {
+			if let Some(dialog) = state.pending_auth_dialog.take() {
+				dialog.destroy();
+			}
+			if state.config.accounts.is_empty() {
+				frame.close(true);
 			}
 		}
 		UiCommand::ViewProfile => {
@@ -1920,24 +1992,16 @@ fn main() {
 		let timer_busy = Rc::new(Cell::new(false));
 		let tray_hidden = Rc::new(Cell::new(false));
 		let store = config::ConfigStore::new();
-		let mut config = store.load();
-		if config.accounts.is_empty() {
-			match setup_new_account(&frame) {
-				Some(account) => {
-					config.active_account_id = Some(account.id.clone());
-					config.accounts.push(account);
-					let _ = store.save(&config);
-				}
-				None => {
-					frame.close(true);
-					return;
-				}
-			}
-		}
+		let config = store.load();
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_enabled = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let mut state = AppState::new(config);
+
+		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
+			frame.close(true);
+			return;
+		}
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, &state);
 		}
