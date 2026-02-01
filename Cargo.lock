@@ -415,7 +415,6 @@ dependencies = [
  "ego-tree",
  "embed-manifest",
  "reqwest 0.13.1",
- "rsntp",
  "scraper",
  "serde",
  "serde_json",
@@ -1570,16 +1569,6 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rsntp"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c475cc467404cd97386127e5c40be936ce69cf77767306fbc5ec0dc812afd87"
-dependencies = [
- "chrono",
- "tokio",
 ]
 
 [[package]]
