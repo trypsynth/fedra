@@ -1011,11 +1011,6 @@ pub fn prompt_for_reply(
 			accts.push(replying_to.account.acct.clone());
 		}
 		for m in &replying_to.mentions {
-			if let Some(target_id) = replying_to.in_reply_to_account_id.as_deref()
-				&& m.id == target_id
-			{
-				continue;
-			}
 			if let Some(self_acct) = self_acct
 				&& is_self_mention(self_acct, m)
 			{
