@@ -12,20 +12,18 @@ pub fn build_menu_bar() -> MenuBar {
 	file_menu
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
 		.expect("Failed to append view profile menu item");
-
 	file_menu.append(ID_MANAGE_ACCOUNTS, "Manage &Accounts...", "Add, remove or switch accounts", ItemKind::Normal);
 	file_menu.append_separator();
 	file_menu.append(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings", ItemKind::Normal);
-
 	let post_menu = Menu::builder().build();
 	post_menu
-		.append(ID_NEW_POST, "&New Post\tCtrl+N", "Create a new post", ItemKind::Normal)
+		.append(ID_NEW_POST, "&New Post...\tCtrl+N", "Create a new post", ItemKind::Normal)
 		.expect("Failed to append new post menu item");
 	post_menu
-		.append(ID_REPLY, "&Reply\tCtrl+R", "Reply to all mentioned users", ItemKind::Normal)
+		.append(ID_REPLY, "&Reply...\tCtrl+R", "Reply to all mentioned users", ItemKind::Normal)
 		.expect("Failed to append reply menu item");
 	post_menu
-		.append(ID_REPLY_AUTHOR, "Reply to &Author\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
+		.append(ID_REPLY_AUTHOR, "Reply to &Author...\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
 		.expect("Failed to append reply author menu item");
 	post_menu
 		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
@@ -40,19 +38,16 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread for selected post", ItemKind::Normal)
 		.expect("Failed to append view thread menu item");
 	post_menu.append_separator();
-
 	post_menu
-		.append(ID_EDIT_POST, "&Edit Post\tCtrl+E", "Edit selected post", ItemKind::Normal)
+		.append(ID_EDIT_POST, "&Edit Post...\tCtrl+E", "Edit selected post", ItemKind::Normal)
 		.expect("Failed to append edit post menu item");
 	post_menu
 		.append(ID_DELETE_POST, "&Delete Post\tCtrl+Delete", "Delete selected post", ItemKind::Normal)
 		.expect("Failed to append delete post menu item");
 	post_menu.append_separator();
-
 	post_menu
-		.append(crate::ID_VOTE, "&Vote", "Vote on poll in selected post", ItemKind::Normal)
+		.append(crate::ID_VOTE, "&Vote", "Vote on poll in selected post...", ItemKind::Normal)
 		.expect("Failed to append vote menu item");
-
 	post_menu
 		.append(ID_FAVORITE, "&Favorite\tCtrl+Shift+F", "Favorite or unfavorite selected post", ItemKind::Normal)
 		.expect("Failed to append favorite menu item");
@@ -60,7 +55,6 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
 		.expect("Failed to append boost menu item");
 	post_menu.append_separator();
-
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(ID_OPEN_USER_TIMELINE_BY_INPUT, "Open &User...\tCtrl+U", "Open a user by username")
@@ -85,7 +79,6 @@ pub fn build_menu_bar() -> MenuBar {
 pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	let status = get_selected_status(state);
 	let target = status.and_then(|s| s.reblog.as_ref().map(|r| r.as_ref()).or(Some(s)));
-
 	if let Some(fav_item) = menu_bar.find_item(ID_FAVORITE) {
 		let shortcut = if state.config.quick_action_keys { "F" } else { "Ctrl+Shift+F" };
 		let label = if target.map(|t| t.favourited).unwrap_or(false) {
@@ -95,7 +88,6 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		};
 		fav_item.set_label(&label);
 	}
-
 	if let Some(boost_item) = menu_bar.find_item(ID_BOOST) {
 		let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
 		let label = if target.map(|t| t.reblogged).unwrap_or(false) {
@@ -105,55 +97,46 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		};
 		boost_item.set_label(&label);
 	}
-
 	if let Some(new_post_item) = menu_bar.find_item(ID_NEW_POST) {
 		let shortcut = if state.config.quick_action_keys { "C" } else { "Ctrl+N" };
-		let label = format!("&New Post\t{shortcut}");
+		let label = format!("&New Post...\t{shortcut}");
 		new_post_item.set_label(&label);
 	}
-
 	if let Some(reply_item) = menu_bar.find_item(ID_REPLY) {
 		let shortcut = if state.config.quick_action_keys { "R" } else { "Ctrl+R" };
-		let label = format!("&Reply\t{shortcut}");
+		let label = format!("&Reply...\t{shortcut}");
 		reply_item.set_label(&label);
 	}
-
 	if let Some(reply_author_item) = menu_bar.find_item(ID_REPLY_AUTHOR) {
 		let shortcut = if state.config.quick_action_keys { "Ctrl+R" } else { "Ctrl+Shift+R" };
-		let label = format!("Reply to &Author\t{shortcut}");
+		let label = format!("Reply to &Author...\t{shortcut}");
 		reply_author_item.set_label(&label);
 	}
-
 	if let Some(view_profile_item) = menu_bar.find_item(ID_VIEW_PROFILE) {
 		let shortcut = if state.config.quick_action_keys { "P" } else { "Ctrl+P" };
 		let label = format!("View &Profile\t{shortcut}");
 		view_profile_item.set_label(&label);
 	}
-
 	if let Some(view_hashtags_item) = menu_bar.find_item(ID_VIEW_HASHTAGS) {
 		let shortcut = if state.config.quick_action_keys { "H" } else { "Ctrl+H" };
 		let label = format!("View &Hashtags\t{shortcut}");
 		view_hashtags_item.set_label(&label);
 	}
-
 	if let Some(view_mentions_item) = menu_bar.find_item(ID_VIEW_MENTIONS) {
 		let shortcut = if state.config.quick_action_keys { "M" } else { "Ctrl+M" };
 		let label = format!("View &Mentions\t{shortcut}");
 		view_mentions_item.set_label(&label);
 	}
-
 	if let Some(edit_post_item) = menu_bar.find_item(ID_EDIT_POST) {
 		let shortcut = if state.config.quick_action_keys { "E" } else { "Ctrl+E" };
-		let label = format!("&Edit Post\t{shortcut}");
+		let label = format!("&Edit Post...\t{shortcut}");
 		edit_post_item.set_label(&label);
 	}
-
 	if let Some(delete_post_item) = menu_bar.find_item(ID_DELETE_POST) {
 		let shortcut = if state.config.quick_action_keys { "D" } else { "Ctrl+Delete" };
 		let label = format!("&Delete Post\t{shortcut}");
 		delete_post_item.set_label(&label);
 	}
-
 	if let Some(load_more_item) = menu_bar.find_item(ID_LOAD_MORE) {
 		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };
 		let label = format!("Load &More\t{shortcut}");
