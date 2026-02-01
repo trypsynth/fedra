@@ -3,6 +3,9 @@ name = "fedra"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["xtask"]
+
 [dependencies]
 anyhow = "1.0.100"
 chrono = "0.4.43"
@@ -19,6 +22,7 @@ wxdragon = { git = "https://github.com/aryanchoudharypro/wxDragon", branch = "ma
 
 [build-dependencies]
 embed-manifest = "1.5.0"
+winres = "0.1.12"
 
 [profile.release]
 strip = true

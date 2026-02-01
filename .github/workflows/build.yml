@@ -2,7 +2,7 @@ name: Build Fedra
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,17 +24,19 @@ jobs:
       with:
         toolchain: stable
         components: rustfmt, clippy
-    - name: Install CMake and Ninja
+    - name: Install CMake, Ninja, and Pandoc
       run: |
-        choco install cmake ninja -y
+        choco install cmake ninja pandoc -y
     - name: Build
       run: |
-        cargo build --release
+        cargo release
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: fedra-build
-        path: target/release/fedra.exe
+        path: |
+          target/release/fedra.zip
+          target/release/fedra_setup.exe
         retention-days: 30
     - name: Get latest tag reachable from HEAD
       id: get_tag
@@ -64,7 +66,9 @@ jobs:
         body: |
           ## Commits since last release
           ${{ steps.release_notes.outputs.commits }}
-        files: target/release/fedra.exe
+        files: |
+          target/release/fedra.zip
+          target/release/fedra_setup.exe
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

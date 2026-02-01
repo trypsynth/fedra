@@ -1,0 +1,37 @@
+[Setup]
+	AppName=Fedra
+	AppVersion=@PROJECT_VERSION@
+	AppPublisher=Quin Gillespie
+	AppPublisherURL=https://github.com/trypsynth/fedra
+	AppSupportURL=https://github.com/trypsynth/fedra/issues
+	AppUpdatesURL=https://github.com/trypsynth/fedra/releases
+	DefaultDirName={autopf}\Fedra
+	DisableProgramGroupPage=yes
+	DisableDirPage=yes
+	LicenseFile=
+	OutputDir=.
+	OutputBaseFilename=fedra_setup
+	Compression=lzma2
+	SolidCompression=yes
+	WizardStyle=modern
+	UninstallDisplayIcon={app}\fedra.exe
+	ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+	Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Files]
+	Source: "fedra.exe"; DestDir: "{app}"; Flags: ignoreversion
+	Source: "readme.html"; DestDir: "{app}"; Flags: ignoreversion
+
+[Tasks]
+	Name: "desktopicon"; Description: "Desktop Shortcut"
+	Name: "startmenuicon"; Description: "Start Menu Shortcut"; Flags: unchecked
+
+[Icons]
+	Name: "{autodesktop}\Fedra"; Filename: "{app}\fedra.exe"; Tasks: desktopicon
+	Name: "{autoprograms}\Fedra"; Filename: "{app}\fedra.exe"; Tasks: startmenuicon
+
+[Run]
+	Filename: "{app}\fedra.exe"; Description: "Launch Fedra"; Flags: nowait postinstall skipifsilent
+	Filename: "{app}\readme.html"; Description: "View readme.html"; Flags: shellexec postinstall skipifsilent unchecked

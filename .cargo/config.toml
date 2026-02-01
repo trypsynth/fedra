@@ -1,2 +1,5 @@
+[alias]
+release = "run -p xtask -- release"
+
 [target.'cfg(target_env = "msvc")']
 rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/nodefaultlib:libucrt.lib", "-C", "link-arg=ucrt.lib"]
