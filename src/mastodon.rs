@@ -294,6 +294,17 @@ pub struct MediaAttachment {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+pub struct Report {
+	pub id: String,
+	#[serde(default)]
+	pub category: String,
+	#[serde(default)]
+	pub comment: String,
+	pub target_account: Option<Account>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Notification {
 	pub id: String,
 	#[serde(rename = "type")]
@@ -301,6 +312,7 @@ pub struct Notification {
 	pub created_at: String,
 	pub account: Account,
 	pub status: Option<Box<Status>>,
+	pub report: Option<Report>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -326,10 +338,40 @@ impl Notification {
 			"follow" => format!("{} followed you", actor),
 			"follow_request" => format!("{} requested to follow you", actor),
 			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format, cw_display, cw_expanded)),
+			"update" => {
+				format!("{} edited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
+			}
+			"admin.sign_up" => format!("{} signed up", actor),
+			"admin.report" => self.format_admin_report(actor),
+			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
+			"moderation_warning" => "You have received a moderation warning".to_string(),
 			_ => match self.status_text_if_any(timestamp_format, cw_display, cw_expanded) {
 				Some(text) => format!("{} {}: {}", actor, self.kind, text),
 				None => format!("{} {}", actor, self.kind),
 			},
+		}
+	}
+
+	fn format_admin_report(&self, reporter: &str) -> String {
+		match &self.report {
+			Some(report) => {
+				let target =
+					report.target_account.as_ref().map(|a| a.display_name_or_username()).unwrap_or("unknown user");
+				let category = match report.category.as_str() {
+					"spam" => "spam",
+					"legal" => "legal issue",
+					"violation" => "rule violation",
+					"other" => "other reason",
+					"" => "unspecified reason",
+					cat => cat,
+				};
+				if report.comment.is_empty() {
+					format!("{} reported {} for {}", reporter, target, category)
+				} else {
+					format!("{} reported {} for {}: {}", reporter, target, category, report.comment)
+				}
+			}
+			None => format!("{} filed a report", reporter),
 		}
 	}
 
