@@ -156,10 +156,21 @@ impl TimelineManager {
 		true
 	}
 
-	pub fn close(&mut self, timeline_type: &TimelineType) -> bool {
+	pub fn close(&mut self, timeline_type: &TimelineType, use_history: bool) -> bool {
 		if !timeline_type.is_closeable() {
 			return false;
 		}
+
+		if use_history {
+			let can_go_back = self.history.iter().rev().any(|hist_type| {
+				hist_type != timeline_type && self.timelines.iter().any(|t| t.timeline_type == *hist_type)
+			});
+
+			if !can_go_back {
+				return false;
+			}
+		}
+
 		if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == *timeline_type) {
 			let closing_active = index == self.active_index;
 
@@ -167,7 +178,12 @@ impl TimelineManager {
 			self.history.retain(|t| t != timeline_type);
 
 			if closing_active {
-				if !self.go_back() {
+				let mut handled = false;
+				if use_history {
+					handled = self.go_back();
+				}
+
+				if !handled {
 					if self.active_index >= self.timelines.len() && !self.timelines.is_empty() {
 						self.active_index = self.timelines.len() - 1;
 					} else if self.active_index > 0 {
@@ -192,10 +208,13 @@ impl TimelineManager {
 
 	pub fn set_active(&mut self, index: usize) {
 		if index < self.timelines.len() && index != self.active_index {
-			if let Some(current) = self.timelines.get(self.active_index) {
-				self.history.push(current.timeline_type.clone());
-			}
 			self.active_index = index;
+		}
+	}
+
+	pub fn snapshot_active_to_history(&mut self) {
+		if let Some(current) = self.timelines.get(self.active_index) {
+			self.history.push(current.timeline_type.clone());
 		}
 	}
 

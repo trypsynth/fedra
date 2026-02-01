@@ -1606,7 +1606,11 @@ pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String
 	link_list.get_selection().and_then(|sel| links.get(sel as usize).map(|l| l.url.clone()))
 }
 
-pub fn prompt_for_mentions(frame: &Frame, mentions: &[crate::mastodon::Mention]) -> Option<crate::mastodon::Mention> {
+pub fn prompt_for_mentions(
+	frame: &Frame,
+	mentions: &[crate::mastodon::Mention],
+) -> Option<(crate::mastodon::Mention, UserLookupAction)> {
+	const ID_VIEW_TIMELINE: i32 = 10041;
 	let dialog = Dialog::builder(frame, "Mentions").with_size(500, 300).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -1619,10 +1623,12 @@ pub fn prompt_for_mentions(frame: &Frame, mentions: &[crate::mastodon::Mention])
 		mention_list.set_selection(0, true);
 	}
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let open_button = Button::builder(&panel).with_id(ID_OK).with_label("View Profile").build();
+	let open_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Profile").build();
 	open_button.set_default();
+	let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
 	let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
 	button_sizer.add(&open_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -1634,12 +1640,20 @@ pub fn prompt_for_mentions(frame: &Frame, mentions: &[crate::mastodon::Mention])
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
+
+	let dialog_timeline = dialog;
+	timeline_button.on_click(move |_| {
+		dialog_timeline.end_modal(ID_VIEW_TIMELINE);
+	});
+
 	dialog.centre();
 	let result = dialog.show_modal();
-	if result != ID_OK {
+	if result == ID_CANCEL {
 		return None;
 	}
-	mention_list.get_selection().and_then(|sel| mentions.get(sel as usize).cloned())
+	let mention = mention_list.get_selection().and_then(|sel| mentions.get(sel as usize).cloned())?;
+	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
+	Some((mention, action))
 }
 
 #[derive(Clone)]

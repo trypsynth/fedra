@@ -151,6 +151,7 @@ pub(crate) enum UiCommand {
 	SwitchTimelineByIndex(usize),
 	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
 	CancelAuth,
+	CloseAndNavigateBack,
 }
 
 // Window visibility helpers live in ui::app_shell.
@@ -449,7 +450,10 @@ fn handle_ui_command(
 			);
 		}
 		UiCommand::CloseTimeline => {
-			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region);
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
+		}
+		UiCommand::CloseAndNavigateBack => {
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, true);
 		}
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
@@ -1018,7 +1022,7 @@ fn handle_ui_command(
 				live_region::announce(live_region, "No mentions in this post");
 				return;
 			}
-			if let Some(mention) = dialogs::prompt_for_mentions(frame, &target.mentions) {
+			if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &target.mentions) {
 				let mut account = None;
 				if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
 					match client.get_account(token, &mention.id) {
@@ -1044,31 +1048,55 @@ fn handle_ui_command(
 					bot: false,
 				});
 
-				if let Some(net) = &state.network_handle {
-					net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-					let net_tx = net.command_tx.clone();
-					let ui_tx_timeline = ui_tx.clone();
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					let ui_tx_close = ui_tx.clone();
+				match action {
+					dialogs::UserLookupAction::Profile => {
+						if let Some(net) = &state.network_handle {
+							net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+							let net_tx = net.command_tx.clone();
+							let ui_tx_timeline = ui_tx.clone();
+							let timeline_type = TimelineType::User {
+								id: account.id.clone(),
+								name: account.display_name_or_username().to_string(),
+							};
+							let ui_tx_close = ui_tx.clone();
 
-					let dlg = dialogs::ProfileDialog::new(
-						frame,
-						account.clone(),
-						net_tx,
-						move || {
-							let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-						},
-						move || {
-							let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-						},
-					);
-					dlg.show();
-					state.profile_dialog = Some(dlg);
-				} else {
-					live_region::announce(live_region, "Network not available");
+							let dlg = dialogs::ProfileDialog::new(
+								frame,
+								account.clone(),
+								net_tx,
+								move || {
+									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+								},
+								move || {
+									let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+								},
+							);
+							dlg.show();
+							state.profile_dialog = Some(dlg);
+						} else {
+							live_region::announce(live_region, "Network not available");
+						}
+					}
+					dialogs::UserLookupAction::Timeline => {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						handle_ui_command(
+							UiCommand::OpenTimeline(timeline_type),
+							state,
+							frame,
+							timelines_selector,
+							timeline_list,
+							suppress_selection,
+							live_region,
+							quick_action_keys_enabled,
+							autoload_enabled,
+							sort_order_cell,
+							tray_hidden,
+							ui_tx,
+						);
+					}
 				}
 			}
 		}
@@ -1826,6 +1854,10 @@ fn open_timeline(
 	live_region: &StaticText,
 	frame: &Frame,
 ) {
+	if matches!(timeline_type, TimelineType::User { .. } | TimelineType::Thread { .. }) {
+		state.timeline_manager.snapshot_active_to_history();
+	}
+
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		if let Some(index) = state.timeline_manager.index_of(&timeline_type) {
 			state.timeline_manager.set_active(index);
@@ -1946,6 +1978,7 @@ fn close_timeline(
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
+	use_history: bool,
 ) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
@@ -1955,7 +1988,7 @@ fn close_timeline(
 		live_region::announce(live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
 		return;
 	}
-	if !state.timeline_manager.close(&active_type) {
+	if !state.timeline_manager.close(&active_type, use_history) {
 		return;
 	}
 	selector.clear();

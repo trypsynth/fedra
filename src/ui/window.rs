@@ -201,7 +201,7 @@ pub fn bind_input_handlers(
 					}
 					8 => {
 						// Backspace
-						let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+						let _ = ui_tx_list_key.send(UiCommand::CloseAndNavigateBack);
 						event.skip(false);
 						return;
 					}
@@ -298,6 +298,12 @@ pub fn bind_input_handlers(
 					82 => {
 						// r
 						let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
+						event.skip(false);
+						return;
+					}
+					84 => {
+						// t
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimeline);
 						event.skip(false);
 						return;
 					}
