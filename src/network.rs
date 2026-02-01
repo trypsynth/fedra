@@ -8,7 +8,7 @@ use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	mastodon::{Account, MastodonClient, Notification, Status},
+	mastodon::{Account, MastodonClient, Notification, Status, StatusContext},
 	timeline::TimelineType,
 };
 
@@ -172,7 +172,7 @@ pub enum NetworkResponse {
 	Replied(Result<()>),
 	StatusDeleted {
 		status_id: String,
-		result: Result<Status>,
+		result: Result<()>,
 	},
 	StatusEdited {
 		_status_id: String,
@@ -322,6 +322,25 @@ pub fn start_network(base_url: Url, access_token: String) -> Result<NetworkHandl
 	Ok(NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread })
 }
 
+fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineData {
+	let mut statuses = context.ancestors;
+	statuses.push(focus);
+	statuses.extend(context.descendants);
+	let mut indexed: Vec<(usize, Status)> = statuses.into_iter().enumerate().collect();
+	indexed.sort_by(|(a_idx, a), (b_idx, b)| {
+		let a_time: Option<DateTime<chrono::Utc>> = a.created_at.parse().ok();
+		let b_time: Option<DateTime<chrono::Utc>> = b.created_at.parse().ok();
+		match (a_time, b_time) {
+			(Some(a_time), Some(b_time)) => b_time.cmp(&a_time).then_with(|| a_idx.cmp(b_idx)),
+			(Some(_), None) => std::cmp::Ordering::Less,
+			(None, Some(_)) => std::cmp::Ordering::Greater,
+			(None, None) => a_idx.cmp(b_idx),
+		}
+	});
+	let sorted: Vec<Status> = indexed.into_iter().map(|(_, status)| status).collect();
+	TimelineData::Statuses(sorted)
+}
+
 fn network_loop(
 	client: MastodonClient,
 	access_token: String,
@@ -335,6 +354,13 @@ fn network_loop(
 					TimelineType::Notifications => client
 						.get_notifications(&access_token, limit, max_id.as_deref())
 						.map(TimelineData::Notifications),
+					TimelineType::Thread { ref id, .. } => match client.get_status(&access_token, id) {
+						Ok(focus) => match client.get_status_context(&access_token, id) {
+							Ok(context) => Ok(prepare_thread_timeline(focus, context)),
+							Err(e) => Err(e),
+						},
+						Err(e) => Err(e),
+					},
 					_ => client
 						.get_timeline(&access_token, &timeline_type, limit, max_id.as_deref())
 						.map(TimelineData::Statuses),
@@ -342,24 +368,9 @@ fn network_loop(
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}
 			Ok(NetworkCommand::FetchThread { timeline_type, focus }) => {
-				let result = client.get_status_context(&access_token, &focus.id).map(|context| {
-					let mut statuses = context.ancestors;
-					statuses.push(focus);
-					statuses.extend(context.descendants);
-					let mut indexed: Vec<(usize, Status)> = statuses.into_iter().enumerate().collect();
-					indexed.sort_by(|(a_idx, a), (b_idx, b)| {
-						let a_time: Option<DateTime<chrono::Utc>> = a.created_at.parse().ok();
-						let b_time: Option<DateTime<chrono::Utc>> = b.created_at.parse().ok();
-						match (a_time, b_time) {
-							(Some(a_time), Some(b_time)) => b_time.cmp(&a_time).then_with(|| a_idx.cmp(b_idx)),
-							(Some(_), None) => std::cmp::Ordering::Less,
-							(None, Some(_)) => std::cmp::Ordering::Greater,
-							(None, None) => a_idx.cmp(b_idx),
-						}
-					});
-					let sorted: Vec<Status> = indexed.into_iter().map(|(_, status)| status).collect();
-					TimelineData::Statuses(sorted)
-				});
+				let result = client
+					.get_status_context(&access_token, &focus.id)
+					.map(|context| prepare_thread_timeline(focus, context));
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None });
 			}
 			Ok(NetworkCommand::LookupAccount { handle }) => {

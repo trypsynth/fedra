@@ -1541,7 +1541,7 @@ fn process_network_responses(
 			NetworkResponse::Replied(Err(ref err)) => {
 				live_region::announce(live_region, &format!("Failed to reply: {}", err));
 			}
-			NetworkResponse::StatusDeleted { status_id, result: Ok(_) } => {
+			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
