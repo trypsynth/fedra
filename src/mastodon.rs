@@ -185,7 +185,7 @@ impl Status {
 			"public" => "Public".to_string(),
 			"unlisted" => "Unlisted".to_string(),
 			"private" => "Followers only".to_string(),
-			"direct" => "Mentioned only".to_string(),
+			"direct" => "Direct".to_string(),
 			other => other.to_string(),
 		}
 	}

@@ -81,7 +81,7 @@ impl PostVisibility {
 			Self::Public => "Public",
 			Self::Unlisted => "Unlisted",
 			Self::Private => "Followers only",
-			Self::Direct => "Mentioned only",
+			Self::Direct => "Direct",
 		}
 	}
 
