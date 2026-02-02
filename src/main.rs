@@ -476,7 +476,7 @@ fn handle_ui_command(
 					if let Some(handle) = &state.network_handle {
 						handle.send(NetworkCommand::FetchTimeline {
 							timeline_type: active.timeline_type.clone(),
-							limit: Some(20),
+							limit: Some(state.config.fetch_limit as u32),
 							max_id: Some(max_id),
 						});
 					}
@@ -634,6 +634,7 @@ fn handle_ui_command(
 				always_show_link_dialog,
 				quick_action_keys,
 				autoload,
+				fetch_limit,
 				content_warning_display,
 				sort_order,
 				timestamp_format,
@@ -643,6 +644,7 @@ fn handle_ui_command(
 				state.config.always_show_link_dialog,
 				state.config.quick_action_keys,
 				state.config.autoload,
+				state.config.fetch_limit,
 				state.config.content_warning_display,
 				state.config.sort_order,
 				state.config.timestamp_format,
@@ -654,6 +656,7 @@ fn handle_ui_command(
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
 				state.config.autoload = autoload;
+				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();

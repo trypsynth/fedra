@@ -657,11 +657,12 @@ pub fn prompt_for_options(
 	always_show_link_dialog: bool,
 	quick_action_keys: bool,
 	autoload: bool,
+	fetch_limit: u8,
 	content_warning_display: ContentWarningDisplay,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, bool, bool, ContentWarningDisplay, SortOrder, TimestampFormat)> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
+) -> Option<(bool, bool, bool, bool, u8, ContentWarningDisplay, SortOrder, TimestampFormat)> {
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 450).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let enter_checkbox = CheckBox::builder(&panel).with_label("Use &enter to send posts").build();
@@ -672,6 +673,11 @@ pub fn prompt_for_options(
 	quick_action_checkbox.set_value(quick_action_keys);
 	let autoload_checkbox = CheckBox::builder(&panel).with_label("&Autoload posts when scrolling").build();
 	autoload_checkbox.set_value(autoload);
+	let fetch_limit_label = StaticText::builder(&panel).with_label("Posts to &fetch when loading more:").build();
+	let fetch_limit_spin = SpinCtrl::builder(&panel).with_range(1, 40).with_initial_value(fetch_limit as i32).build();
+	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	fetch_limit_sizer.add(&fetch_limit_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	fetch_limit_sizer.add(&fetch_limit_spin, 0, SizerFlag::empty(), 0);
 	let cw_label = StaticText::builder(&panel).with_label("Content warning display:").build();
 	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
 	let cw_choice = ComboBox::builder(&panel).with_choices(cw_choices).with_style(ComboBoxStyle::ReadOnly).build();
@@ -699,6 +705,7 @@ pub fn prompt_for_options(
 	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&autoload_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -724,11 +731,13 @@ pub fn prompt_for_options(
 		Some(2) => ContentWarningDisplay::WarningOnly,
 		_ => content_warning_display,
 	};
+	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
 	Some((
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
 		quick_action_checkbox.get_value(),
 		autoload_checkbox.get_value(),
+		new_fetch_limit,
 		new_cw_display,
 		new_sort,
 		new_timestamp,

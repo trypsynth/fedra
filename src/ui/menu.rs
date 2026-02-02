@@ -12,8 +12,18 @@ pub fn build_menu_bar() -> MenuBar {
 	file_menu
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
 		.expect("Failed to append view profile menu item");
-	file_menu.append(ID_MANAGE_ACCOUNTS, "Manage &Accounts...\tCtrl+Alt+A", "Add, remove or switch accounts", ItemKind::Normal);
-	file_menu.append(ID_EDIT_PROFILE, "Edit &Profile...\tCtrl+Shift+E", "Edit current account profile", ItemKind::Normal);
+	file_menu.append(
+		ID_MANAGE_ACCOUNTS,
+		"Manage &Accounts...\tCtrl+Alt+A",
+		"Add, remove or switch accounts",
+		ItemKind::Normal,
+	);
+	file_menu.append(
+		ID_EDIT_PROFILE,
+		"Edit &Profile...\tCtrl+Shift+E",
+		"Edit current account profile",
+		ItemKind::Normal,
+	);
 	file_menu.append_separator();
 	file_menu.append(ID_OPTIONS, "&Options\tCtrl+,", "Configure application settings", ItemKind::Normal);
 	let post_menu = Menu::builder().build();

@@ -24,6 +24,8 @@ pub struct Config {
 	pub quick_action_keys: bool,
 	#[serde(default = "default_autoload")]
 	pub autoload: bool,
+	#[serde(default = "default_fetch_limit")]
+	pub fetch_limit: u8,
 	#[serde(default)]
 	pub sort_order: SortOrder,
 	#[serde(default)]
@@ -70,6 +72,10 @@ fn default_autoload() -> bool {
 	true
 }
 
+fn default_fetch_limit() -> u8 {
+	20
+}
+
 impl Default for Config {
 	fn default() -> Self {
 		Self {
@@ -80,6 +86,7 @@ impl Default for Config {
 			always_show_link_dialog: false,
 			quick_action_keys: false,
 			autoload: true,
+			fetch_limit: default_fetch_limit(),
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
 			content_warning_display: ContentWarningDisplay::default(),
