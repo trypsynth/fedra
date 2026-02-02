@@ -1701,6 +1701,51 @@ pub fn prompt_for_mentions(
 	Some((mention, action))
 }
 
+pub fn prompt_for_account_selection(
+	frame: &Frame,
+	accounts: &[&MastodonAccount],
+	labels: &[&str],
+) -> Option<(MastodonAccount, UserLookupAction)> {
+	const ID_VIEW_TIMELINE: i32 = 10042;
+	let dialog = Dialog::builder(frame, "Select User").with_size(400, 150).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let list_label = StaticText::builder(&panel).with_label("User:").build();
+	let choices: Vec<String> = labels.iter().map(|s| s.to_string()).collect();
+	let combo = ComboBox::builder(&panel).with_choices(choices).with_style(ComboBoxStyle::ReadOnly).build();
+	combo.set_selection(0);
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let profile_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Profile").build();
+	profile_button.set_default();
+	let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+	button_sizer.add(&profile_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&combo, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+	let dialog_timeline = dialog;
+	timeline_button.on_click(move |_| {
+		dialog_timeline.end_modal(ID_VIEW_TIMELINE);
+	});
+	dialog.centre();
+	let result = dialog.show_modal();
+	if result == ID_CANCEL {
+		return None;
+	}
+	let account = combo.get_selection().and_then(|sel| accounts.get(sel as usize).cloned()).cloned()?;
+	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
+	Some((account, action))
+}
+
 #[derive(Clone)]
 pub struct HashtagDialog {
 	dialog: Dialog,
