@@ -1,5 +1,3 @@
-//! Processing of network responses and streaming events.
-
 use std::{cell::Cell, sync::mpsc};
 
 use wxdragon::prelude::*;

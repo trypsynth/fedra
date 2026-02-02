@@ -1,4 +1,5 @@
 use std::{
+	cmp::Ordering,
 	sync::mpsc::{self, Receiver, Sender},
 	thread::{self, JoinHandle},
 };
@@ -361,8 +362,8 @@ fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineDat
 		let b_time: Option<DateTime<chrono::Utc>> = b.created_at.parse().ok();
 		match (a_time, b_time) {
 			(Some(a_time), Some(b_time)) => b_time.cmp(&a_time).then_with(|| a_idx.cmp(b_idx)),
-			(Some(_), None) => std::cmp::Ordering::Less,
-			(None, Some(_)) => std::cmp::Ordering::Greater,
+			(Some(_), None) => Ordering::Less,
+			(None, Some(_)) => Ordering::Greater,
 			(None, None) => a_idx.cmp(b_idx),
 		}
 	});

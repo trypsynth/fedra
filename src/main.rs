@@ -13,7 +13,13 @@ mod streaming;
 mod timeline;
 mod ui;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc, sync::mpsc};
+use std::{
+	cell::Cell,
+	collections::HashSet,
+	rc::Rc,
+	sync::mpsc,
+	time::{Duration, Instant},
+};
 
 use wxdragon::prelude::*;
 
@@ -170,7 +176,7 @@ fn main() {
 		let sort_order_drain = sort_order_cell.clone();
 		let tray_hidden_drain = tray_hidden.clone();
 		let ui_tx_timer = ui_tx.clone();
-		let mut last_ui_refresh = std::time::Instant::now();
+		let mut last_ui_refresh = Instant::now();
 		timer_tick.on_tick(move |_| {
 			if shutdown_timer.get() {
 				return;
@@ -207,8 +213,7 @@ fn main() {
 				&tray_hidden_drain,
 				&ui_tx_timer,
 			);
-
-			if last_ui_refresh.elapsed() >= std::time::Duration::from_secs(60) {
+			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
 				if state.config.timestamp_format == TimestampFormat::Relative
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
@@ -222,7 +227,7 @@ fn main() {
 						&state.cw_expanded,
 					);
 				}
-				last_ui_refresh = std::time::Instant::now();
+				last_ui_refresh = Instant::now();
 			}
 
 			busy_timer.set(false);

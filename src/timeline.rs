@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::{
 	config::{ContentWarningDisplay, TimestampFormat},
 	mastodon::{Notification, Status},
@@ -120,7 +122,7 @@ pub struct Timeline {
 	pub selected_index: Option<usize>,
 	pub selected_id: Option<String>,
 	pub loading_more: bool,
-	pub last_load_attempt: Option<std::time::Instant>,
+	pub last_load_attempt: Option<Instant>,
 }
 
 impl Timeline {

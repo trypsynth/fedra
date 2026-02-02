@@ -1,6 +1,8 @@
-//! UI command handling - processes user actions and updates state.
-
-use std::{cell::Cell, sync::mpsc};
+use std::{
+	cell::Cell,
+	sync::mpsc,
+	time::{Duration, Instant},
+};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -303,9 +305,9 @@ pub(crate) fn handle_ui_command(
 				&& !active.loading_more
 				&& active.timeline_type.supports_paging()
 			{
-				let now = std::time::Instant::now();
+				let now = Instant::now();
 				let can_load = match active.last_load_attempt {
-					Some(last) => now.duration_since(last) > std::time::Duration::from_secs(1),
+					Some(last) => now.duration_since(last) > Duration::from_secs(1),
 					None => true,
 				};
 
