@@ -31,6 +31,7 @@ pub struct AppCredentials {
 #[allow(dead_code)]
 pub struct Status {
 	pub id: String,
+	pub url: Option<String>,
 	pub content: String,
 	pub created_at: String,
 	pub account: Account,

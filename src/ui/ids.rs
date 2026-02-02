@@ -1,30 +1,54 @@
-//! UI command ID constants for menu items and accelerators.
+/// Generates sequential i32 constants starting from a base value.
+macro_rules! define_ids {
+	(base = $base:expr; $($name:ident),+ $(,)?) => {
+		define_ids!(@step $base; $($name),+);
+	};
+	(@step $n:expr; $name:ident) => {
+		pub const $name: i32 = $n;
+	};
+	(@step $n:expr; $name:ident, $($rest:ident),+) => {
+		pub const $name: i32 = $n;
+		define_ids!(@step $n + 1; $($rest),+);
+	};
+}
 
-pub const ID_NEW_POST: i32 = 1001;
-pub const ID_REPLY: i32 = 1002;
-pub const ID_FAVORITE: i32 = 1003;
-pub const ID_BOOST: i32 = 1004;
-pub const ID_LOCAL_TIMELINE: i32 = 1005;
-pub const ID_FEDERATED_TIMELINE: i32 = 1006;
-pub const ID_BOOKMARKS_TIMELINE: i32 = 1022;
-pub const ID_FAVORITES_TIMELINE: i32 = 1023;
-pub const ID_CLOSE_TIMELINE: i32 = 1007;
-pub const ID_REFRESH: i32 = 1008;
-pub const ID_REPLY_AUTHOR: i32 = 1009;
-pub const ID_OPTIONS: i32 = 1010;
-pub const ID_MANAGE_ACCOUNTS: i32 = 1011;
-pub const ID_VIEW_PROFILE: i32 = 1012;
-pub const ID_VIEW_USER_TIMELINE: i32 = 1013;
-pub const ID_OPEN_LINKS: i32 = 1014;
-pub const ID_VIEW_MENTIONS: i32 = 1015;
-pub const ID_VIEW_THREAD: i32 = 1016;
-pub const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
-pub const ID_VIEW_HASHTAGS: i32 = 1018;
-pub const ID_LOAD_MORE: i32 = 1019;
-pub const ID_VOTE: i32 = 1024;
-pub const ID_DELETE_POST: i32 = 1025;
-pub const ID_EDIT_POST: i32 = 1026;
-pub const ID_EDIT_PROFILE: i32 = 1027;
-pub const ID_TRAY_TOGGLE: i32 = 1020;
-pub const ID_TRAY_EXIT: i32 = 1021;
+define_ids! {
+	base = 1001;
+	// Post actions
+	ID_NEW_POST,
+	ID_REPLY,
+	ID_REPLY_AUTHOR,
+	ID_FAVORITE,
+	ID_BOOST,
+	ID_DELETE_POST,
+	ID_EDIT_POST,
+	ID_VOTE,
+	// Post navigation
+	ID_VIEW_THREAD,
+	ID_OPEN_LINKS,
+	ID_VIEW_IN_BROWSER,
+	ID_VIEW_MENTIONS,
+	ID_VIEW_HASHTAGS,
+	// User actions
+	ID_VIEW_PROFILE,
+	ID_VIEW_USER_TIMELINE,
+	ID_OPEN_USER_TIMELINE_BY_INPUT,
+	// Timeline actions
+	ID_LOCAL_TIMELINE,
+	ID_FEDERATED_TIMELINE,
+	ID_BOOKMARKS_TIMELINE,
+	ID_FAVORITES_TIMELINE,
+	ID_CLOSE_TIMELINE,
+	ID_REFRESH,
+	ID_LOAD_MORE,
+	// Account/settings
+	ID_OPTIONS,
+	ID_MANAGE_ACCOUNTS,
+	ID_EDIT_PROFILE,
+	// System tray
+	ID_TRAY_TOGGLE,
+	ID_TRAY_EXIT,
+}
+
+// Key codes
 pub const KEY_DELETE: i32 = 127;

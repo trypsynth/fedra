@@ -53,6 +53,7 @@ pub(crate) enum UiCommand {
 	HashtagDialogClosed,
 	ProfileDialogClosed,
 	OpenLinks,
+	ViewInBrowser,
 	ViewThread,
 	Vote,
 	LoadMore,
@@ -992,6 +993,22 @@ pub(crate) fn handle_ui_command(
 			if let Some(url) = url_to_open {
 				live_region::announce(live_region, "Opening link");
 				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
+			}
+		}
+		UiCommand::ViewInBrowser => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if let Some(url) = &target.url {
+				live_region::announce(live_region, "Opening post in browser");
+				let _ = launch_default_browser(url, BrowserLaunchFlags::Default);
+			} else {
+				live_region::announce(live_region, "Post URL not available");
 			}
 		}
 		UiCommand::ViewThread => {
