@@ -33,7 +33,6 @@ fn release() -> Result<(), Box<dyn Error>> {
 	let exe_name = if cfg!(windows) { "fedra.exe" } else { "fedra" };
 	let exe_path = target_dir.join(exe_name);
 	let readme_path = target_dir.join("readme.html");
-
 	if !exe_path.exists() {
 		return Err("Executable not found".into());
 	}
@@ -59,7 +58,6 @@ fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path) -> 
 	zip.start_file(exe_filename.to_string_lossy(), options)?;
 	let mut f = File::open(exe_path)?;
 	io::copy(&mut f, &mut zip)?;
-
 	if readme_path.exists() {
 		zip.start_file("readme.html", options)?;
 		let mut f = File::open(readme_path)?;
@@ -67,7 +65,6 @@ fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path) -> 
 	} else {
 		println!("Warning: readme.html not found, skipping.");
 	}
-
 	println!("Created zip: {}", package_path.display());
 	Ok(())
 }
@@ -78,9 +75,7 @@ fn build_windows_installer(target_dir: &Path) -> io::Result<()> {
 		println!("Skipping installer: fedra.iss not found.");
 		return Ok(());
 	}
-
 	let status = Command::new("ISCC.exe").arg(&iss_path).status();
-
 	match status {
 		Ok(s) if s.success() => println!("Installer created successfully."),
 		_ => println!("Failed to run Inno Setup (ISCC.exe). Is it in your PATH?"),

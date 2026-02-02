@@ -1,0 +1,30 @@
+//! UI command ID constants for menu items and accelerators.
+
+pub const ID_NEW_POST: i32 = 1001;
+pub const ID_REPLY: i32 = 1002;
+pub const ID_FAVORITE: i32 = 1003;
+pub const ID_BOOST: i32 = 1004;
+pub const ID_LOCAL_TIMELINE: i32 = 1005;
+pub const ID_FEDERATED_TIMELINE: i32 = 1006;
+pub const ID_BOOKMARKS_TIMELINE: i32 = 1022;
+pub const ID_FAVORITES_TIMELINE: i32 = 1023;
+pub const ID_CLOSE_TIMELINE: i32 = 1007;
+pub const ID_REFRESH: i32 = 1008;
+pub const ID_REPLY_AUTHOR: i32 = 1009;
+pub const ID_OPTIONS: i32 = 1010;
+pub const ID_MANAGE_ACCOUNTS: i32 = 1011;
+pub const ID_VIEW_PROFILE: i32 = 1012;
+pub const ID_VIEW_USER_TIMELINE: i32 = 1013;
+pub const ID_OPEN_LINKS: i32 = 1014;
+pub const ID_VIEW_MENTIONS: i32 = 1015;
+pub const ID_VIEW_THREAD: i32 = 1016;
+pub const ID_OPEN_USER_TIMELINE_BY_INPUT: i32 = 1017;
+pub const ID_VIEW_HASHTAGS: i32 = 1018;
+pub const ID_LOAD_MORE: i32 = 1019;
+pub const ID_VOTE: i32 = 1024;
+pub const ID_DELETE_POST: i32 = 1025;
+pub const ID_EDIT_POST: i32 = 1026;
+pub const ID_EDIT_PROFILE: i32 = 1027;
+pub const ID_TRAY_TOGGLE: i32 = 1020;
+pub const ID_TRAY_EXIT: i32 = 1021;
+pub const KEY_DELETE: i32 = 127;
