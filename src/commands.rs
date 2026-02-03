@@ -26,6 +26,21 @@ use crate::{
 	},
 };
 
+fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
+	let mut min_id: Option<u128> = None;
+	let mut min_id_str: Option<String> = None;
+	for entry in entries {
+		let id_str = entry.id();
+		if let Ok(id) = id_str.parse::<u128>() {
+			if min_id.map_or(true, |current| id < current) {
+				min_id = Some(id);
+				min_id_str = Some(id_str.to_string());
+			}
+		}
+	}
+	min_id_str.or_else(|| entries.last().map(|entry| entry.id().to_string()))
+}
+
 /// Commands that can be triggered by UI events.
 pub enum UiCommand {
 	NewPost,
@@ -340,9 +355,8 @@ pub fn handle_ui_command(
 								limit: Some(u32::from(state.config.fetch_limit)),
 								offset: Some(u32::try_from(active.entries.len()).unwrap()),
 							});
-						} else if let Some(last) = active.entries.last() {
+						} else if let Some(max_id) = paging_max_id(&active.entries) {
 							// Regular timelines use max_id pagination
-							let max_id = last.id().to_string();
 							handle.send(NetworkCommand::FetchTimeline {
 								timeline_type: active.timeline_type.clone(),
 								limit: Some(u32::from(state.config.fetch_limit)),

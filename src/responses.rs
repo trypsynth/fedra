@@ -126,11 +126,22 @@ pub fn process_network_responses(
 					};
 
 					if max_id.is_some() {
-						timeline.entries.extend(new_entries.clone());
+						let existing_ids: std::collections::HashSet<&str> =
+							timeline.entries.iter().map(|entry| entry.id()).collect();
+						let filtered: Vec<TimelineEntry> = new_entries
+							.into_iter()
+							.filter(|entry| !existing_ids.contains(entry.id()))
+							.collect();
+						if filtered.is_empty() {
+							live_region::announce(live_region, "No more posts");
+						} else {
+							timeline.entries.extend(filtered.clone());
+						}
 
 						if is_active {
 							if state.config.sort_order == SortOrder::NewestToOldest {
-								for entry in &new_entries {
+								let entries_to_append = if filtered.is_empty() { &[][..] } else { &filtered };
+								for entry in entries_to_append {
 									let is_expanded = state.cw_expanded.contains(entry.id());
 									timeline_list.append(&entry.display_text(
 										state.config.timestamp_format,

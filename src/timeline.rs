@@ -76,7 +76,7 @@ impl TimelineType {
 	}
 
 	pub const fn supports_paging(&self) -> bool {
-		!matches!(self, Self::Thread { .. })
+		!matches!(self, Self::Thread { .. } | Self::Bookmarks | Self::Favorites)
 	}
 }
 
