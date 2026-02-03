@@ -54,6 +54,8 @@ pub(crate) enum UiCommand {
 	ViewProfile,
 	ViewMentions,
 	ViewHashtags,
+	ViewBoosts,
+	ViewFavorites,
 	HashtagDialogClosed,
 	ProfileDialogClosed,
 	OpenLinks,
@@ -1144,6 +1146,44 @@ pub(crate) fn handle_ui_command(
 			let names: Vec<String> = target.tags.iter().map(|t| t.name.clone()).collect();
 			if let Some(handle) = &state.network_handle {
 				handle.send(NetworkCommand::FetchTagsInfo { names });
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::ViewBoosts => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if target.reblogs_count == 0 {
+				live_region::announce(live_region, "No boosts for this post");
+				return;
+			}
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchRebloggedBy { status_id: target.id.clone() });
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::ViewFavorites => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			if target.favourites_count == 0 {
+				live_region::announce(live_region, "No favorites for this post");
+				return;
+			}
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchFavoritedBy { status_id: target.id.clone() });
 			} else {
 				live_region::announce(live_region, "Network not available");
 			}

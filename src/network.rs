@@ -115,6 +115,12 @@ pub enum NetworkCommand {
 	FetchTagsInfo {
 		names: Vec<String>,
 	},
+	FetchRebloggedBy {
+		status_id: String,
+	},
+	FetchFavoritedBy {
+		status_id: String,
+	},
 	VotePoll {
 		poll_id: String,
 		choices: Vec<usize>,
@@ -245,6 +251,14 @@ pub enum NetworkResponse {
 	},
 	TagsInfoFetched {
 		result: Result<Vec<crate::mastodon::Tag>>,
+	},
+	RebloggedByLoaded {
+		status_id: String,
+		result: Result<Vec<Account>>,
+	},
+	FavoritedByLoaded {
+		status_id: String,
+		result: Result<Vec<Account>>,
 	},
 	CredentialsFetched {
 		result: Result<Account>,
@@ -519,6 +533,14 @@ fn network_loop(
 				}
 				let result = Ok(tags);
 				let _ = responses.send(NetworkResponse::TagsInfoFetched { result });
+			}
+			Ok(NetworkCommand::FetchRebloggedBy { status_id }) => {
+				let result = client.get_reblogged_by(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::RebloggedByLoaded { status_id, result });
+			}
+			Ok(NetworkCommand::FetchFavoritedBy { status_id }) => {
+				let result = client.get_favourited_by(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::FavoritedByLoaded { status_id, result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
 				let result = client.follow_account_with_options(&access_token, &account_id, reblogs);

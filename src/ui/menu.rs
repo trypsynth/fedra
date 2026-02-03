@@ -4,8 +4,8 @@ use crate::{
 	AppState, ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE,
 	ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST,
 	ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH,
-	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD,
-	ID_VIEW_USER_TIMELINE, commands::get_selected_status,
+	ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS,
+	ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -206,7 +206,46 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	if let Some(copy_post_item) = menu_bar.find_item(ID_COPY_POST) {
 		copy_post_item.enable(status.is_some());
 	}
-
+	if let Some((_, post_menu)) = menu_bar.find_item_and_menu(ID_VIEW_HASHTAGS) {
+		let mut anchor_pos = None;
+		for i in 0..post_menu.get_item_count() {
+			if let Some(item) = post_menu.find_item_by_position(i)
+				&& item.get_id() == ID_VIEW_HASHTAGS
+			{
+				anchor_pos = Some(i);
+				break;
+			}
+		}
+		if let Some(pos) = anchor_pos {
+			let boosts = target.map(|t| t.reblogs_count).unwrap_or(0);
+			let favorites = target.map(|t| t.favourites_count).unwrap_or(0);
+			let boosts_exists = post_menu.find_item(ID_VIEW_BOOSTS).is_some();
+			if boosts > 0 && !boosts_exists {
+				post_menu.insert(
+					pos + 1,
+					ID_VIEW_BOOSTS,
+					"&View Boosts",
+					"View users who boosted this post",
+					ItemKind::Normal,
+				);
+			} else if boosts == 0 && boosts_exists {
+				post_menu.delete(ID_VIEW_BOOSTS);
+			}
+			let favorites_exists = post_menu.find_item(ID_VIEW_FAVORITES).is_some();
+			if favorites > 0 && !favorites_exists {
+				let insert_pos = if boosts > 0 { pos + 2 } else { pos + 1 };
+				post_menu.insert(
+					insert_pos,
+					ID_VIEW_FAVORITES,
+					"&View Favorites",
+					"View users who favorited this post",
+					ItemKind::Normal,
+				);
+			} else if favorites == 0 && favorites_exists {
+				post_menu.delete(ID_VIEW_FAVORITES);
+			}
+		}
+	}
 	let is_own = target.map(|t| Some(&t.account.id) == state.current_user_id.as_ref()).unwrap_or(false);
 	let has_poll = target.map(|t| t.poll.is_some()).unwrap_or(false);
 

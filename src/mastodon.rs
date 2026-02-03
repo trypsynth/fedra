@@ -957,6 +957,34 @@ impl MastodonClient {
 		Ok(tag)
 	}
 
+	pub fn get_reblogged_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/reblogged_by", status_id))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch boosts")?
+			.error_for_status()
+			.context("Instance rejected boosts request")?;
+		let accounts: Vec<Account> = response.json().context("Invalid boosts response")?;
+		Ok(accounts)
+	}
+
+	pub fn get_favourited_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourited_by", status_id))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch favorites")?
+			.error_for_status()
+			.context("Instance rejected favorites request")?;
+		let accounts: Vec<Account> = response.json().context("Invalid favorites response")?;
+		Ok(accounts)
+	}
+
 	pub fn search(
 		&self,
 		access_token: &str,

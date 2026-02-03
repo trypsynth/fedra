@@ -392,6 +392,122 @@ pub(crate) fn process_network_responses(
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
 				live_region::announce(live_region, &format!("Failed to load hashtags: {}", err));
 			}
+			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
+				if let Some((account, action)) =
+					dialogs::prompt_for_account_list(frame, "Boosts", "Users who boosted this post", &accounts)
+				{
+					match action {
+						UserLookupAction::Profile => {
+							if let Some(net) = &state.network_handle {
+								net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+								let net_tx = net.command_tx.clone();
+								let ui_tx_timeline = ui_tx.clone();
+								let timeline_type = TimelineType::User {
+									id: account.id.clone(),
+									name: account.display_name_or_username().to_string(),
+								};
+								let ui_tx_close = ui_tx.clone();
+								let dlg = dialogs::ProfileDialog::new(
+									frame,
+									account.clone(),
+									net_tx,
+									move || {
+										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+									},
+									move || {
+										let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+									},
+								);
+								dlg.show();
+								state.profile_dialog = Some(dlg);
+							} else {
+								live_region::announce(live_region, "Network not available");
+							}
+						}
+						UserLookupAction::Timeline => {
+							let timeline_type = TimelineType::User {
+								id: account.id.clone(),
+								name: account.display_name_or_username().to_string(),
+							};
+							crate::commands::handle_ui_command(
+								UiCommand::OpenTimeline(timeline_type),
+								state,
+								frame,
+								timelines_selector,
+								timeline_list,
+								suppress_selection,
+								live_region,
+								quick_action_keys_enabled,
+								autoload_mode,
+								sort_order_cell,
+								tray_hidden,
+								ui_tx,
+							);
+						}
+					}
+				}
+			}
+			NetworkResponse::RebloggedByLoaded { result: Err(err), .. } => {
+				live_region::announce(live_region, &format!("Failed to load boosts: {}", err));
+			}
+			NetworkResponse::FavoritedByLoaded { result: Ok(accounts), .. } => {
+				if let Some((account, action)) =
+					dialogs::prompt_for_account_list(frame, "Favorites", "Users who favorited this post", &accounts)
+				{
+					match action {
+						UserLookupAction::Profile => {
+							if let Some(net) = &state.network_handle {
+								net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+								let net_tx = net.command_tx.clone();
+								let ui_tx_timeline = ui_tx.clone();
+								let timeline_type = TimelineType::User {
+									id: account.id.clone(),
+									name: account.display_name_or_username().to_string(),
+								};
+								let ui_tx_close = ui_tx.clone();
+								let dlg = dialogs::ProfileDialog::new(
+									frame,
+									account.clone(),
+									net_tx,
+									move || {
+										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+									},
+									move || {
+										let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+									},
+								);
+								dlg.show();
+								state.profile_dialog = Some(dlg);
+							} else {
+								live_region::announce(live_region, "Network not available");
+							}
+						}
+						UserLookupAction::Timeline => {
+							let timeline_type = TimelineType::User {
+								id: account.id.clone(),
+								name: account.display_name_or_username().to_string(),
+							};
+							crate::commands::handle_ui_command(
+								UiCommand::OpenTimeline(timeline_type),
+								state,
+								frame,
+								timelines_selector,
+								timeline_list,
+								suppress_selection,
+								live_region,
+								quick_action_keys_enabled,
+								autoload_mode,
+								sort_order_cell,
+								tray_hidden,
+								ui_tx,
+							);
+						}
+					}
+				}
+			}
+			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
+				live_region::announce(live_region, &format!("Failed to load favorites: {}", err));
+			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {
 					if let Some(dlg) = &state.profile_dialog {
