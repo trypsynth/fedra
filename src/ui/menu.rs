@@ -3,7 +3,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
 	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
-	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_HELP,
 	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
 	commands::get_selected_status,
 };
@@ -92,10 +92,12 @@ pub fn build_menu_bar() -> MenuBar {
 		.append_separator()
 		.append_item(ID_REFRESH, "&Refresh\tF5", "Refresh current timeline")
 		.build();
+	let help_menu = Menu::builder().append_item(ID_VIEW_HELP, "View &Help\tF1", "Open documentation").build();
 	MenuBar::builder()
 		.append(file_menu, "&Options")
 		.append(post_menu, "&Post")
 		.append(timelines_menu, "&Timelines")
+		.append(help_menu, "&Help")
 		.build()
 }
 
@@ -130,11 +132,11 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 			if !boost_exists {
 				let mut bookmark_pos = None;
 				for i in 0..post_menu.get_item_count() {
-					if let Some(item) = post_menu.find_item_by_position(i) {
-						if item.get_id() == ID_BOOKMARK {
-							bookmark_pos = Some(i);
-							break;
-						}
+					if let Some(item) = post_menu.find_item_by_position(i)
+						&& item.get_id() == ID_BOOKMARK
+					{
+						bookmark_pos = Some(i);
+						break;
 					}
 				}
 
@@ -147,16 +149,14 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 					};
 					post_menu.insert(pos + 1, ID_BOOST, &label, "Boost or unboost selected post", ItemKind::Normal);
 				}
-			} else {
-				if let Some(boost_item) = post_menu.find_item(ID_BOOST) {
-					let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
-					let label = if target.map(|t| t.reblogged).unwrap_or(false) {
-						format!("Un&boost\t{shortcut}")
-					} else {
-						format!("&Boost\t{shortcut}")
-					};
-					boost_item.set_label(&label);
-				}
+			} else if let Some(boost_item) = post_menu.find_item(ID_BOOST) {
+				let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
+				let label = if target.map(|t| t.reblogged).unwrap_or(false) {
+					format!("Un&boost\t{shortcut}")
+				} else {
+					format!("&Boost\t{shortcut}")
+				};
+				boost_item.set_label(&label);
 			}
 		}
 	} else if let Some(boost_item) = menu_bar.find_item(ID_BOOST) {
@@ -206,11 +206,11 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let mut anchor_pos = None;
 		let count = post_menu.get_item_count();
 		for i in 0..count {
-			if let Some(item) = post_menu.find_item_by_position(i) {
-				if item.get_id() == ID_VIEW_THREAD {
-					anchor_pos = Some(i);
-					break;
-				}
+			if let Some(item) = post_menu.find_item_by_position(i)
+				&& item.get_id() == ID_VIEW_THREAD
+			{
+				anchor_pos = Some(i);
+				break;
 			}
 		}
 
@@ -222,12 +222,13 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				post_menu.insert(pos + 2, ID_EDIT_POST, &label, "Edit selected post", ItemKind::Normal);
 			} else if !is_own && edit_exists {
 				post_menu.delete(ID_EDIT_POST);
-			} else if is_own && edit_exists {
-				if let Some(item) = post_menu.find_item(ID_EDIT_POST) {
-					let shortcut = if state.config.quick_action_keys { "E" } else { "Ctrl+E" };
-					let label = format!("&Edit Post...\t{shortcut}");
-					item.set_label(&label);
-				}
+			} else if is_own
+				&& edit_exists
+				&& let Some(item) = post_menu.find_item(ID_EDIT_POST)
+			{
+				let shortcut = if state.config.quick_action_keys { "E" } else { "Ctrl+E" };
+				let label = format!("&Edit Post...\t{shortcut}");
+				item.set_label(&label);
 			}
 
 			let delete_exists = post_menu.find_item(ID_DELETE_POST).is_some();
@@ -237,20 +238,21 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				post_menu.insert(pos + 3, ID_DELETE_POST, &label, "Delete selected post", ItemKind::Normal);
 			} else if !is_own && delete_exists {
 				post_menu.delete(ID_DELETE_POST);
-			} else if is_own && delete_exists {
-				if let Some(item) = post_menu.find_item(ID_DELETE_POST) {
-					let shortcut = if state.config.quick_action_keys { "D" } else { "Ctrl+Delete" };
-					let label = format!("&Delete Post\t{shortcut}");
-					item.set_label(&label);
-				}
+			} else if is_own
+				&& delete_exists
+				&& let Some(item) = post_menu.find_item(ID_DELETE_POST)
+			{
+				let shortcut = if state.config.quick_action_keys { "D" } else { "Ctrl+Delete" };
+				let label = format!("&Delete Post\t{shortcut}");
+				item.set_label(&label);
 			}
 			let mut fav_pos = None;
 			for i in 0..post_menu.get_item_count() {
-				if let Some(item) = post_menu.find_item_by_position(i) {
-					if item.get_id() == ID_FAVORITE {
-						fav_pos = Some(i);
-						break;
-					}
+				if let Some(item) = post_menu.find_item_by_position(i)
+					&& item.get_id() == ID_FAVORITE
+				{
+					fav_pos = Some(i);
+					break;
 				}
 			}
 

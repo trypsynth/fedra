@@ -69,6 +69,7 @@ pub(crate) enum UiCommand {
 	CancelAuth,
 	CloseAndNavigateBack,
 	EditProfile,
+	ViewHelp,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -1170,6 +1171,27 @@ pub(crate) fn handle_ui_command(
 				handle.send(NetworkCommand::FetchCredentials);
 			} else {
 				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::ViewHelp => {
+			if let Ok(mut path) = std::env::current_exe() {
+				path.pop();
+				path.push("readme.html");
+				if path.exists() {
+					live_region::announce(live_region, "Opening help");
+					let _ = wxdragon::utils::launch_default_browser(
+						&path.to_string_lossy(),
+						wxdragon::utils::BrowserLaunchFlags::Default,
+					);
+				} else {
+					live_region::announce(live_region, "Help file not found");
+					dialogs::show_error(
+						frame,
+						&anyhow::anyhow!("Help file (readme.html) not found in application directory."),
+					);
+				}
+			} else {
+				live_region::announce(live_region, "Could not determine help path");
 			}
 		}
 	}

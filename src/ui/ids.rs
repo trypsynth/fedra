@@ -49,6 +49,8 @@ define_ids! {
 	// System tray
 	ID_TRAY_TOGGLE,
 	ID_TRAY_EXIT,
+	// Help
+	ID_VIEW_HELP,
 }
 
 // Key codes
