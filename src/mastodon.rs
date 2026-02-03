@@ -36,7 +36,7 @@ pub struct Status {
 	pub created_at: String,
 	pub account: Account,
 	pub spoiler_text: String,
-	pub reblog: Option<Box<Status>>,
+	pub reblog: Option<Box<Self>>,
 	#[serde(default)]
 	pub media_attachments: Vec<MediaAttachment>,
 	pub application: Option<Application>,
@@ -125,12 +125,12 @@ pub enum SearchType {
 }
 
 impl SearchType {
-	pub fn as_api_str(&self) -> Option<&'static str> {
+	pub const fn as_api_str(&self) -> Option<&'static str> {
 		match self {
-			SearchType::All => None,
-			SearchType::Accounts => Some("accounts"),
-			SearchType::Hashtags => Some("hashtags"),
-			SearchType::Statuses => Some("statuses"),
+			Self::All => None,
+			Self::Accounts => Some("accounts"),
+			Self::Hashtags => Some("hashtags"),
+			Self::Statuses => Some("statuses"),
 		}
 	}
 }
@@ -165,8 +165,8 @@ impl Status {
 	) -> String {
 		match &self.reblog {
 			Some(boosted) => {
-				let booster = self.account.display_name_or_username();
-				format!("{} boosted {}", booster, boosted.base_display(timestamp_format, cw_display, cw_expanded))
+				let post_booster = self.account.display_name_or_username();
+				format!("{} boosted {}", post_booster, boosted.base_display(timestamp_format, cw_display, cw_expanded))
 			}
 			None => self.base_display(timestamp_format, cw_display, cw_expanded),
 		}
@@ -199,7 +199,7 @@ impl Status {
 			out.push_str(&media);
 		}
 		if let Some(poll_text) = self.poll_summary() {
-			out.push_str(&format!(" {}", poll_text));
+			out.push_str(&format!(" {poll_text}"));
 		}
 		// Metadata line: time, visibility, client
 		let mut meta = Vec::new();
@@ -211,7 +211,7 @@ impl Status {
 		meta.push(format!("{} boosts", self.reblogs_count));
 		meta.push(format!("{} favorites", self.favourites_count));
 		if let Some(client) = self.client_name() {
-			meta.push(format!("via {}", client));
+			meta.push(format!("via {client}"));
 		}
 		if !meta.is_empty() {
 			out.push_str(" - ");
@@ -237,13 +237,13 @@ impl Status {
 			return content;
 		}
 		match cw_display {
-			ContentWarningDisplay::Inline => format!("Content warning: {} - {}", spoiler, content),
+			ContentWarningDisplay::Inline => format!("Content warning: {spoiler} - {content}"),
 			ContentWarningDisplay::Hidden => content,
 			ContentWarningDisplay::WarningOnly => {
-				if !cw_expanded {
-					format!("Content warning: {}", spoiler)
+				if cw_expanded {
+					content
 				} else {
-					content.to_string()
+					format!("Content warning: {spoiler}")
 				}
 			}
 		}
@@ -254,7 +254,7 @@ impl Status {
 			.as_ref()
 			.map(|app| app.name.as_str())
 			.filter(|name| !name.trim().is_empty())
-			.map(|name| name.to_string())
+			.map(std::string::ToString::to_string)
 	}
 
 	fn media_summary(&self) -> Option<String> {
@@ -279,12 +279,12 @@ impl Status {
 			})
 			.collect::<Vec<_>>()
 			.join("; ");
-		let mut summary = format!("media {}", count);
+		let mut summary = format!("media {count}");
 		if !types.is_empty() {
-			summary.push_str(&format!(" ({})", types));
+			summary.push_str(&format!(" ({types})"));
 		}
 		if !alt_texts.is_empty() {
-			summary.push_str(&format!(" [{}]", alt_texts));
+			summary.push_str(&format!(" [{alt_texts}]"));
 		}
 		Some(summary)
 	}
@@ -370,18 +370,18 @@ impl Notification {
 	) -> String {
 		let actor = self.account.display_name_or_username();
 		match self.kind.as_str() {
-			"mention" | "status" => self.status_text(timestamp_format, cw_display, cw_expanded).to_string(),
+			"mention" | "status" => self.status_text(timestamp_format, cw_display, cw_expanded),
 			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded)),
 			"favourite" => {
 				format!("{} favorited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
 			}
-			"follow" => format!("{} followed you", actor),
-			"follow_request" => format!("{} requested to follow you", actor),
+			"follow" => format!("{actor} followed you"),
+			"follow_request" => format!("{actor} requested to follow you"),
 			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format, cw_display, cw_expanded)),
 			"update" => {
 				format!("{} edited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
 			}
-			"admin.sign_up" => format!("{} signed up", actor),
+			"admin.sign_up" => format!("{actor} signed up"),
 			"admin.report" => self.format_admin_report(actor),
 			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
 			"moderation_warning" => "You have received a moderation warning".to_string(),
@@ -395,8 +395,7 @@ impl Notification {
 	fn format_admin_report(&self, reporter: &str) -> String {
 		match &self.report {
 			Some(report) => {
-				let target =
-					report.target_account.as_ref().map(|a| a.display_name_or_username()).unwrap_or("unknown user");
+				let target = report.target_account.as_ref().map_or("unknown user", Account::display_name_or_username);
 				let category = match report.category.as_str() {
 					"spam" => "spam",
 					"legal" => "legal issue",
@@ -406,12 +405,12 @@ impl Notification {
 					cat => cat,
 				};
 				if report.comment.is_empty() {
-					format!("{} reported {} for {}", reporter, target, category)
+					format!("{reporter} reported {target} for {category}")
 				} else {
 					format!("{} reported {} for {}: {}", reporter, target, category, report.comment)
 				}
 			}
-			None => format!("{} filed a report", reporter),
+			None => format!("{reporter} filed a report"),
 		}
 	}
 
@@ -486,7 +485,7 @@ impl Account {
 	pub fn profile_display(&self) -> String {
 		let mut lines = Vec::new();
 		let name = self.display_name_or_username();
-		lines.push(format!("Name: {}", name));
+		lines.push(format!("Name: {name}"));
 		lines.push(format!("Username: @{}", self.acct));
 		lines.push(format!("Direct Profile URL: {}", self.url));
 		lines.push(format!("Posts: {}", self.statuses_count));
@@ -503,7 +502,7 @@ impl Account {
 		if !self.note.is_empty() {
 			let bio = strip_html(&self.note);
 			if !bio.trim().is_empty() {
-				lines.push(format!("Bio: {}", bio));
+				lines.push(format!("Bio: {bio}"));
 			}
 		}
 		if !self.fields.is_empty() {
@@ -516,7 +515,7 @@ impl Account {
 		if !self.created_at.is_empty()
 			&& let Some(date) = friendly_date(&self.created_at)
 		{
-			lines.push(format!("Joined: {}", date));
+			lines.push(format!("Joined: {date}"));
 		}
 		lines.join("\r\n")
 	}
@@ -556,7 +555,7 @@ impl MastodonClient {
 	}
 
 	#[allow(dead_code)]
-	pub fn base_url(&self) -> &Url {
+	pub const fn base_url(&self) -> &Url {
 		&self.base_url
 	}
 
@@ -757,7 +756,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_account(&self, access_token: &str, account_id: &str) -> Result<Account> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}"))?;
 		let response = self
 			.http
 			.get(url)
@@ -771,7 +770,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
 		let response = self
 			.http
 			.get(url)
@@ -800,7 +799,7 @@ impl MastodonClient {
 	}
 
 	pub fn favorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourite", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/favourite"))?;
 		let response = self
 			.http
 			.post(url)
@@ -814,7 +813,7 @@ impl MastodonClient {
 	}
 
 	pub fn bookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/bookmark", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/bookmark"))?;
 		let response = self
 			.http
 			.post(url)
@@ -828,7 +827,7 @@ impl MastodonClient {
 	}
 
 	pub fn unfavorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/unfavourite", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unfavourite"))?;
 		let response = self
 			.http
 			.post(url)
@@ -842,7 +841,7 @@ impl MastodonClient {
 	}
 
 	pub fn unbookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/unbookmark", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unbookmark"))?;
 		let response = self
 			.http
 			.post(url)
@@ -856,7 +855,7 @@ impl MastodonClient {
 	}
 
 	pub fn reblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/reblog", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblog"))?;
 		let response = self
 			.http
 			.post(url)
@@ -870,7 +869,7 @@ impl MastodonClient {
 	}
 
 	pub fn unreblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/unreblog", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unreblog"))?;
 		let response = self
 			.http
 			.post(url)
@@ -902,7 +901,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_status_context(&self, access_token: &str, status_id: &str) -> Result<StatusContext> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/context", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/context"))?;
 		let response = self
 			.http
 			.get(url)
@@ -916,7 +915,7 @@ impl MastodonClient {
 	}
 
 	pub fn follow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
-		let url = self.base_url.join(&format!("api/v1/tags/{}/follow", tag_name))?;
+		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}/follow"))?;
 		let response = self
 			.http
 			.post(url)
@@ -930,7 +929,7 @@ impl MastodonClient {
 	}
 
 	pub fn unfollow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
-		let url = self.base_url.join(&format!("api/v1/tags/{}/unfollow", tag_name))?;
+		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}/unfollow"))?;
 		let response = self
 			.http
 			.post(url)
@@ -944,7 +943,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
-		let url = self.base_url.join(&format!("api/v1/tags/{}", tag_name))?;
+		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}"))?;
 		let response = self
 			.http
 			.get(url)
@@ -958,7 +957,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_reblogged_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/reblogged_by", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblogged_by"))?;
 		let response = self
 			.http
 			.get(url)
@@ -972,7 +971,7 @@ impl MastodonClient {
 	}
 
 	pub fn get_favourited_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}/favourited_by", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/favourited_by"))?;
 		let response = self
 			.http
 			.get(url)
@@ -1051,7 +1050,7 @@ impl MastodonClient {
 		account_id: &str,
 		reblogs: bool,
 	) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/follow", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/follow"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1066,7 +1065,7 @@ impl MastodonClient {
 	}
 
 	pub fn unfollow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/unfollow", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unfollow"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1080,7 +1079,7 @@ impl MastodonClient {
 	}
 
 	pub fn block_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/block", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/block"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1094,7 +1093,7 @@ impl MastodonClient {
 	}
 
 	pub fn unblock_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/unblock", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unblock"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1108,7 +1107,7 @@ impl MastodonClient {
 	}
 
 	pub fn mute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/mute", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/mute"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1122,7 +1121,7 @@ impl MastodonClient {
 	}
 
 	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{}/unmute", account_id))?;
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unmute"))?;
 		let response = self
 			.http
 			.post(url)
@@ -1136,7 +1135,7 @@ impl MastodonClient {
 	}
 
 	pub fn vote_poll(&self, access_token: &str, poll_id: &str, choices: &[usize]) -> Result<Poll> {
-		let url = self.base_url.join(&format!("api/v1/polls/{}/votes", poll_id))?;
+		let url = self.base_url.join(&format!("api/v1/polls/{poll_id}/votes"))?;
 		let mut params = Vec::new();
 		for choice in choices {
 			params.push(("choices[]", choice.to_string()));
@@ -1155,7 +1154,7 @@ impl MastodonClient {
 	}
 
 	pub fn delete_status(&self, access_token: &str, status_id: &str) -> Result<()> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
 		let _ = self
 			.http
 			.delete(url)
@@ -1210,8 +1209,8 @@ impl MastodonClient {
 		}
 		if let Some(fields) = fields_attributes {
 			for (i, (name, value)) in fields.iter().enumerate() {
-				form = form.text(format!("fields_attributes[{}][name]", i), name.to_string());
-				form = form.text(format!("fields_attributes[{}][value]", i), value.to_string());
+				form = form.text(format!("fields_attributes[{i}][name]"), name.clone());
+				form = form.text(format!("fields_attributes[{i}][value]"), value.clone());
 			}
 		}
 		if let Some(v) = source_privacy {
@@ -1246,7 +1245,7 @@ impl MastodonClient {
 		media_ids: &[String],
 		poll: Option<&crate::network::PollData>,
 	) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{}", status_id))?;
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
 		let mut params = vec![("status".to_string(), status.to_string())];
 		if let Some(spoiler) = spoiler_text {
 			params.push(("spoiler_text".to_string(), spoiler.to_string()));

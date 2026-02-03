@@ -7,8 +7,7 @@ use crate::{
 	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
 	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS,
 	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	KEY_DELETE, UiCommand,
+	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	live_region,
 	ui::menu::build_menu_bar,
@@ -119,11 +118,11 @@ pub fn bind_input_handlers(
 
 	let ui_tx_list = ui_tx.clone();
 	let shutdown_list = is_shutting_down.clone();
-	let suppress_list = suppress_selection.clone();
+	let suppress_list = suppress_selection;
 	let timeline_list_state = parts.timeline_list;
 	let ui_tx_list_key = ui_tx.clone();
 	let shutdown_list_key = is_shutting_down.clone();
-	let quick_action_keys_list = quick_action_keys_enabled.clone();
+	let quick_action_keys_list = quick_action_keys_enabled;
 	let autoload_mode_list = autoload_mode.clone();
 	let sort_order_list = sort_order_cell.clone();
 	timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
@@ -379,8 +378,8 @@ pub fn bind_input_handlers(
 		event.skip(true);
 	});
 
-	let autoload_mode_selection = autoload_mode.clone();
-	let sort_order_selection = sort_order_cell.clone();
+	let autoload_mode_selection = autoload_mode;
+	let sort_order_selection = sort_order_cell;
 	timeline_list_state.on_selection_changed(move |event| {
 		if shutdown_list.get() {
 			return;
@@ -432,7 +431,7 @@ pub fn bind_input_handlers(
 		}
 	});
 
-	let ui_tx_menu = ui_tx.clone();
+	let ui_tx_menu = ui_tx;
 	let shutdown_menu = is_shutting_down.clone();
 	let frame_menu = parts.frame;
 	frame_menu.on_menu_selected(move |event| match event.get_id() {
@@ -631,8 +630,8 @@ pub fn bind_input_handlers(
 		_ => {}
 	});
 
-	let shutdown_close = is_shutting_down.clone();
-	let timer_close = timer.clone();
+	let shutdown_close = is_shutting_down;
+	let timer_close = timer;
 	let frame_close = parts.frame;
 	frame_close.on_close(move |event| {
 		if !shutdown_close.get() {

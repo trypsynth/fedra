@@ -253,11 +253,9 @@ pub enum NetworkResponse {
 		result: Result<Vec<crate::mastodon::Tag>>,
 	},
 	RebloggedByLoaded {
-		status_id: String,
 		result: Result<Vec<Account>>,
 	},
 	FavoritedByLoaded {
-		status_id: String,
 		result: Result<Vec<Account>>,
 	},
 	CredentialsFetched {
@@ -528,7 +526,7 @@ fn network_loop(
 				let mut tags = Vec::new();
 				for name in names {
 					if let Ok(tag) = client.get_tag(&access_token, &name) {
-						tags.push(tag)
+						tags.push(tag);
 					}
 				}
 				let result = Ok(tags);
@@ -536,11 +534,11 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::FetchRebloggedBy { status_id }) => {
 				let result = client.get_reblogged_by(&access_token, &status_id);
-				let _ = responses.send(NetworkResponse::RebloggedByLoaded { status_id, result });
+				let _ = responses.send(NetworkResponse::RebloggedByLoaded { result });
 			}
 			Ok(NetworkCommand::FetchFavoritedBy { status_id }) => {
 				let result = client.get_favourited_by(&access_token, &status_id);
-				let _ = responses.send(NetworkResponse::FavoritedByLoaded { status_id, result });
+				let _ = responses.send(NetworkResponse::FavoritedByLoaded { result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
 				let result = client.follow_account_with_options(&access_token, &account_id, reblogs);

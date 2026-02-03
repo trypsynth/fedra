@@ -23,60 +23,60 @@ pub enum TimelineType {
 impl TimelineType {
 	pub fn display_name(&self) -> String {
 		match self {
-			TimelineType::Home => "Home".to_string(),
-			TimelineType::Notifications => "Notifications".to_string(),
-			TimelineType::Local => "Local".to_string(),
-			TimelineType::Federated => "Federated".to_string(),
-			TimelineType::Bookmarks => "Bookmarks".to_string(),
-			TimelineType::Favorites => "Favorites".to_string(),
-			TimelineType::User { name, .. } => name.clone(),
-			TimelineType::Thread { name, .. } => name.clone(),
-			TimelineType::Search { query, .. } => format!("Search: {}", query),
-			TimelineType::Hashtag { name } => format!("#{}", name),
+			Self::Home => "Home".to_string(),
+			Self::Notifications => "Notifications".to_string(),
+			Self::Local => "Local".to_string(),
+			Self::Federated => "Federated".to_string(),
+			Self::Bookmarks => "Bookmarks".to_string(),
+			Self::Favorites => "Favorites".to_string(),
+			Self::User { name, .. } => name.clone(),
+			Self::Thread { name, .. } => name.clone(),
+			Self::Search { query, .. } => format!("Search: {query}"),
+			Self::Hashtag { name } => format!("#{name}"),
 		}
 	}
 
 	pub fn api_path(&self) -> String {
 		match self {
-			TimelineType::Home => "api/v1/timelines/home".to_string(),
-			TimelineType::Notifications => "api/v1/notifications".to_string(),
-			TimelineType::Local | TimelineType::Federated => "api/v1/timelines/public".to_string(),
-			TimelineType::Bookmarks => "api/v1/bookmarks".to_string(),
-			TimelineType::Favorites => "api/v1/favourites".to_string(),
-			TimelineType::User { id, .. } => format!("api/v1/accounts/{}/statuses", id),
-			TimelineType::Thread { id, .. } => format!("api/v1/statuses/{}/context", id),
-			TimelineType::Search { .. } => "api/v2/search".to_string(),
-			TimelineType::Hashtag { name } => format!("api/v1/timelines/tag/{}", name),
+			Self::Home => "api/v1/timelines/home".to_string(),
+			Self::Notifications => "api/v1/notifications".to_string(),
+			Self::Local | Self::Federated => "api/v1/timelines/public".to_string(),
+			Self::Bookmarks => "api/v1/bookmarks".to_string(),
+			Self::Favorites => "api/v1/favourites".to_string(),
+			Self::User { id, .. } => format!("api/v1/accounts/{id}/statuses"),
+			Self::Thread { id, .. } => format!("api/v1/statuses/{id}/context"),
+			Self::Search { .. } => "api/v2/search".to_string(),
+			Self::Hashtag { name } => format!("api/v1/timelines/tag/{name}"),
 		}
 	}
 
 	pub fn api_query_params(&self) -> Vec<(&str, &str)> {
 		match self {
-			TimelineType::Local => vec![("local", "true")],
+			Self::Local => vec![("local", "true")],
 			_ => vec![],
 		}
 	}
 
-	pub fn stream_params(&self) -> Option<&str> {
+	pub const fn stream_params(&self) -> Option<&str> {
 		match self {
-			TimelineType::Home => Some("user"),
-			TimelineType::Notifications => Some("user"),
-			TimelineType::Local => Some("public:local"),
-			TimelineType::Federated => Some("public"),
-			TimelineType::Bookmarks | TimelineType::Favorites => None,
-			TimelineType::User { .. } => None,
-			TimelineType::Thread { .. } => None,
-			TimelineType::Search { .. } => None,
-			TimelineType::Hashtag { .. } => None,
+			Self::Home => Some("user"),
+			Self::Notifications => Some("user"),
+			Self::Local => Some("public:local"),
+			Self::Federated => Some("public"),
+			Self::Bookmarks | Self::Favorites => None,
+			Self::User { .. } => None,
+			Self::Thread { .. } => None,
+			Self::Search { .. } => None,
+			Self::Hashtag { .. } => None,
 		}
 	}
 
-	pub fn is_closeable(&self) -> bool {
-		!matches!(self, TimelineType::Home | TimelineType::Notifications)
+	pub const fn is_closeable(&self) -> bool {
+		!matches!(self, Self::Home | Self::Notifications)
 	}
 
-	pub fn supports_paging(&self) -> bool {
-		!matches!(self, TimelineType::Thread { .. })
+	pub const fn supports_paging(&self) -> bool {
+		!matches!(self, Self::Thread { .. })
 	}
 }
 
@@ -89,12 +89,12 @@ pub enum TimelineEntry {
 }
 
 impl TimelineEntry {
-	pub fn id(&self) -> &str {
+	pub const fn id(&self) -> &str {
 		match self {
-			TimelineEntry::Status(status) => status.id.as_str(),
-			TimelineEntry::Notification(notification) => notification.id.as_str(),
-			TimelineEntry::Account(account) => account.id.as_str(),
-			TimelineEntry::Hashtag(tag) => tag.name.as_str(),
+			Self::Status(status) => status.id.as_str(),
+			Self::Notification(notification) => notification.id.as_str(),
+			Self::Account(account) => account.id.as_str(),
+			Self::Hashtag(tag) => tag.name.as_str(),
 		}
 	}
 
@@ -105,11 +105,11 @@ impl TimelineEntry {
 		cw_expanded: bool,
 	) -> String {
 		match self {
-			TimelineEntry::Status(status) => status.timeline_display(timestamp_format, cw_display, cw_expanded),
-			TimelineEntry::Notification(notification) => {
+			Self::Status(status) => status.timeline_display(timestamp_format, cw_display, cw_expanded),
+			Self::Notification(notification) => {
 				notification.timeline_display(timestamp_format, cw_display, cw_expanded)
 			}
-			TimelineEntry::Account(account) => {
+			Self::Account(account) => {
 				format!(
 					"[Account] {} (@{}) - {} followers",
 					account.display_name_or_username(),
@@ -117,7 +117,7 @@ impl TimelineEntry {
 					account.followers_count
 				)
 			}
-			TimelineEntry::Hashtag(tag) => {
+			Self::Hashtag(tag) => {
 				let following_str = if tag.following { "following" } else { "not following" };
 				format!("[Hashtag] #{} ({})", tag.name, following_str)
 			}
@@ -126,17 +126,17 @@ impl TimelineEntry {
 
 	pub fn as_status(&self) -> Option<&Status> {
 		match self {
-			TimelineEntry::Status(status) => Some(status),
-			TimelineEntry::Notification(notification) => notification.status.as_deref(),
-			TimelineEntry::Account(_) | TimelineEntry::Hashtag(_) => None,
+			Self::Status(status) => Some(status),
+			Self::Notification(notification) => notification.status.as_deref(),
+			Self::Account(_) | Self::Hashtag(_) => None,
 		}
 	}
 
 	pub fn as_status_mut(&mut self) -> Option<&mut Status> {
 		match self {
-			TimelineEntry::Status(status) => Some(status),
-			TimelineEntry::Notification(notification) => notification.status.as_deref_mut(),
-			TimelineEntry::Account(_) | TimelineEntry::Hashtag(_) => None,
+			Self::Status(status) => Some(status),
+			Self::Notification(notification) => notification.status.as_deref_mut(),
+			Self::Account(_) | Self::Hashtag(_) => None,
 		}
 	}
 }
@@ -152,7 +152,7 @@ pub struct Timeline {
 }
 
 impl Timeline {
-	pub fn new(timeline_type: TimelineType) -> Self {
+	pub const fn new(timeline_type: TimelineType) -> Self {
 		Self {
 			timeline_type,
 			entries: Vec::new(),
@@ -173,7 +173,7 @@ pub struct TimelineManager {
 }
 
 impl TimelineManager {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self { timelines: Vec::new(), active_index: 0, history: Vec::new(), last_focused: None }
 	}
 
@@ -273,11 +273,11 @@ impl TimelineManager {
 		self.timelines.iter().map(|t| t.timeline_type.display_name()).collect()
 	}
 
-	pub fn active_index(&self) -> usize {
+	pub const fn active_index(&self) -> usize {
 		self.active_index
 	}
 
-	pub fn len(&self) -> usize {
+	pub const fn len(&self) -> usize {
 		self.timelines.len()
 	}
 

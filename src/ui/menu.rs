@@ -111,7 +111,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	let target = status.and_then(|s| s.reblog.as_deref().or(Some(s)));
 	if let Some(fav_item) = menu_bar.find_item(ID_FAVORITE) {
 		let shortcut = if state.config.quick_action_keys { "F" } else { "Ctrl+Shift+F" };
-		let label = if target.map(|t| t.favourited).unwrap_or(false) {
+		let label = if target.is_some_and(|t| t.favourited) {
 			format!("Un&favorite\t{shortcut}")
 		} else {
 			format!("&Favorite\t{shortcut}")
@@ -120,7 +120,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	}
 	if let Some(bookmark_item) = menu_bar.find_item(ID_BOOKMARK) {
 		let shortcut = if state.config.quick_action_keys { "K" } else { "Ctrl+Shift+K" };
-		let label = if target.map(|t| t.bookmarked).unwrap_or(false) {
+		let label = if target.is_some_and(|t| t.bookmarked) {
 			format!("Un&bookmark\t{shortcut}")
 		} else {
 			format!("&Bookmark\t{shortcut}")
@@ -128,7 +128,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		bookmark_item.set_label(&label);
 	}
 	if let Some((_, post_menu)) = menu_bar.find_item_and_menu(ID_BOOKMARK) {
-		let is_direct = target.map(|t| t.visibility == "direct").unwrap_or(false);
+		let is_direct = target.is_some_and(|t| t.visibility == "direct");
 		let boost_exists = post_menu.find_item(ID_BOOST).is_some();
 
 		if is_direct && boost_exists {
@@ -147,7 +147,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 
 				if let Some(pos) = bookmark_pos {
 					let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
-					let label = if target.map(|t| t.reblogged).unwrap_or(false) {
+					let label = if target.is_some_and(|t| t.reblogged) {
 						format!("Un&boost\t{shortcut}")
 					} else {
 						format!("&Boost\t{shortcut}")
@@ -156,7 +156,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				}
 			} else if let Some(boost_item) = post_menu.find_item(ID_BOOST) {
 				let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
-				let label = if target.map(|t| t.reblogged).unwrap_or(false) {
+				let label = if target.is_some_and(|t| t.reblogged) {
 					format!("Un&boost\t{shortcut}")
 				} else {
 					format!("&Boost\t{shortcut}")
@@ -166,7 +166,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		}
 	} else if let Some(boost_item) = menu_bar.find_item(ID_BOOST) {
 		let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };
-		let label = if target.map(|t| t.reblogged).unwrap_or(false) {
+		let label = if target.is_some_and(|t| t.reblogged) {
 			format!("Un&boost\t{shortcut}")
 		} else {
 			format!("&Boost\t{shortcut}")
@@ -217,8 +217,8 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 			}
 		}
 		if let Some(pos) = anchor_pos {
-			let boosts = target.map(|t| t.reblogs_count).unwrap_or(0);
-			let favorites = target.map(|t| t.favourites_count).unwrap_or(0);
+			let boosts = target.map_or(0, |t| t.reblogs_count);
+			let favorites = target.map_or(0, |t| t.favourites_count);
 			let boosts_exists = post_menu.find_item(ID_VIEW_BOOSTS).is_some();
 			if boosts > 0 && !boosts_exists {
 				post_menu.insert(
@@ -246,8 +246,8 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 			}
 		}
 	}
-	let is_own = target.map(|t| Some(&t.account.id) == state.current_user_id.as_ref()).unwrap_or(false);
-	let has_poll = target.map(|t| t.poll.is_some()).unwrap_or(false);
+	let is_own = target.is_some_and(|t| Some(&t.account.id) == state.current_user_id.as_ref());
+	let has_poll = target.is_some_and(|t| t.poll.is_some());
 
 	if let Some((_, post_menu)) = menu_bar.find_item_and_menu(ID_VIEW_THREAD) {
 		let mut anchor_pos = None;

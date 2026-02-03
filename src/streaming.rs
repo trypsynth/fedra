@@ -70,7 +70,7 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 				if retry_count > max_retries {
 					let _ = sender.send(StreamEvent::Error {
 						timeline_type: timeline_type.clone(),
-						message: format!("Streaming failed after {} retries: {}", max_retries, e),
+						message: format!("Streaming failed after {max_retries} retries: {e}"),
 					});
 					break;
 				}
@@ -83,7 +83,7 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 }
 
 fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>) -> Result<(), String> {
-	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {}", e))?;
+	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {e}"))?;
 	let _ = sender.send(StreamEvent::Connected(timeline_type.clone()));
 	loop {
 		match socket.read() {
@@ -107,7 +107,7 @@ fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<S
 				continue;
 			}
 			Err(e) => {
-				return Err(format!("WebSocket error: {}", e));
+				return Err(format!("WebSocket error: {e}"));
 			}
 		}
 	}

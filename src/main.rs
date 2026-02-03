@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![deny(warnings)]
 #![windows_subsystem = "windows"]
 
 mod accounts;
@@ -23,7 +25,14 @@ use std::{
 
 use wxdragon::prelude::*;
 
-pub(crate) use crate::ui::ids::*;
+pub(crate) use crate::ui::ids::{
+	ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST, ID_EDIT_POST,
+	ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE,
+	ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY,
+	ID_REPLY_AUTHOR, ID_SEARCH, ID_TRAY_EXIT, ID_TRAY_TOGGLE, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
+	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
+	ID_VOTE, KEY_DELETE,
+};
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
 	commands::{UiCommand, handle_ui_command},
@@ -154,8 +163,8 @@ fn main() {
 		switch_to_account(
 			&mut state,
 			&frame,
-			&timelines_selector,
-			&timeline_list,
+			timelines_selector,
+			timeline_list,
 			&suppress_selection,
 			&live_region_label,
 			false,
@@ -164,7 +173,7 @@ fn main() {
 		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
-		let busy_timer = timer_busy.clone();
+		let busy_timer = timer_busy;
 		let frame_timer = frame;
 		let timelines_selector_timer = timelines_selector;
 		let timeline_list_timer = timeline_list;
@@ -174,7 +183,7 @@ fn main() {
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
 		let sort_order_drain = sort_order_cell.clone();
-		let tray_hidden_drain = tray_hidden.clone();
+		let tray_hidden_drain = tray_hidden;
 		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = Instant::now();
 		timer_tick.on_tick(move |_| {
@@ -236,12 +245,12 @@ fn main() {
 		bind_input_handlers(
 			&window_parts,
 			ui_tx.clone(),
-			is_shutting_down.clone(),
+			is_shutting_down,
 			suppress_selection.clone(),
-			quick_action_keys_enabled.clone(),
-			autoload_mode.clone(),
-			sort_order_cell.clone(),
-			timer.clone(),
+			quick_action_keys_enabled,
+			autoload_mode,
+			sort_order_cell,
+			timer,
 		);
 		app_shell.attach_destroy(&frame);
 		frame.show(true);

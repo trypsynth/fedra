@@ -49,7 +49,7 @@ pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnO
 	result
 }
 
-pub fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
+pub const fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
 	if list_index >= entries_len {
 		return None;
 	}
@@ -59,7 +59,7 @@ pub fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_ord
 	}
 }
 
-pub fn entry_index_to_list_index(entry_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
+pub const fn entry_index_to_list_index(entry_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
 	if entry_index >= entries_len {
 		return None;
 	}

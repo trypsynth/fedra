@@ -1,4 +1,4 @@
-use std::{cell::Cell, sync::mpsc, thread};
+use std::{cell::Cell, string::ToString, sync::mpsc, thread};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -14,11 +14,8 @@ use crate::{
 	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
 };
 
-pub(crate) fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiCommand>, state: &mut AppState) -> bool {
-	let instance_url = match dialogs::prompt_for_instance(frame) {
-		Some(url) => url,
-		None => return false,
-	};
+pub fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiCommand>, state: &mut AppState) -> bool {
+	let Some(instance_url) = dialogs::prompt_for_instance(frame) else { return false };
 	let client = match MastodonClient::new(instance_url.clone()) {
 		Ok(client) => client,
 		Err(err) => {
@@ -26,7 +23,7 @@ pub(crate) fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiComma
 			return true;
 		}
 	};
-	let instance_url_clone = instance_url.clone();
+	let instance_url_clone = instance_url;
 	let ui_tx_thread = ui_tx.clone();
 	thread::spawn(move || {
 		let result = auth::oauth_with_local_listener(&client, "Fedra").map_err(|e| e.to_string());
@@ -51,7 +48,7 @@ pub(crate) fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiComma
 	true
 }
 
-pub(crate) fn try_oob_oauth(
+pub fn try_oob_oauth(
 	frame: &Frame,
 	client: &MastodonClient,
 	instance_url: &Url,
@@ -86,11 +83,11 @@ pub(crate) fn try_oob_oauth(
 	Some(account.clone())
 }
 
-pub(crate) fn switch_to_account(
+pub fn switch_to_account(
 	state: &mut AppState,
 	frame: &Frame,
-	timelines_selector: &ListBox,
-	timeline_list: &ListBox,
+	timelines_selector: ListBox,
+	timeline_list: ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	should_announce: bool,
@@ -112,7 +109,7 @@ pub(crate) fn switch_to_account(
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
 	state.network_handle = network::start_network(url.clone(), token.clone()).ok();
-	if let Ok(client) = MastodonClient::new(url.clone()) {
+	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
 		if let Ok(info) = client.get_instance_info() {
 			state.max_post_chars = Some(info.max_post_chars);
@@ -164,15 +161,15 @@ pub(crate) fn switch_to_account(
 	});
 	let (handle, title) = if let Some(account) = state.active_account() {
 		let host =
-			Url::parse(&account.instance).ok().and_then(|u| u.host_str().map(|s| s.to_string())).unwrap_or_default();
+			Url::parse(&account.instance).ok().and_then(|u| u.host_str().map(ToString::to_string)).unwrap_or_default();
 		let username = account.acct.as_deref().unwrap_or("?");
-		let h = if username.contains('@') { format!("@{}", username) } else { format!("@{}@{}", username, host) };
-		(h.clone(), format!("Fedra - {}", h))
+		let h = if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") };
+		(h.clone(), format!("Fedra - {h}"))
 	} else {
 		("Unknown".to_string(), "Fedra".to_string())
 	};
 	if should_announce {
-		live_region::announce(live_region, &format!("Switched to {}", handle));
+		live_region::announce(live_region, &format!("Switched to {handle}"));
 	}
 	frame.set_label(&title);
 	if let Some(mb) = frame.get_menu_bar() {
@@ -180,7 +177,7 @@ pub(crate) fn switch_to_account(
 	}
 }
 
-pub(crate) fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineType) {
+pub fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &TimelineType) {
 	let base_url = match &state.streaming_url {
 		Some(url) => url.clone(),
 		None => return,

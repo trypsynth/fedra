@@ -15,7 +15,7 @@ pub fn parse_instance_url(value: &str) -> Option<Url> {
 	if trimmed.is_empty() {
 		return None;
 	}
-	let candidate = if trimmed.contains("://") { trimmed.to_string() } else { format!("https://{}", trimmed) };
+	let candidate = if trimmed.contains("://") { trimmed.to_string() } else { format!("https://{trimmed}") };
 	let mut url = Url::parse(&candidate).ok()?;
 	if url.host_str().is_none() || !matches!(url.scheme(), "https" | "http") {
 		return None;
@@ -67,7 +67,7 @@ pub enum PostVisibility {
 }
 
 impl PostVisibility {
-	pub fn as_api_str(&self) -> &'static str {
+	pub const fn as_api_str(&self) -> &'static str {
 		match self {
 			Self::Public => "public",
 			Self::Unlisted => "unlisted",
@@ -76,7 +76,7 @@ impl PostVisibility {
 		}
 	}
 
-	fn display_name(&self) -> &'static str {
+	const fn display_name(&self) -> &'static str {
 		match self {
 			Self::Public => "Public",
 			Self::Unlisted => "Unlisted",
@@ -85,7 +85,7 @@ impl PostVisibility {
 		}
 	}
 
-	fn all() -> &'static [PostVisibility] {
+	const fn all() -> &'static [Self] {
 		&[Self::Public, Self::Unlisted, Self::Private, Self::Direct]
 	}
 }
@@ -124,7 +124,7 @@ struct ComposeDialogConfig {
 	default_visibility: PostVisibility,
 }
 
-fn visibility_index(visibility: PostVisibility) -> usize {
+const fn visibility_index(visibility: PostVisibility) -> usize {
 	match visibility {
 		PostVisibility::Public => 0,
 		PostVisibility::Unlisted => 1,
@@ -137,11 +137,7 @@ fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	media_list.clear();
 	for item in items {
 		let label = if item.is_existing {
-			if let Some(desc) = &item.description {
-				format!("Existing: {}", desc)
-			} else {
-				"Existing Media".to_string()
-			}
+			if let Some(desc) = &item.description { format!("Existing: {desc}") } else { "Existing Media".to_string() }
 		} else {
 			Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path).to_string()
 		};
@@ -216,7 +212,11 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	let options: Rc<RefCell<Vec<String>>> =
 		Rc::new(RefCell::new(existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default()));
 	refresh_poll_list(&poll_list, &options.borrow());
-	if !options.borrow().is_empty() {
+	if options.borrow().is_empty() {
+		remove_button.enable(false);
+		option_label.enable(false);
+		option_text.enable(false);
+	} else {
 		poll_list.set_selection(0, true);
 		remove_button.enable(true);
 		option_label.enable(true);
@@ -225,12 +225,8 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 		if let Some(first) = first_option {
 			option_text.set_value(&first);
 		}
-	} else {
-		remove_button.enable(false);
-		option_label.enable(false);
-		option_text.enable(false);
 	}
-	let default_minutes = existing.as_ref().map(|poll| poll.expires_in / 60).unwrap_or(min_minutes as u32) as i32;
+	let default_minutes = existing.as_ref().map_or(min_minutes as u32, |poll| poll.expires_in / 60) as i32;
 	duration_spin.set_value(default_minutes.clamp(min_minutes, max_minutes));
 	if let Some(existing) = existing.as_ref() {
 		multiple_checkbox.set_value(existing.multiple);
@@ -710,7 +706,7 @@ pub fn prompt_for_options(
 	let fetch_limit_label =
 		StaticText::builder(&timeline_panel).with_label("Posts to &fetch when loading more:").build();
 	let fetch_limit_spin =
-		SpinCtrl::builder(&timeline_panel).with_range(1, 40).with_initial_value(fetch_limit as i32).build();
+		SpinCtrl::builder(&timeline_panel).with_range(1, 40).with_initial_value(i32::from(fetch_limit)).build();
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	fetch_limit_sizer.add(&fetch_limit_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	fetch_limit_sizer.add(&fetch_limit_spin, 0, SizerFlag::empty(), 0);
@@ -811,9 +807,8 @@ fn prompt_for_compose(
 	let initial_content = config.initial_content;
 	let initial_cw = config.initial_cw;
 	let default_visibility = config.default_visibility;
-	let dialog = Dialog::builder(frame, &format!("{} - 0 of {} characters", title_prefix, max_chars))
-		.with_size(700, 560)
-		.build();
+	let dialog =
+		Dialog::builder(frame, &format!("{title_prefix} - 0 of {max_chars} characters")).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
@@ -886,7 +881,7 @@ fn prompt_for_compose(
 		} else if count == 1 {
 			"1 item attached.".to_string()
 		} else {
-			format!("{} items attached.", count)
+			format!("{count} items attached.")
 		};
 		media_count_label.set_label(&label);
 	}
@@ -903,7 +898,7 @@ fn prompt_for_compose(
 			} else if count == 1 {
 				"1 item attached.".to_string()
 			} else {
-				format!("{} items attached.", count)
+				format!("{count} items attached.")
 			};
 			media_count_update.set_label(&label);
 		}
@@ -924,7 +919,7 @@ fn prompt_for_compose(
 				let label = if option_count == 1 {
 					"Poll with 1 option.".to_string()
 				} else {
-					format!("Poll with {} options.", option_count)
+					format!("Poll with {option_count} options.")
 				};
 				poll_summary_update.set_label(&label);
 			}
@@ -987,7 +982,7 @@ fn prompt_for_compose(
 	timer.on_tick(move |_| {
 		let text = content_text.get_value();
 		let char_count = text.chars().count();
-		dialog.set_label(&format!("{} - {} of {} characters", title_prefix_timer, char_count, max_chars));
+		dialog.set_label(&format!("{title_prefix_timer} - {char_count} of {max_chars} characters"));
 	});
 	timer.start(100, false);
 	dialog.centre();
@@ -1006,7 +1001,7 @@ fn prompt_for_compose(
 	if char_count > max_chars {
 		show_warning_widget(
 			frame,
-			&format!("Post is {} characters, which exceeds the {} character limit.", char_count, max_chars),
+			&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
 			&title_prefix,
 		);
 		return None;
@@ -1082,7 +1077,7 @@ pub fn prompt_for_reply(
 				accts.push(m.acct.clone());
 			}
 		}
-		accts.iter().map(|a| format!("@{}", a)).collect::<Vec<_>>().join(" ") + " "
+		accts.iter().map(|a| format!("@{a}")).collect::<Vec<_>>().join(" ") + " "
 	} else {
 		format!("@{} ", replying_to.account.acct)
 	};
@@ -1101,7 +1096,7 @@ pub fn prompt_for_reply(
 		poll_limits,
 		enter_to_send,
 		ComposeDialogConfig {
-			title_prefix: format!("Reply to {}", author),
+			title_prefix: format!("Reply to {author}"),
 			ok_label: "Post".to_string(),
 			initial_content: mention,
 			initial_cw,
@@ -1332,17 +1327,19 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 	let accounts_label = StaticText::builder(&panel).with_label("Accounts:").build();
 	let accounts_list = ListBox::builder(&panel).build();
 	let format_account = |account: &Account| -> String {
-		let host =
-			Url::parse(&account.instance).ok().and_then(|u| u.host_str().map(|s| s.to_string())).unwrap_or_default();
+		let host = Url::parse(&account.instance)
+			.ok()
+			.and_then(|u| u.host_str().map(std::string::ToString::to_string))
+			.unwrap_or_default();
 		let username = account.acct.as_deref().unwrap_or("?");
-		if username.contains('@') { format!("@{}", username) } else { format!("@{}@{}", username, host) }
+		if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") }
 	};
 	let active_index = active_id.and_then(|id| accounts.iter().position(|a| a.id == id));
 	for (i, account) in accounts.iter().enumerate() {
 		let handle = format_account(account);
 		let name = account.display_name.as_deref().unwrap_or("Unknown");
 		let status = if Some(i) == active_index { "active" } else { "inactive" };
-		accounts_list.append(&format!("{}, {}, {}", name, handle, status));
+		accounts_list.append(&format!("{name}, {handle}, {status}"));
 	}
 	if let Some(index) = active_index {
 		accounts_list.set_selection(index as u32, true);
@@ -1383,7 +1380,7 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 			switch_button_select.enable(!is_active);
 			if !is_active && idx < accounts_ref.len() {
 				let handle = format_account(&accounts_ref[idx]);
-				switch_button_select.set_label(&format!("Switch to {}", handle));
+				switch_button_select.set_label(&format!("Switch to {handle}"));
 			} else {
 				switch_button_select.set_label("Switch To");
 			}
@@ -1543,7 +1540,7 @@ impl ProfileDialog {
 
 		let account_handler = account_rc.clone();
 		let panel_handler = panel;
-		let net_tx_handler = net_tx.clone();
+		let net_tx_handler = net_tx;
 
 		panel_handler.on_menu_selected(move |event| {
 			let id = event.get_id();
@@ -1559,23 +1556,21 @@ impl ProfileDialog {
 
 			let cmd = match id {
 				ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
-					account_id: account_id.clone(),
-					target_name: target_name.clone(),
+					account_id,
+					target_name,
 					reblogs: true,
 					action: crate::network::RelationshipAction::Follow,
 				},
-				ID_ACTION_UNFOLLOW => {
-					NetworkCommand::UnfollowAccount { account_id: account_id.clone(), target_name: target_name.clone() }
-				}
+				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount { account_id, target_name },
 				ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
-					account_id: account_id.clone(),
-					target_name: target_name.clone(),
+					account_id,
+					target_name,
 					reblogs: true,
 					action: crate::network::RelationshipAction::ShowBoosts,
 				},
 				ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
-					account_id: account_id.clone(),
-					target_name: target_name.clone(),
+					account_id,
+					target_name,
 					reblogs: false,
 					action: crate::network::RelationshipAction::HideBoosts,
 				},
@@ -1590,23 +1585,17 @@ impl ProfileDialog {
 					if confirm.show_modal() != ID_YES {
 						return;
 					}
-					NetworkCommand::BlockAccount { account_id: account_id.clone(), target_name: target_name.clone() }
+					NetworkCommand::BlockAccount { account_id, target_name }
 				}
-				ID_ACTION_UNBLOCK => {
-					NetworkCommand::UnblockAccount { account_id: account_id.clone(), target_name: target_name.clone() }
-				}
-				ID_ACTION_MUTE => {
-					NetworkCommand::MuteAccount { account_id: account_id.clone(), target_name: target_name.clone() }
-				}
-				ID_ACTION_UNMUTE => {
-					NetworkCommand::UnmuteAccount { account_id: account_id.clone(), target_name: target_name.clone() }
-				}
+				ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
+				ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
+				ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
 				_ => return,
 			};
 			let _ = net_tx_handler.send(cmd);
 		});
 		let dlg_timeline = dialog;
-		let on_view_timeline = on_view_timeline.clone();
+		let on_view_timeline = on_view_timeline;
 		timeline_button.on_click(move |_| {
 			on_view_timeline();
 			dlg_timeline.close(true);
@@ -1617,13 +1606,13 @@ impl ProfileDialog {
 			dlg_close.close(true);
 		});
 
-		let on_close_win = on_close.clone();
+		let on_close_win = on_close;
 		dialog.on_close(move |_| {
 			on_close_win();
 		});
 
 		dialog.centre();
-		ProfileDialog { dialog, relationship, profile_text, account: account_rc }
+		Self { dialog, relationship, profile_text, account: account_rc }
 	}
 
 	pub fn show(&self) {
@@ -1644,7 +1633,7 @@ impl ProfileDialog {
 				(false, true) => "This person follows you.",
 				(false, false) => "You do not follow each other.",
 			};
-			text.push_str(&format!("{}\r\n", follow_status));
+			text.push_str(&format!("{follow_status}\r\n"));
 
 			if rel.requested {
 				text.push_str("You have requested to follow this person.\r\n");
@@ -1683,7 +1672,7 @@ impl ProfileDialog {
 			(false, true) => "This person follows you.",
 			(false, false) => "You do not follow each other.",
 		};
-		text.push_str(&format!("{}\r\n", follow_status));
+		text.push_str(&format!("{follow_status}\r\n"));
 
 		if relationship.requested {
 			text.push_str("You have requested to follow this person.\r\n");
@@ -1754,7 +1743,7 @@ pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String
 	copy_button.on_click(move |_| {
 		copy_action_btn();
 	});
-	let copy_action_key = copy_action.clone();
+	let copy_action_key = copy_action;
 	link_list_copy.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			if key_event.control_down() && key_event.get_key_code() == Some(67) {
@@ -1840,11 +1829,8 @@ pub fn prompt_for_account_list(
 	let account_list = ListBox::builder(&panel).build();
 	for account in accounts {
 		let name = account.display_name_or_username();
-		let entry = if name.is_empty() {
-			format!("@{}", account.acct)
-		} else {
-			format!("{} (@{})", name, account.acct)
-		};
+		let entry =
+			if name.is_empty() { format!("@{}", account.acct) } else { format!("{} (@{})", name, account.acct) };
 		account_list.append(&entry);
 	}
 	if !accounts.is_empty() {
@@ -1892,7 +1878,7 @@ pub fn prompt_for_account_selection(
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let list_label = StaticText::builder(&panel).with_label("User:").build();
-	let choices: Vec<String> = labels.iter().map(|s| s.to_string()).collect();
+	let choices: Vec<String> = labels.iter().map(std::string::ToString::to_string).collect();
 	let combo = ComboBox::builder(&panel).with_choices(choices).with_style(ComboBoxStyle::ReadOnly).build();
 	combo.set_selection(0);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -1922,7 +1908,7 @@ pub fn prompt_for_account_selection(
 	if result == ID_CANCEL {
 		return None;
 	}
-	let account = combo.get_selection().and_then(|sel| accounts.get(sel as usize).cloned()).cloned()?;
+	let account = combo.get_selection().and_then(|sel| accounts.get(sel as usize).copied()).cloned()?;
 	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
 	Some((account, action))
 }
@@ -1936,7 +1922,7 @@ pub fn prompt_for_account_choice(
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let list_label = StaticText::builder(&panel).with_label("User:").build();
-	let choices: Vec<String> = labels.iter().map(|s| s.to_string()).collect();
+	let choices: Vec<String> = labels.iter().map(std::string::ToString::to_string).collect();
 	let combo = ComboBox::builder(&panel).with_choices(choices).with_style(ComboBoxStyle::ReadOnly).build();
 	combo.set_selection(0);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -1959,7 +1945,7 @@ pub fn prompt_for_account_choice(
 	if dialog.show_modal() != ID_OK {
 		return None;
 	}
-	combo.get_selection().and_then(|sel| accounts.get(sel as usize).cloned()).cloned()
+	combo.get_selection().and_then(|sel| accounts.get(sel as usize).copied()).cloned()
 }
 
 #[derive(Clone)]
@@ -2005,7 +1991,7 @@ impl HashtagDialog {
 		dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 		dialog.set_sizer(dialog_sizer, true);
 		let tags_rc = Rc::new(RefCell::new(tags));
-		let handle = HashtagDialog { dialog, list: tag_list, action_button, tags: tags_rc.clone() };
+		let handle = Self { dialog, list: tag_list, action_button, tags: tags_rc.clone() };
 		let update_button_state = {
 			let tags = tags_rc.clone();
 			let btn = action_button;
@@ -2028,13 +2014,13 @@ impl HashtagDialog {
 			}
 		};
 		update_button_state();
-		let update_on_sel = update_button_state.clone();
+		let update_on_sel = update_button_state;
 		tag_list.on_selection_changed(move |_| {
 			update_on_sel();
 		});
-		let tags_action = tags_rc.clone();
+		let tags_action = tags_rc;
 		let list_action = tag_list;
-		let net_tx_action = net_tx.clone();
+		let net_tx_action = net_tx;
 		action_button.on_click(move |_| {
 			if let Some(sel) = list_action.get_selection() {
 				let index = sel as usize;
@@ -2053,7 +2039,7 @@ impl HashtagDialog {
 		close_button.on_click(move |_| {
 			dlg.close(true);
 		});
-		let on_close_win = on_close.clone();
+		let on_close_win = on_close;
 		dialog.on_close(move |_| {
 			on_close_win();
 		});

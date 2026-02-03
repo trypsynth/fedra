@@ -144,7 +144,7 @@ fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle>
 		}
 		let mut msg = MSG::default();
 		loop {
-			let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+			let result = unsafe { GetMessageW(&raw mut msg, None, 0, 0) };
 			if result.0 <= 0 {
 				break;
 			}

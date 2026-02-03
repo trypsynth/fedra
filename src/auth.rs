@@ -65,20 +65,20 @@ fn extract_code(request: &str, port: u16) -> Option<String> {
 	if !path.starts_with(CALLBACK_PATH) {
 		return None;
 	}
-	let full = format!("http://127.0.0.1:{}{}", port, path);
+	let full = format!("http://127.0.0.1:{port}{path}");
 	let url = Url::parse(&full).ok()?;
 	url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.to_string())
 }
 
 fn respond_ok(stream: &mut impl Write) -> std::io::Result<()> {
-	let body = r#"<!DOCTYPE html>
+	let body = r"<!DOCTYPE html>
 <html>
 <head><title>Fedra</title></head>
 <body>
 <h2>Authorization successful</h2>
 <p>You can now close this window and return to Fedra.</p>
 </body>
-</html>"#;
+</html>";
 	let response = format!(
 		"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
 		body.len(),

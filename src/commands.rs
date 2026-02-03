@@ -27,7 +27,7 @@ use crate::{
 };
 
 /// Commands that can be triggered by UI events.
-pub(crate) enum UiCommand {
+pub enum UiCommand {
 	NewPost,
 	Reply { reply_all: bool },
 	DeletePost,
@@ -77,7 +77,7 @@ pub(crate) enum UiCommand {
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
-pub(crate) fn refresh_timeline(state: &AppState, live_region: &StaticText) {
+pub fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 	let timeline_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
 		None => return,
@@ -94,7 +94,7 @@ pub(crate) fn refresh_timeline(state: &AppState, live_region: &StaticText) {
 
 /// Handles a UI command, updating state and UI as needed.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn handle_ui_command(
+pub fn handle_ui_command(
 	cmd: UiCommand,
 	state: &mut AppState,
 	frame: &Frame,
@@ -148,14 +148,13 @@ pub(crate) fn handle_ui_command(
 		UiCommand::Reply { reply_all } => {
 			let (status, max_post_chars, enter_to_send) =
 				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
-			let status = match status {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = status {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+			let target = status.reblog.as_ref().map_or(&status, std::convert::AsRef::as_ref);
 			let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
 			let reply = match dialogs::prompt_for_reply(
 				frame,
@@ -192,14 +191,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::DeletePost => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if let Some(current_user) = &state.current_user_id {
 				if &target.account.id != current_user {
 					live_region::announce(live_region, "You can only delete your own posts");
@@ -224,14 +222,13 @@ pub(crate) fn handle_ui_command(
 		UiCommand::EditPost => {
 			let (status, max_post_chars, enter_to_send) =
 				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
-			let status = match status {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = status {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(&status);
+			let target = status.reblog.as_ref().map_or(&status, std::convert::AsRef::as_ref);
 			if let Some(current_user) = &state.current_user_id {
 				if &target.account.id != current_user {
 					live_region::announce(live_region, "You can only edit your own posts");
@@ -280,14 +277,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::CopyPost => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			let mut text = String::new();
 			let spoiler = target.spoiler_text.trim();
 			if !spoiler.is_empty() {
@@ -354,7 +350,7 @@ pub(crate) fn handle_ui_command(
 							handle.send(NetworkCommand::Search {
 								query: query.clone(),
 								search_type,
-								limit: Some(state.config.fetch_limit as u32),
+								limit: Some(u32::from(state.config.fetch_limit)),
 								offset: Some(active.entries.len() as u32),
 							});
 						} else if let Some(last) = active.entries.last() {
@@ -362,7 +358,7 @@ pub(crate) fn handle_ui_command(
 							let max_id = last.id().to_string();
 							handle.send(NetworkCommand::FetchTimeline {
 								timeline_type: active.timeline_type.clone(),
-								limit: Some(state.config.fetch_limit as u32),
+								limit: Some(u32::from(state.config.fetch_limit)),
 								max_id: Some(max_id),
 							});
 						}
@@ -378,12 +374,11 @@ pub(crate) fn handle_ui_command(
 				Some(t) => t,
 				None => return,
 			};
-			let list_index = match active.selected_index {
-				Some(index) => index,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let list_index = if let Some(index) = active.selected_index {
+				index
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
 			let entry_index = match list_index_to_entry_index(list_index, active.entries.len(), state.config.sort_order)
 			{
@@ -394,14 +389,13 @@ pub(crate) fn handle_ui_command(
 				Some(entry) => entry,
 				None => return,
 			};
-			let status = match entry.as_status() {
-				Some(status) => status,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(status) = entry.as_status() {
+				status
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if target.spoiler_text.trim().is_empty() {
 				live_region::announce(live_region, "No content warning");
 				return;
@@ -624,7 +618,7 @@ pub(crate) fn handle_ui_command(
 			}
 			state.config.active_account_id = Some(id);
 			let _ = config::ConfigStore::new().save(&state.config);
-			switch_to_account(state, frame, timelines_selector, timeline_list, suppress_selection, live_region, true);
+			switch_to_account(state, frame, *timelines_selector, *timeline_list, suppress_selection, live_region, true);
 		}
 		UiCommand::SwitchNextAccount => {
 			if state.config.accounts.len() <= 1 {
@@ -747,8 +741,8 @@ pub(crate) fn handle_ui_command(
 				switch_to_account(
 					state,
 					frame,
-					timelines_selector,
-					timeline_list,
+					*timelines_selector,
+					*timeline_list,
 					suppress_selection,
 					live_region,
 					true,
@@ -829,12 +823,11 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewProfile => {
-			let entry = match get_selected_entry(state) {
-				Some(e) => e,
-				None => {
-					live_region::announce(live_region, "No item selected");
-					return;
-				}
+			let entry = if let Some(e) = get_selected_entry(state) {
+				e
+			} else {
+				live_region::announce(live_region, "No item selected");
+				return;
 			};
 			let (account, action) = match entry {
 				TimelineEntry::Status(status) => {
@@ -846,7 +839,7 @@ pub(crate) fn handle_ui_command(
 							format!("{} (booster)", booster.display_name_or_username()),
 							format!("{} (author)", author.display_name_or_username()),
 						];
-						let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+						let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
 						match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
 							Some((acc, act)) => (acc, act),
 							None => return,
@@ -878,7 +871,7 @@ pub(crate) fn handle_ui_command(
 						let ui_tx_close = ui_tx.clone();
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
-							account.clone(),
+							account,
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -911,12 +904,11 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::OpenUserTimeline => {
-			let entry = match get_selected_entry(state) {
-				Some(e) => e,
-				None => {
-					live_region::announce(live_region, "No item selected");
-					return;
-				}
+			let entry = if let Some(e) = get_selected_entry(state) {
+				e
+			} else {
+				live_region::announce(live_region, "No item selected");
+				return;
 			};
 			let (account, action) = match entry {
 				TimelineEntry::Status(status) => {
@@ -928,7 +920,7 @@ pub(crate) fn handle_ui_command(
 							format!("{} (booster)", booster.display_name_or_username()),
 							format!("{} (author)", author.display_name_or_username()),
 						];
-						let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+						let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
 						match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
 							Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
 							None => return,
@@ -960,7 +952,7 @@ pub(crate) fn handle_ui_command(
 						let ui_tx_close = ui_tx.clone();
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
-							account.clone(),
+							account,
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1038,14 +1030,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewMentions => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if target.mentions.is_empty() {
 				live_region::announce(live_region, "No mentions in this post");
 				return;
@@ -1092,7 +1083,7 @@ pub(crate) fn handle_ui_command(
 
 							let dlg = dialogs::ProfileDialog::new(
 								frame,
-								account.clone(),
+								account,
 								net_tx,
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1131,14 +1122,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewHashtags => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if target.tags.is_empty() {
 				live_region::announce(live_region, "No hashtags in this post");
 				return;
@@ -1151,14 +1141,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewBoosts => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if target.reblogs_count == 0 {
 				live_region::announce(live_region, "No boosts for this post");
 				return;
@@ -1170,14 +1159,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewFavorites => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if target.favourites_count == 0 {
 				live_region::announce(live_region, "No favorites for this post");
 				return;
@@ -1199,7 +1187,7 @@ pub(crate) fn handle_ui_command(
 				Some(s) => s,
 				None => return,
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			let links = html::extract_links(&target.content);
 			if links.is_empty() {
 				live_region::announce(live_region, "No links in this post");
@@ -1216,14 +1204,13 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewInBrowser => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if let Some(url) = &target.url {
 				live_region::announce(live_region, "Opening post in browser");
 				let _ = launch_default_browser(url, BrowserLaunchFlags::Default);
@@ -1232,12 +1219,11 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewThread => {
-			let entry = match get_selected_entry(state) {
-				Some(e) => e.clone(),
-				None => {
-					live_region::announce(live_region, "No item selected");
-					return;
-				}
+			let entry = if let Some(e) = get_selected_entry(state) {
+				e.clone()
+			} else {
+				live_region::announce(live_region, "No item selected");
+				return;
 			};
 			match &entry {
 				TimelineEntry::Account(account) => {
@@ -1284,14 +1270,13 @@ pub(crate) fn handle_ui_command(
 					}
 				}
 				TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
-					let status = match entry.as_status() {
-						Some(s) => s,
-						None => {
-							live_region::announce(live_region, "No post to view");
-							return;
-						}
+					let status = if let Some(s) = entry.as_status() {
+						s
+					} else {
+						live_region::announce(live_region, "No post to view");
+						return;
 					};
-					let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+					let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 					let name = format!("Thread: {}", target.account.display_name_or_username());
 					let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
 					open_timeline(
@@ -1303,32 +1288,29 @@ pub(crate) fn handle_ui_command(
 						live_region,
 						frame,
 					);
-					let handle = match &state.network_handle {
-						Some(h) => h,
-						None => {
-							live_region::announce(live_region, "Network not available");
-							return;
-						}
+					let handle = if let Some(h) = &state.network_handle {
+						h
+					} else {
+						live_region::announce(live_region, "Network not available");
+						return;
 					};
 					handle.send(NetworkCommand::FetchThread { timeline_type, focus: target.clone() });
 				}
 			}
 		}
 		UiCommand::Vote => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => {
-					live_region::announce(live_region, "No post selected");
-					return;
-				}
+			let status = if let Some(s) = get_selected_status(state) {
+				s
+			} else {
+				live_region::announce(live_region, "No post selected");
+				return;
 			};
-			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
-			let poll = match &target.poll {
-				Some(p) => p,
-				None => {
-					live_region::announce(live_region, "No poll in this post");
-					return;
-				}
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+			let poll = if let Some(p) = &target.poll {
+				p
+			} else {
+				live_region::announce(live_region, "No poll in this post");
+				return;
 			};
 			let post_text = target.display_text();
 			if let Some(choices) = dialogs::prompt_for_vote(frame, poll, &post_text) {
@@ -1374,7 +1356,7 @@ pub(crate) fn handle_ui_command(
 					state,
 					timelines_selector,
 					timeline_list,
-					timeline_type.clone(),
+					timeline_type,
 					suppress_selection,
 					live_region,
 					frame,
@@ -1388,7 +1370,7 @@ pub(crate) fn handle_ui_command(
 }
 
 /// Gets the currently selected timeline entry.
-pub(crate) fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
+pub fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
 
@@ -1401,28 +1383,26 @@ pub(crate) fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
 }
 
 /// Gets the currently selected status (unwrapping from notification if needed).
-pub(crate) fn get_selected_status(state: &AppState) -> Option<&Status> {
+pub fn get_selected_status(state: &AppState) -> Option<&Status> {
 	get_selected_entry(state)?.as_status()
 }
 
 /// Sends a favorite or unfavorite request for the selected status.
 fn do_favorite(state: &AppState, live_region: &StaticText) {
-	let status = match get_selected_status(state) {
-		Some(s) => s,
-		None => {
-			live_region::announce(live_region, "No post selected");
-			return;
-		}
+	let status = if let Some(s) = get_selected_status(state) {
+		s
+	} else {
+		live_region::announce(live_region, "No post selected");
+		return;
 	};
-	let handle = match &state.network_handle {
-		Some(h) => h,
-		None => {
-			live_region::announce(live_region, "Network not available");
-			return;
-		}
+	let handle = if let Some(h) = &state.network_handle {
+		h
+	} else {
+		live_region::announce(live_region, "Network not available");
+		return;
 	};
 	// Get the actual status to interact with (unwrap reblog if present)
-	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	let status_id = target.id.clone();
 	if target.favourited {
 		handle.send(NetworkCommand::Unfavorite { status_id });
@@ -1432,21 +1412,19 @@ fn do_favorite(state: &AppState, live_region: &StaticText) {
 }
 
 fn do_bookmark(state: &AppState, live_region: &StaticText) {
-	let status = match get_selected_status(state) {
-		Some(s) => s,
-		None => {
-			live_region::announce(live_region, "No post selected");
-			return;
-		}
+	let status = if let Some(s) = get_selected_status(state) {
+		s
+	} else {
+		live_region::announce(live_region, "No post selected");
+		return;
 	};
-	let handle = match &state.network_handle {
-		Some(h) => h,
-		None => {
-			live_region::announce(live_region, "Network not available");
-			return;
-		}
+	let handle = if let Some(h) = &state.network_handle {
+		h
+	} else {
+		live_region::announce(live_region, "Network not available");
+		return;
 	};
-	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	let status_id = target.id.clone();
 	if target.bookmarked {
 		handle.send(NetworkCommand::Unbookmark { status_id });
@@ -1457,22 +1435,20 @@ fn do_bookmark(state: &AppState, live_region: &StaticText) {
 
 /// Sends a boost or unboost request for the selected status.
 fn do_boost(state: &AppState, live_region: &StaticText) {
-	let status = match get_selected_status(state) {
-		Some(s) => s,
-		None => {
-			live_region::announce(live_region, "No post selected");
-			return;
-		}
+	let status = if let Some(s) = get_selected_status(state) {
+		s
+	} else {
+		live_region::announce(live_region, "No post selected");
+		return;
 	};
-	let handle = match &state.network_handle {
-		Some(h) => h,
-		None => {
-			live_region::announce(live_region, "Network not available");
-			return;
-		}
+	let handle = if let Some(h) = &state.network_handle {
+		h
+	} else {
+		live_region::announce(live_region, "Network not available");
+		return;
 	};
 	// Get the actual status to interact with (unwrap reblog if present)
-	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	if target.visibility == "direct" {
 		live_region::announce(live_region, "Cannot boost direct messages");
 		return;

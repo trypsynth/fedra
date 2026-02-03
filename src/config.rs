@@ -64,15 +64,15 @@ pub enum AutoloadMode {
 	AtBoundary,
 }
 
-fn default_enter_to_send() -> bool {
+const fn default_enter_to_send() -> bool {
 	true
 }
 
-fn default_always_show_link_dialog() -> bool {
+const fn default_always_show_link_dialog() -> bool {
 	false
 }
 
-fn default_quick_action_keys() -> bool {
+const fn default_quick_action_keys() -> bool {
 	false
 }
 
@@ -88,13 +88,13 @@ where
 			"Never" => Ok(AutoloadMode::Never),
 			"AtEnd" => Ok(AutoloadMode::AtEnd),
 			"AtBoundary" => Ok(AutoloadMode::AtBoundary),
-			_ => Err(D::Error::custom(format!("unknown autoload mode: {}", s))),
+			_ => Err(D::Error::custom(format!("unknown autoload mode: {s}"))),
 		},
 		_ => Err(D::Error::custom("expected bool or string for autoload")),
 	}
 }
 
-fn default_fetch_limit() -> u8 {
+const fn default_fetch_limit() -> u8 {
 	20
 }
 
@@ -185,5 +185,5 @@ fn config_path() -> PathBuf {
 
 fn new_account_id() -> String {
 	let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
-	format!("acct-{}", millis)
+	format!("acct-{millis}")
 }
