@@ -1261,6 +1261,10 @@ fn do_boost(state: &AppState, live_region: &StaticText) {
 	};
 	// Get the actual status to interact with (unwrap reblog if present)
 	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	if target.visibility == "direct" {
+		live_region::announce(live_region, "Cannot boost direct messages");
+		return;
+	}
 	let status_id = target.id.clone();
 	if target.reblogged {
 		handle.send(NetworkCommand::Unboost { status_id });
