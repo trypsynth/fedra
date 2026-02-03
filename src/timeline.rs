@@ -143,11 +143,12 @@ pub struct TimelineManager {
 	timelines: Vec<Timeline>,
 	active_index: usize,
 	history: Vec<TimelineType>,
+	last_focused: Option<TimelineType>,
 }
 
 impl TimelineManager {
 	pub fn new() -> Self {
-		Self { timelines: Vec::new(), active_index: 0, history: Vec::new() }
+		Self { timelines: Vec::new(), active_index: 0, history: Vec::new(), last_focused: None }
 	}
 
 	pub fn open(&mut self, timeline_type: TimelineType) -> bool {
@@ -178,11 +179,18 @@ impl TimelineManager {
 
 			self.timelines.remove(index);
 			self.history.retain(|t| t != timeline_type);
+			if self.last_focused.as_ref() == Some(timeline_type) {
+				self.last_focused = None;
+			}
 
 			if closing_active {
 				let mut handled = false;
 				if use_history {
 					handled = self.go_back();
+				}
+
+				if !handled {
+					handled = self.focus_last_focused();
 				}
 
 				if !handled {
@@ -210,6 +218,9 @@ impl TimelineManager {
 
 	pub fn set_active(&mut self, index: usize) {
 		if index < self.timelines.len() && index != self.active_index {
+			if let Some(current) = self.timelines.get(self.active_index) {
+				self.last_focused = Some(current.timeline_type.clone());
+			}
 			self.active_index = index;
 		}
 	}
@@ -250,6 +261,18 @@ impl TimelineManager {
 				self.active_index = index;
 				return true;
 			}
+		}
+		false
+	}
+
+	fn focus_last_focused(&mut self) -> bool {
+		let last_type = match self.last_focused.as_ref() {
+			Some(last) => last.clone(),
+			None => return false,
+		};
+		if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == last_type) {
+			self.active_index = index;
+			return true;
 		}
 		false
 	}
