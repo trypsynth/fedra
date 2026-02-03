@@ -14,16 +14,26 @@ A native Mastodon desktop client for Windows, built with Rust and wxWidgets via 
 
 ```
 src/
-├── main.rs      # Application entry, UI construction, event handling
-├── error.rs     # Simplified error handling with anyhow
-├── dialogs.rs   # UI dialogs (post, reply, prompts, messages)
-├── auth.rs      # OAuth authentication (local listener + OOB fallback)
-├── config.rs    # Configuration persistence (JSON in APPDATA)
-├── mastodon.rs  # Mastodon API client (HTTP, status types)
-├── network.rs   # Background network thread for async operations
-├── speech.rs    # Screen reader / speech synthesis integration
-├── streaming.rs # WebSocket streaming for real-time updates
-└── timeline.rs  # Timeline state management
+├── main.rs        # Application entry, timer loop, state initialization
+├── accounts.rs    # Account management (add, switch, streaming setup)
+├── auth.rs        # OAuth authentication (local listener + OOB fallback)
+├── commands.rs    # UI command handling (UiCommand enum and dispatch)
+├── config.rs      # Configuration persistence (JSON in APPDATA)
+├── html.rs        # HTML parsing and link extraction
+├── live_region.rs # Screen reader live region support
+├── mastodon.rs    # Mastodon API client (HTTP, status types)
+├── network.rs     # Background network thread for async operations
+├── responses.rs   # Network and stream response processing
+├── streaming.rs   # WebSocket streaming for real-time updates
+├── timeline.rs    # Timeline state management
+└── ui/
+    ├── mod.rs          # UI module exports
+    ├── app_shell.rs    # System tray and global hotkeys
+    ├── dialogs.rs      # UI dialogs (post, reply, options, prompts)
+    ├── ids.rs          # wxWidgets control IDs
+    ├── menu.rs         # Menu bar construction and updates
+    ├── timeline_view.rs # Timeline list display logic
+    └── window.rs       # Main window and input handlers
 ```
 
 ### Key Dependencies
@@ -144,6 +154,11 @@ Configured in `rustfmt.toml`:
 
 ### Options (Ctrl+O)
 - **Enter to send** - When enabled, Enter sends posts; when disabled, Ctrl+Enter sends
+- **Always prompt to open links** - Show link selection dialog even for single links
+- **Quick action keys** - Enable single-key shortcuts in timelines
+- **Autoload posts** - Never, when reaching the end, or when navigating past the end
+- **Posts to fetch** - Number of posts to load when fetching more (1-40)
+- **Content warning display** - Show inline, don't show, or show CW text only
 - **Show relative timestamps** - Toggle between "2 hours ago" and "2025-01-27 14:30"
 - **Show oldest first** - Reverses timeline order to show oldest posts at the top
 
@@ -174,7 +189,4 @@ Configured in `rustfmt.toml`:
 
 ## Next Steps
 
-- Multiple account switching
-- Thread/conversation view
-- Profile viewing
 - Search
