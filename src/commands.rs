@@ -32,6 +32,7 @@ pub(crate) enum UiCommand {
 	Reply { reply_all: bool },
 	DeletePost,
 	EditPost,
+	CopyPost,
 	Favorite,
 	Bookmark,
 	Boost,
@@ -275,6 +276,31 @@ pub(crate) fn handle_ui_command(
 			} else {
 				live_region::announce(live_region, "Network not available");
 			}
+		}
+		UiCommand::CopyPost => {
+			let status = match get_selected_status(state) {
+				Some(s) => s,
+				None => {
+					live_region::announce(live_region, "No post selected");
+					return;
+				}
+			};
+			let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+			let mut text = String::new();
+			let spoiler = target.spoiler_text.trim();
+			if !spoiler.is_empty() {
+				text.push_str("Content warning: ");
+				text.push_str(spoiler);
+				text.push_str("\r\n");
+			}
+			text.push_str(&target.display_text());
+			if text.trim().is_empty() {
+				live_region::announce(live_region, "Post has no text");
+				return;
+			}
+			let clipboard = Clipboard::get();
+			let _ = clipboard.set_text(&text);
+			live_region::announce(live_region, "Post copied");
 		}
 		UiCommand::Favorite => {
 			do_favorite(state, live_region);
