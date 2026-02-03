@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::{
 	config::{ContentWarningDisplay, TimestampFormat},
-	mastodon::{Notification, Status},
+	mastodon::{Account, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
 };
 
@@ -16,6 +16,8 @@ pub enum TimelineType {
 	Favorites,
 	User { id: String, name: String },
 	Thread { id: String, name: String },
+	Search { query: String, search_type: SearchType },
+	Hashtag { name: String },
 }
 
 impl TimelineType {
@@ -29,6 +31,8 @@ impl TimelineType {
 			TimelineType::Favorites => "Favorites".to_string(),
 			TimelineType::User { name, .. } => name.clone(),
 			TimelineType::Thread { name, .. } => name.clone(),
+			TimelineType::Search { query, .. } => format!("Search: {}", query),
+			TimelineType::Hashtag { name } => format!("#{}", name),
 		}
 	}
 
@@ -41,6 +45,8 @@ impl TimelineType {
 			TimelineType::Favorites => "api/v1/favourites".to_string(),
 			TimelineType::User { id, .. } => format!("api/v1/accounts/{}/statuses", id),
 			TimelineType::Thread { id, .. } => format!("api/v1/statuses/{}/context", id),
+			TimelineType::Search { .. } => "api/v2/search".to_string(),
+			TimelineType::Hashtag { name } => format!("api/v1/timelines/tag/{}", name),
 		}
 	}
 
@@ -60,6 +66,8 @@ impl TimelineType {
 			TimelineType::Bookmarks | TimelineType::Favorites => None,
 			TimelineType::User { .. } => None,
 			TimelineType::Thread { .. } => None,
+			TimelineType::Search { .. } => None,
+			TimelineType::Hashtag { .. } => None,
 		}
 	}
 
@@ -76,6 +84,8 @@ impl TimelineType {
 pub enum TimelineEntry {
 	Status(Status),
 	Notification(Notification),
+	Account(Account),
+	Hashtag(Tag),
 }
 
 impl TimelineEntry {
@@ -83,6 +93,8 @@ impl TimelineEntry {
 		match self {
 			TimelineEntry::Status(status) => status.id.as_str(),
 			TimelineEntry::Notification(notification) => notification.id.as_str(),
+			TimelineEntry::Account(account) => account.id.as_str(),
+			TimelineEntry::Hashtag(tag) => tag.name.as_str(),
 		}
 	}
 
@@ -97,6 +109,18 @@ impl TimelineEntry {
 			TimelineEntry::Notification(notification) => {
 				notification.timeline_display(timestamp_format, cw_display, cw_expanded)
 			}
+			TimelineEntry::Account(account) => {
+				format!(
+					"[Account] {} (@{}) - {} followers",
+					account.display_name_or_username(),
+					account.acct,
+					account.followers_count
+				)
+			}
+			TimelineEntry::Hashtag(tag) => {
+				let following_str = if tag.following { "following" } else { "not following" };
+				format!("[Hashtag] #{} ({})", tag.name, following_str)
+			}
 		}
 	}
 
@@ -104,6 +128,7 @@ impl TimelineEntry {
 		match self {
 			TimelineEntry::Status(status) => Some(status),
 			TimelineEntry::Notification(notification) => notification.status.as_deref(),
+			TimelineEntry::Account(_) | TimelineEntry::Hashtag(_) => None,
 		}
 	}
 
@@ -111,6 +136,7 @@ impl TimelineEntry {
 		match self {
 			TimelineEntry::Status(status) => Some(status),
 			TimelineEntry::Notification(notification) => notification.status.as_deref_mut(),
+			TimelineEntry::Account(_) | TimelineEntry::Hashtag(_) => None,
 		}
 	}
 }

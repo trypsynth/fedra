@@ -51,6 +51,7 @@ define_ids! {
 	ID_TRAY_EXIT,
 	// Help
 	ID_VIEW_HELP,
+	ID_SEARCH,
 }
 
 // Key codes

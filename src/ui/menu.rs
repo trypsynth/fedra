@@ -3,8 +3,8 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
 	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
-	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_HELP,
-	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_HASHTAGS,
+	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
 	commands::get_selected_status,
 };
 
@@ -81,6 +81,8 @@ pub fn build_menu_bar() -> MenuBar {
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(ID_OPEN_USER_TIMELINE_BY_INPUT, "Open &User...\tCtrl+U", "Open a user by username")
+		.append_item(ID_SEARCH, "&Search...\tCtrl+/", "Search for accounts, hashtags, or posts")
+		.append_separator()
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_item(crate::ID_BOOKMARKS_TIMELINE, "&Bookmarks", "Open bookmarks timeline")
@@ -277,5 +279,10 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };
 		let label = format!("Load &More\t{shortcut}");
 		load_more_item.set_label(&label);
+	}
+	if let Some(search_item) = menu_bar.find_item(ID_SEARCH) {
+		let shortcut = if state.config.quick_action_keys { "/" } else { "Ctrl+/" };
+		let label = format!("&Search...\t{shortcut}");
+		search_item.set_label(&label);
 	}
 }

@@ -96,6 +96,43 @@ pub struct Tag {
 	pub url: String,
 	#[serde(default)]
 	pub following: bool,
+	#[serde(default)]
+	pub history: Vec<TagHistory>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct TagHistory {
+	pub day: String,
+	pub uses: String,
+	pub accounts: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchResults {
+	pub accounts: Vec<Account>,
+	pub statuses: Vec<Status>,
+	pub hashtags: Vec<Tag>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchType {
+	#[default]
+	All,
+	Accounts,
+	Hashtags,
+	Statuses,
+}
+
+impl SearchType {
+	pub fn as_api_str(&self) -> Option<&'static str> {
+		match self {
+			SearchType::All => None,
+			SearchType::Accounts => Some("accounts"),
+			SearchType::Hashtags => Some("hashtags"),
+			SearchType::Statuses => Some("statuses"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -918,6 +955,41 @@ impl MastodonClient {
 			.context("Instance rejected tag info request")?;
 		let tag: Tag = response.json().context("Invalid tag response")?;
 		Ok(tag)
+	}
+
+	pub fn search(
+		&self,
+		access_token: &str,
+		query: &str,
+		search_type: SearchType,
+		limit: Option<u32>,
+		offset: Option<u32>,
+	) -> Result<SearchResults> {
+		let mut url = self.base_url.join("api/v2/search")?;
+		{
+			let mut pairs = url.query_pairs_mut();
+			pairs.append_pair("q", query);
+			pairs.append_pair("resolve", "true");
+			if let Some(type_str) = search_type.as_api_str() {
+				pairs.append_pair("type", type_str);
+			}
+			if let Some(limit) = limit {
+				pairs.append_pair("limit", &limit.to_string());
+			}
+			if let Some(offset) = offset {
+				pairs.append_pair("offset", &offset.to_string());
+			}
+		}
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to perform search")?
+			.error_for_status()
+			.context("Instance rejected search request")?;
+		let results: SearchResults = response.json().context("Invalid search response")?;
+		Ok(results)
 	}
 
 	pub fn get_relationships(&self, access_token: &str, account_ids: &[String]) -> Result<Vec<Relationship>> {

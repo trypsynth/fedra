@@ -5,9 +5,9 @@ use wxdragon::prelude::*;
 use crate::{
 	ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
 	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
-	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_HELP,
-	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE,
-	UiCommand,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_HASHTAGS,
+	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
+	KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	live_region,
 	ui::menu::build_menu_bar,
@@ -359,6 +359,12 @@ pub fn bind_input_handlers(
 						event.skip(false);
 						return;
 					}
+					47 | 191 => {
+						// / (forward slash - key code may vary by platform)
+						let _ = ui_tx_list_key.send(UiCommand::Search);
+						event.skip(false);
+						return;
+					}
 					k if (49..=57).contains(&k) => {
 						// 1-9
 						let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex((k - 49) as usize));
@@ -596,6 +602,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::ViewHelp);
+		}
+		ID_SEARCH => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::Search);
 		}
 		_ => {}
 	});

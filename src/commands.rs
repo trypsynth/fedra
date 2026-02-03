@@ -70,6 +70,7 @@ pub(crate) enum UiCommand {
 	CloseAndNavigateBack,
 	EditProfile,
 	ViewHelp,
+	Search,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -316,16 +317,27 @@ pub(crate) fn handle_ui_command(
 					None => true,
 				};
 
-				if can_load && let Some(last) = active.entries.last() {
-					let max_id = last.id().to_string();
+				if can_load {
 					active.loading_more = true;
 					active.last_load_attempt = Some(now);
 					if let Some(handle) = &state.network_handle {
-						handle.send(NetworkCommand::FetchTimeline {
-							timeline_type: active.timeline_type.clone(),
-							limit: Some(state.config.fetch_limit as u32),
-							max_id: Some(max_id),
-						});
+						// Search timelines use offset-based pagination
+						if let TimelineType::Search { ref query, search_type } = active.timeline_type {
+							handle.send(NetworkCommand::Search {
+								query: query.clone(),
+								search_type,
+								limit: Some(state.config.fetch_limit as u32),
+								offset: Some(active.entries.len() as u32),
+							});
+						} else if let Some(last) = active.entries.last() {
+							// Regular timelines use max_id pagination
+							let max_id = last.id().to_string();
+							handle.send(NetworkCommand::FetchTimeline {
+								timeline_type: active.timeline_type.clone(),
+								limit: Some(state.config.fetch_limit as u32),
+								max_id: Some(max_id),
+							});
+						}
 					}
 				}
 			}
@@ -818,6 +830,11 @@ pub(crate) fn handle_ui_command(
 				TimelineEntry::Notification(notification) => {
 					(notification.account.clone(), dialogs::UserLookupAction::Profile)
 				}
+				TimelineEntry::Account(account) => (account.clone(), dialogs::UserLookupAction::Profile),
+				TimelineEntry::Hashtag(_) => {
+					live_region::announce(live_region, "Cannot view profile for a hashtag");
+					return;
+				}
 			};
 			match action {
 				dialogs::UserLookupAction::Profile => {
@@ -894,6 +911,11 @@ pub(crate) fn handle_ui_command(
 				}
 				TimelineEntry::Notification(notification) => {
 					(notification.account.clone(), dialogs::UserLookupAction::Timeline)
+				}
+				TimelineEntry::Account(account) => (account.clone(), dialogs::UserLookupAction::Timeline),
+				TimelineEntry::Hashtag(_) => {
+					live_region::announce(live_region, "Cannot view user timeline for a hashtag");
+					return;
 				}
 			};
 			match action {
@@ -1110,36 +1132,87 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewThread => {
-			let target = {
-				let status = match get_selected_status(state) {
-					Some(s) => s,
-					None => {
-						live_region::announce(live_region, "No post selected");
-						return;
-					}
-				};
-				let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
-				target.clone()
-			};
-			let name = format!("Thread: {}", target.account.display_name_or_username());
-			let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
-			open_timeline(
-				state,
-				timelines_selector,
-				timeline_list,
-				timeline_type.clone(),
-				suppress_selection,
-				live_region,
-				frame,
-			);
-			let handle = match &state.network_handle {
-				Some(h) => h,
+			let entry = match get_selected_entry(state) {
+				Some(e) => e.clone(),
 				None => {
-					live_region::announce(live_region, "Network not available");
+					live_region::announce(live_region, "No item selected");
 					return;
 				}
 			};
-			handle.send(NetworkCommand::FetchThread { timeline_type, focus: target });
+			match &entry {
+				TimelineEntry::Account(account) => {
+					if let Some(net) = &state.network_handle {
+						net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+						net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
+						let net_tx = net.command_tx.clone();
+						let ui_tx_timeline = ui_tx.clone();
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						let ui_tx_close = ui_tx.clone();
+						let dlg = dialogs::ProfileDialog::new(
+							frame,
+							account.clone(),
+							net_tx,
+							move || {
+								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+							},
+							move || {
+								let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+							},
+						);
+						dlg.show();
+						state.profile_dialog = Some(dlg);
+					} else {
+						live_region::announce(live_region, "Network not available");
+					}
+				}
+				TimelineEntry::Hashtag(tag) => {
+					let timeline_type = TimelineType::Hashtag { name: tag.name.clone() };
+					open_timeline(
+						state,
+						timelines_selector,
+						timeline_list,
+						timeline_type.clone(),
+						suppress_selection,
+						live_region,
+						frame,
+					);
+					if let Some(handle) = &state.network_handle {
+						handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+					}
+				}
+				TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
+					let status = match entry.as_status() {
+						Some(s) => s,
+						None => {
+							live_region::announce(live_region, "No post to view");
+							return;
+						}
+					};
+					let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+					let name = format!("Thread: {}", target.account.display_name_or_username());
+					let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
+					open_timeline(
+						state,
+						timelines_selector,
+						timeline_list,
+						timeline_type.clone(),
+						suppress_selection,
+						live_region,
+						frame,
+					);
+					let handle = match &state.network_handle {
+						Some(h) => h,
+						None => {
+							live_region::announce(live_region, "Network not available");
+							return;
+						}
+					};
+					handle.send(NetworkCommand::FetchThread { timeline_type, focus: target.clone() });
+				}
+			}
 		}
 		UiCommand::Vote => {
 			let status = match get_selected_status(state) {
@@ -1192,6 +1265,23 @@ pub(crate) fn handle_ui_command(
 				}
 			} else {
 				live_region::announce(live_region, "Could not determine help path");
+			}
+		}
+		UiCommand::Search => {
+			if let Some((query, search_type)) = dialogs::prompt_for_search(frame) {
+				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
+				open_timeline(
+					state,
+					timelines_selector,
+					timeline_list,
+					timeline_type.clone(),
+					suppress_selection,
+					live_region,
+					frame,
+				);
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::Search { query, search_type, limit: Some(40), offset: None });
+				}
 			}
 		}
 	}
@@ -1339,7 +1429,7 @@ fn open_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(new_index as u32, true);
 	});
-	if !matches!(timeline_type, TimelineType::Thread { .. }) {
+	if !matches!(timeline_type, TimelineType::Thread { .. } | TimelineType::Search { .. }) {
 		if let Some(handle) = &state.network_handle {
 			handle.send(NetworkCommand::FetchTimeline {
 				timeline_type: timeline_type.clone(),

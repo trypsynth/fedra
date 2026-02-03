@@ -466,12 +466,69 @@ pub(crate) fn process_network_responses(
 			NetworkResponse::ProfileUpdated { result: Err(err) } => {
 				live_region::announce(live_region, &format!("Failed to update profile: {}", err));
 			}
+			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
+				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
+				let is_active = active_type.as_ref() == Some(&timeline_type);
+				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+					if is_active {
+						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
+					}
+					let mut new_entries: Vec<TimelineEntry> = Vec::new();
+					for account in results.accounts {
+						new_entries.push(TimelineEntry::Account(account));
+					}
+					for hashtag in results.hashtags {
+						new_entries.push(TimelineEntry::Hashtag(hashtag));
+					}
+					for status in results.statuses {
+						new_entries.push(TimelineEntry::Status(status));
+					}
+					let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
+					if is_load_more {
+						if new_entries.is_empty() {
+							live_region::announce(live_region, "No more results");
+						} else {
+							timeline.entries.extend(new_entries.clone());
+							if is_active {
+								for entry in &new_entries {
+									let is_expanded = state.cw_expanded.contains(entry.id());
+									timeline_list.append(&entry.display_text(
+										state.config.timestamp_format,
+										state.config.content_warning_display,
+										is_expanded,
+									));
+								}
+							}
+						}
+					} else {
+						timeline.entries = new_entries;
+						if is_active {
+							update_active_timeline_ui(
+								timeline_list,
+								timeline,
+								suppress_selection,
+								state.config.sort_order,
+								state.config.timestamp_format,
+								state.config.content_warning_display,
+								&state.cw_expanded,
+							);
+						}
+					}
+					timeline.loading_more = false;
+				}
+			}
+			NetworkResponse::SearchLoaded { query, search_type, result: Err(ref err), .. } => {
+				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
+				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
+					timeline.loading_more = false;
+				}
+				live_region::announce(live_region, &format!("Search for '{}' failed: {}", query, err));
+			}
 		}
 	}
 	let _ = frame;
 }
 
-/// Updates a poll in all timelines where it appears.
 pub(crate) fn update_poll_in_timelines(state: &mut AppState, poll: &Poll) {
 	for timeline in state.timeline_manager.iter_mut() {
 		for entry in &mut timeline.entries {

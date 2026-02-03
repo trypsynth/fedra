@@ -9,7 +9,7 @@ use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	mastodon::{Account, MastodonClient, Notification, Status, StatusContext},
+	mastodon::{Account, MastodonClient, Notification, SearchResults, SearchType, Status, StatusContext},
 	timeline::TimelineType,
 };
 
@@ -133,6 +133,12 @@ pub enum NetworkCommand {
 	UpdateProfile {
 		update: ProfileUpdate,
 	},
+	Search {
+		query: String,
+		search_type: SearchType,
+		limit: Option<u32>,
+		offset: Option<u32>,
+	},
 	Shutdown,
 }
 
@@ -245,6 +251,12 @@ pub enum NetworkResponse {
 	},
 	ProfileUpdated {
 		result: Result<Account>,
+	},
+	SearchLoaded {
+		query: String,
+		search_type: SearchType,
+		result: Result<SearchResults>,
+		offset: Option<u32>,
 	},
 }
 
@@ -595,6 +607,10 @@ fn network_loop(
 					update.source.as_ref().and_then(|s| s.language.as_deref()),
 				);
 				let _ = responses.send(NetworkResponse::ProfileUpdated { result });
+			}
+			Ok(NetworkCommand::Search { query, search_type, limit, offset }) => {
+				let result = client.search(&access_token, &query, search_type, limit, offset);
+				let _ = responses.send(NetworkResponse::SearchLoaded { query, search_type, result, offset });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;
