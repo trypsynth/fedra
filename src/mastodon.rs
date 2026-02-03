@@ -48,6 +48,8 @@ pub struct Status {
 	pub favourited: bool,
 	#[serde(default)]
 	pub reblogged: bool,
+	#[serde(default)]
+	pub bookmarked: bool,
 	pub in_reply_to_id: Option<String>,
 	pub in_reply_to_account_id: Option<String>,
 	#[serde(default)]
@@ -774,6 +776,20 @@ impl MastodonClient {
 		Ok(status)
 	}
 
+	pub fn bookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/bookmark", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to bookmark status")?
+			.error_for_status()
+			.context("Instance rejected bookmark request")?;
+		let status: Status = response.json().context("Invalid bookmark response")?;
+		Ok(status)
+	}
+
 	pub fn unfavorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{}/unfavourite", status_id))?;
 		let response = self
@@ -785,6 +801,20 @@ impl MastodonClient {
 			.error_for_status()
 			.context("Instance rejected unfavorite request")?;
 		let status: Status = response.json().context("Invalid unfavorite response")?;
+		Ok(status)
+	}
+
+	pub fn unbookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{}/unbookmark", status_id))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unbookmark status")?
+			.error_for_status()
+			.context("Instance rejected unbookmark request")?;
+		let status: Status = response.json().context("Invalid unbookmark response")?;
 		Ok(status)
 	}
 

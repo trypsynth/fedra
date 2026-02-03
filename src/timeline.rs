@@ -58,7 +58,7 @@ impl TimelineType {
 			TimelineType::Local => Some("public:local"),
 			TimelineType::Federated => Some("public"),
 			TimelineType::Bookmarks | TimelineType::Favorites => None,
-			TimelineType::User { .. } => None, // No streaming for user timelines
+			TimelineType::User { .. } => None,
 			TimelineType::Thread { .. } => None,
 		}
 	}

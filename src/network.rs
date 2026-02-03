@@ -50,7 +50,13 @@ pub enum NetworkCommand {
 	Favorite {
 		status_id: String,
 	},
+	Bookmark {
+		status_id: String,
+	},
 	Unfavorite {
+		status_id: String,
+	},
+	Unbookmark {
 		status_id: String,
 	},
 	Boost {
@@ -178,7 +184,15 @@ pub enum NetworkResponse {
 		status_id: String,
 		result: Result<Status>,
 	},
+	Bookmarked {
+		status_id: String,
+		result: Result<Status>,
+	},
 	Unfavorited {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Unbookmarked {
 		status_id: String,
 		result: Result<Status>,
 	},
@@ -434,9 +448,17 @@ fn network_loop(
 				let result = client.favorite(&access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Favorited { status_id, result });
 			}
+			Ok(NetworkCommand::Bookmark { status_id }) => {
+				let result = client.bookmark(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Bookmarked { status_id, result });
+			}
 			Ok(NetworkCommand::Unfavorite { status_id }) => {
 				let result = client.unfavorite(&access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Unfavorited { status_id, result });
+			}
+			Ok(NetworkCommand::Unbookmark { status_id }) => {
+				let result = client.unbookmark(&access_token, &status_id);
+				let _ = responses.send(NetworkResponse::Unbookmarked { status_id, result });
 			}
 			Ok(NetworkCommand::Boost { status_id }) => {
 				let result = client.reblog(&access_token, &status_id);

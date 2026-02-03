@@ -33,6 +33,7 @@ pub(crate) enum UiCommand {
 	DeletePost,
 	EditPost,
 	Favorite,
+	Bookmark,
 	Boost,
 	Refresh,
 	OpenTimeline(TimelineType),
@@ -275,6 +276,9 @@ pub(crate) fn handle_ui_command(
 		}
 		UiCommand::Favorite => {
 			do_favorite(state, live_region);
+		}
+		UiCommand::Bookmark => {
+			do_bookmark(state, live_region);
 		}
 		UiCommand::Boost => {
 			do_boost(state, live_region);
@@ -1212,6 +1216,30 @@ fn do_favorite(state: &AppState, live_region: &StaticText) {
 		handle.send(NetworkCommand::Unfavorite { status_id });
 	} else {
 		handle.send(NetworkCommand::Favorite { status_id });
+	}
+}
+
+fn do_bookmark(state: &AppState, live_region: &StaticText) {
+	let status = match get_selected_status(state) {
+		Some(s) => s,
+		None => {
+			live_region::announce(live_region, "No post selected");
+			return;
+		}
+	};
+	let handle = match &state.network_handle {
+		Some(h) => h,
+		None => {
+			live_region::announce(live_region, "Network not available");
+			return;
+		}
+	};
+	let target = status.reblog.as_ref().map(|r| r.as_ref()).unwrap_or(status);
+	let status_id = target.id.clone();
+	if target.bookmarked {
+		handle.send(NetworkCommand::Unbookmark { status_id });
+	} else {
+		handle.send(NetworkCommand::Bookmark { status_id });
 	}
 }
 

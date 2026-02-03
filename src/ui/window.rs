@@ -3,10 +3,11 @@ use std::{cell::Cell, rc::Rc, sync::mpsc::Sender};
 use wxdragon::prelude::*;
 
 use crate::{
-	ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
-	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
-	ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS,
-	ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
+	ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
+	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS,
+	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE,
+	UiCommand,
 	config::{AutoloadMode, SortOrder},
 	live_region,
 	ui::menu::build_menu_bar,
@@ -195,6 +196,12 @@ pub fn bind_input_handlers(
 			}
 
 			if event.control_down() {
+				if event.shift_down() && key == 75 {
+					// Ctrl+Shift+K
+					let _ = ui_tx_list_key.send(UiCommand::Bookmark);
+					event.skip(false);
+					return;
+				}
 				match key {
 					87 => {
 						// w
@@ -271,6 +278,12 @@ pub fn bind_input_handlers(
 					70 => {
 						// f
 						let _ = ui_tx_list_key.send(UiCommand::Favorite);
+						event.skip(false);
+						return;
+					}
+					75 => {
+						// k
+						let _ = ui_tx_list_key.send(UiCommand::Bookmark);
 						event.skip(false);
 						return;
 					}
@@ -463,6 +476,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::Favorite);
+		}
+		ID_BOOKMARK => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::Bookmark);
 		}
 		ID_BOOST => {
 			if shutdown_menu.get() {

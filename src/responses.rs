@@ -249,6 +249,18 @@ pub(crate) fn process_network_responses(
 			NetworkResponse::Favorited { result: Err(ref err), .. } => {
 				live_region::announce(live_region, &format!("Failed to favorite: {}", err));
 			}
+			NetworkResponse::Bookmarked { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.bookmarked = status.bookmarked;
+				});
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
+				live_region::announce(live_region, "Bookmarked");
+			}
+			NetworkResponse::Bookmarked { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to bookmark: {}", err));
+			}
 			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.favourited = status.favourited;
@@ -261,6 +273,18 @@ pub(crate) fn process_network_responses(
 			}
 			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
 				live_region::announce(live_region, &format!("Failed to unfavorite: {}", err));
+			}
+			NetworkResponse::Unbookmarked { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.bookmarked = status.bookmarked;
+				});
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
+				live_region::announce(live_region, "Unbookmarked");
+			}
+			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &format!("Failed to unbookmark: {}", err));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status

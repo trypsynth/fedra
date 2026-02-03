@@ -1,7 +1,7 @@
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
+	AppState, ID_BOOKMARK, ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
 	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
 	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS,
 	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
@@ -72,6 +72,9 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_FAVORITE, "&Favorite\tCtrl+Shift+F", "Favorite or unfavorite selected post", ItemKind::Normal)
 		.expect("Failed to append favorite menu item");
 	post_menu
+		.append(ID_BOOKMARK, "&Bookmark\tCtrl+Shift+K", "Bookmark or unbookmark selected post", ItemKind::Normal)
+		.expect("Failed to append bookmark menu item");
+	post_menu
 		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
 		.expect("Failed to append boost menu item");
 	post_menu.append_separator();
@@ -107,6 +110,15 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 			format!("&Favorite\t{shortcut}")
 		};
 		fav_item.set_label(&label);
+	}
+	if let Some(bookmark_item) = menu_bar.find_item(ID_BOOKMARK) {
+		let shortcut = if state.config.quick_action_keys { "K" } else { "Ctrl+Shift+K" };
+		let label = if target.map(|t| t.bookmarked).unwrap_or(false) {
+			format!("Un&bookmark\t{shortcut}")
+		} else {
+			format!("&Bookmark\t{shortcut}")
+		};
+		bookmark_item.set_label(&label);
 	}
 	if let Some(boost_item) = menu_bar.find_item(ID_BOOST) {
 		let shortcut = if state.config.quick_action_keys { "B" } else { "Ctrl+Shift+B" };

@@ -2,6 +2,7 @@ use std::{
 	cell::{Cell, RefCell},
 	rc::Rc,
 	sync::mpsc,
+	thread::{self, JoinHandle},
 };
 
 use wxdragon::prelude::*;
@@ -11,7 +12,7 @@ use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand};
 #[cfg(target_os = "windows")]
 struct HotkeyHandle {
 	thread_id: u32,
-	join_handle: std::thread::JoinHandle<()>,
+	join_handle: JoinHandle<()>,
 }
 
 pub struct AppShell {
@@ -133,7 +134,7 @@ fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle>
 	const HOTKEY_ID: i32 = 1;
 	const HOTKEY_VK: u32 = 0x46; // 'F'
 	let (thread_id_tx, thread_id_rx) = mpsc::channel();
-	let join_handle = std::thread::spawn(move || {
+	let join_handle = thread::spawn(move || {
 		let thread_id = unsafe { GetCurrentThreadId() };
 		let _ = thread_id_tx.send(thread_id);
 		let modifiers = MOD_CONTROL | MOD_ALT;

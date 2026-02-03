@@ -1,4 +1,4 @@
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -6,7 +6,7 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{Account, AutoloadMode, ContentWarningDisplay, SortOrder, TimestampFormat},
 	html::{self, Link},
-	mastodon::{Account as MastodonAccount, PollLimits, Status},
+	mastodon::{Account as MastodonAccount, Mention, PollLimits, Status, Tag},
 	network::{NetworkCommand, ProfileUpdate},
 };
 
@@ -1672,7 +1672,7 @@ pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String
 pub fn prompt_for_mentions(
 	frame: &Frame,
 	mentions: &[crate::mastodon::Mention],
-) -> Option<(crate::mastodon::Mention, UserLookupAction)> {
+) -> Option<(Mention, UserLookupAction)> {
 	const ID_VIEW_TIMELINE: i32 = 10041;
 	let dialog = Dialog::builder(frame, "Mentions").with_size(500, 300).build();
 	let panel = Panel::builder(&dialog).build();
@@ -1773,12 +1773,7 @@ pub struct HashtagDialog {
 }
 
 impl HashtagDialog {
-	pub fn new<F>(
-		frame: &Frame,
-		tags: Vec<crate::mastodon::Tag>,
-		net_tx: std::sync::mpsc::Sender<crate::network::NetworkCommand>,
-		on_close: F,
-	) -> Self
+	pub fn new<F>(frame: &Frame, tags: Vec<Tag>, net_tx: Sender<NetworkCommand>, on_close: F) -> Self
 	where
 		F: Fn() + 'static + Clone,
 	{
@@ -1787,7 +1782,6 @@ impl HashtagDialog {
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		let list_label = StaticText::builder(&panel).with_label("Hashtags in post:").build();
 		let tag_list = ListBox::builder(&panel).build();
-
 		let format_tag = |tag: &crate::mastodon::Tag| -> String {
 			let status = if tag.following { " (Following)" } else { "" };
 			format!("#{}{}", tag.name, status)
@@ -1857,12 +1851,10 @@ impl HashtagDialog {
 				}
 			}
 		});
-
 		let dlg = dialog;
 		close_button.on_click(move |_| {
 			dlg.close(true);
 		});
-
 		let on_close_win = on_close.clone();
 		dialog.on_close(move |_| {
 			on_close_win();
@@ -1883,7 +1875,6 @@ impl HashtagDialog {
 				index = Some(i);
 			}
 		}
-
 		if let Some(i) = index {
 			let format_tag = |tag: &crate::mastodon::Tag| -> String {
 				let status = if tag.following { " (Following)" } else { "" };
