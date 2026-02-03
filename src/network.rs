@@ -121,6 +121,12 @@ pub enum NetworkCommand {
 	FetchFavoritedBy {
 		status_id: String,
 	},
+	FetchFollowers {
+		account_id: String,
+	},
+	FetchFollowing {
+		account_id: String,
+	},
 	VotePoll {
 		poll_id: String,
 		choices: Vec<usize>,
@@ -256,6 +262,12 @@ pub enum NetworkResponse {
 		result: Result<Vec<Account>>,
 	},
 	FavoritedByLoaded {
+		result: Result<Vec<Account>>,
+	},
+	FollowersLoaded {
+		result: Result<Vec<Account>>,
+	},
+	FollowingLoaded {
 		result: Result<Vec<Account>>,
 	},
 	CredentialsFetched {
@@ -539,6 +551,14 @@ fn network_loop(
 			Ok(NetworkCommand::FetchFavoritedBy { status_id }) => {
 				let result = client.get_favourited_by(&access_token, &status_id);
 				let _ = responses.send(NetworkResponse::FavoritedByLoaded { result });
+			}
+			Ok(NetworkCommand::FetchFollowers { account_id }) => {
+				let result = client.get_followers(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::FollowersLoaded { result });
+			}
+			Ok(NetworkCommand::FetchFollowing { account_id }) => {
+				let result = client.get_following(&access_token, &account_id);
+				let _ = responses.send(NetworkResponse::FollowingLoaded { result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
 				let result = client.follow_account_with_options(&access_token, &account_id, reblogs);

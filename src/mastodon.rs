@@ -984,6 +984,34 @@ impl MastodonClient {
 		Ok(accounts)
 	}
 
+	pub fn get_followers(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch followers")?
+			.error_for_status()
+			.context("Instance rejected followers request")?;
+		let accounts: Vec<Account> = response.json().context("Invalid followers response")?;
+		Ok(accounts)
+	}
+
+	pub fn get_following(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch following")?
+			.error_for_status()
+			.context("Instance rejected following request")?;
+		let accounts: Vec<Account> = response.json().context("Invalid following response")?;
+		Ok(accounts)
+	}
+
 	pub fn search(
 		&self,
 		access_token: &str,

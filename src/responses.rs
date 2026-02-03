@@ -508,6 +508,68 @@ pub fn process_network_responses(
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &format!("Failed to load favorites: {err}"));
 			}
+			NetworkResponse::FollowersLoaded { result: Ok(accounts), .. } => {
+				if accounts.is_empty() {
+					live_region::announce(live_region, "No followers found");
+					continue;
+				}
+				if let Some(account) =
+					dialogs::prompt_for_follow_list(frame, "Followers", "Users who follow this person:", &accounts)
+				{
+					let timeline_type = TimelineType::User {
+						id: account.id.clone(),
+						name: account.display_name_or_username().to_string(),
+					};
+					crate::commands::handle_ui_command(
+						UiCommand::OpenTimeline(timeline_type),
+						state,
+						frame,
+						*timelines_selector,
+						*timeline_list,
+						suppress_selection,
+						*live_region,
+						quick_action_keys_enabled,
+						autoload_mode,
+						sort_order_cell,
+						tray_hidden,
+						ui_tx,
+					);
+				}
+			}
+			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
+				live_region::announce(live_region, &format!("Failed to load followers: {err}"));
+			}
+			NetworkResponse::FollowingLoaded { result: Ok(accounts), .. } => {
+				if accounts.is_empty() {
+					live_region::announce(live_region, "No following found");
+					continue;
+				}
+				if let Some(account) =
+					dialogs::prompt_for_follow_list(frame, "Following", "Users this person follows:", &accounts)
+				{
+					let timeline_type = TimelineType::User {
+						id: account.id.clone(),
+						name: account.display_name_or_username().to_string(),
+					};
+					crate::commands::handle_ui_command(
+						UiCommand::OpenTimeline(timeline_type),
+						state,
+						frame,
+						*timelines_selector,
+						*timeline_list,
+						suppress_selection,
+						*live_region,
+						quick_action_keys_enabled,
+						autoload_mode,
+						sort_order_cell,
+						tray_hidden,
+						ui_tx,
+					);
+				}
+			}
+			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
+				live_region::announce(live_region, &format!("Failed to load following: {err}"));
+			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {
 					if let Some(dlg) = &state.profile_dialog {
