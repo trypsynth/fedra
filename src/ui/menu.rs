@@ -10,9 +10,6 @@ use crate::{
 
 pub fn build_menu_bar() -> MenuBar {
 	let file_menu = Menu::builder().build();
-	file_menu
-		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
-		.expect("Failed to append view profile menu item");
 	file_menu.append(
 		ID_MANAGE_ACCOUNTS,
 		"Manage &Accounts...\tCtrl+Alt+A",
@@ -37,6 +34,9 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu
 		.append(ID_REPLY_AUTHOR, "Reply to &Author...\tCtrl+Shift+R", "Reply to author only", ItemKind::Normal)
 		.expect("Failed to append reply author menu item");
+	post_menu
+		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
+		.expect("Failed to append view profile menu item");
 	post_menu
 		.append(ID_VIEW_MENTIONS, "View &Mentions\tCtrl+M", "View mentions in selected post", ItemKind::Normal)
 		.expect("Failed to append view mentions menu item");
@@ -290,5 +290,10 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let shortcut = if state.config.quick_action_keys { "/" } else { "Ctrl+/" };
 		let label = format!("&Search...\t{shortcut}");
 		search_item.set_label(&label);
+	}
+	if let Some(open_user_item) = menu_bar.find_item(ID_OPEN_USER_TIMELINE_BY_INPUT) {
+		let shortcut = if state.config.quick_action_keys { "U" } else { "Ctrl+U" };
+		let label = format!("Open &User...\t{shortcut}");
+		open_user_item.set_label(&label);
 	}
 }

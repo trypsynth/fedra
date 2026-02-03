@@ -927,8 +927,8 @@ pub(crate) fn handle_ui_command(
 							format!("{} (author)", author.display_name_or_username()),
 						];
 						let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
-						match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
-							Some((acc, act)) => (acc, act),
+						match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
+							Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
 							None => return,
 						}
 					} else {
@@ -991,7 +991,41 @@ pub(crate) fn handle_ui_command(
 			}
 		}
 		UiCommand::OpenUserTimelineByInput => {
-			if let Some((input, action)) = dialogs::prompt_for_user_lookup(frame) {
+			let mut suggestions: Vec<String> = Vec::new();
+			let mut default_value: Option<String> = None;
+			if let Some(entry) = get_selected_entry(state) {
+				match entry {
+					TimelineEntry::Status(status) => {
+						if let Some(reblog) = &status.reblog {
+							let booster = format!("@{}", status.account.acct);
+							let author = format!("@{}", reblog.account.acct);
+							suggestions.push(booster.clone());
+							if author != booster {
+								suggestions.push(author);
+							}
+							default_value = Some(booster);
+						} else {
+							let handle = format!("@{}", status.account.acct);
+							suggestions.push(handle.clone());
+							default_value = Some(handle);
+						}
+					}
+					TimelineEntry::Notification(notification) => {
+						let handle = format!("@{}", notification.account.acct);
+						suggestions.push(handle.clone());
+						default_value = Some(handle);
+					}
+					TimelineEntry::Account(account) => {
+						let handle = format!("@{}", account.acct);
+						suggestions.push(handle.clone());
+						default_value = Some(handle);
+					}
+					TimelineEntry::Hashtag(_) => {}
+				}
+			}
+			if let Some((input, action)) =
+				dialogs::prompt_for_user_lookup(frame, &suggestions, default_value.as_deref())
+			{
 				let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
 				if let Some(network) = &state.network_handle {
 					state.pending_user_lookup_action = Some(action);
