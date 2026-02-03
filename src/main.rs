@@ -102,7 +102,7 @@ fn drain_ui_commands(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
-	autoload_enabled: &Cell<bool>,
+	autoload_mode: &Cell<config::AutoloadMode>,
 	sort_order_cell: &Cell<config::SortOrder>,
 	tray_hidden: &Cell<bool>,
 	ui_tx: &mpsc::Sender<UiCommand>,
@@ -117,7 +117,7 @@ fn drain_ui_commands(
 			suppress_selection,
 			live_region,
 			quick_action_keys_enabled,
-			autoload_enabled,
+			autoload_mode,
 			sort_order_cell,
 			tray_hidden,
 			ui_tx,
@@ -140,7 +140,7 @@ fn main() {
 		let store = config::ConfigStore::new();
 		let config = store.load();
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
-		let autoload_enabled = Rc::new(Cell::new(config.autoload));
+		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let mut state = AppState::new(config);
 
@@ -172,7 +172,7 @@ fn main() {
 		let mut state = state;
 		let timer_tick = timer.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
-		let autoload_drain = autoload_enabled.clone();
+		let autoload_drain = autoload_mode.clone();
 		let sort_order_drain = sort_order_cell.clone();
 		let tray_hidden_drain = tray_hidden.clone();
 		let ui_tx_timer = ui_tx.clone();
@@ -239,7 +239,7 @@ fn main() {
 			is_shutting_down.clone(),
 			suppress_selection.clone(),
 			quick_action_keys_enabled.clone(),
-			autoload_enabled.clone(),
+			autoload_mode.clone(),
 			sort_order_cell.clone(),
 			timer.clone(),
 		);

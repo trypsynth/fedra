@@ -6,7 +6,9 @@ use crate::{
 	ID_BOOST, ID_CLOSE_TIMELINE, ID_DELETE_POST, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
 	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
 	ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_VIEW_HASHTAGS, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS,
-	ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand, config::SortOrder, live_region,
+	ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
+	config::{AutoloadMode, SortOrder},
+	live_region,
 	ui::menu::build_menu_bar,
 };
 
@@ -57,7 +59,7 @@ pub fn bind_input_handlers(
 	is_shutting_down: Rc<Cell<bool>>,
 	suppress_selection: Rc<Cell<bool>>,
 	quick_action_keys_enabled: Rc<Cell<bool>>,
-	autoload_enabled: Rc<Cell<bool>>,
+	autoload_mode: Rc<Cell<AutoloadMode>>,
 	sort_order_cell: Rc<Cell<SortOrder>>,
 	timer: Rc<Timer<Frame>>,
 ) {
@@ -120,7 +122,7 @@ pub fn bind_input_handlers(
 	let ui_tx_list_key = ui_tx.clone();
 	let shutdown_list_key = is_shutting_down.clone();
 	let quick_action_keys_list = quick_action_keys_enabled.clone();
-	let autoload_list = autoload_enabled.clone();
+	let autoload_mode_list = autoload_mode.clone();
 	let sort_order_list = sort_order_cell.clone();
 	timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
 		if shutdown_list_key.get() {
@@ -164,7 +166,7 @@ pub fn bind_input_handlers(
 					_ => {}
 				}
 
-				if autoload_list.get() {
+				if autoload_mode_list.get() == AutoloadMode::AtBoundary {
 					let sort_order = sort_order_list.get();
 					let selection = timeline_list_state.get_selection().map(|s| s as usize);
 					let count = timeline_list_state.get_count() as usize;
@@ -357,6 +359,8 @@ pub fn bind_input_handlers(
 		event.skip(true);
 	});
 
+	let autoload_mode_selection = autoload_mode.clone();
+	let sort_order_selection = sort_order_cell.clone();
 	timeline_list_state.on_selection_changed(move |event| {
 		if shutdown_list.get() {
 			return;
@@ -368,9 +372,20 @@ pub fn bind_input_handlers(
 			&& selection >= 0
 		{
 			let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection as usize));
+			if autoload_mode_selection.get() == AutoloadMode::AtEnd {
+				let count = timeline_list_state.get_count() as usize;
+				let index = selection as usize;
+				let sort_order = sort_order_selection.get();
+				let at_load_position = match sort_order {
+					SortOrder::NewestToOldest => index + 1 == count,
+					SortOrder::OldestToNewest => index == 0,
+				};
+				if at_load_position {
+					let _ = ui_tx_list.send(UiCommand::LoadMore);
+				}
+			}
 		}
 	});
-
 	let ui_tx_menu = ui_tx.clone();
 	let shutdown_menu = is_shutting_down.clone();
 	let frame_menu = parts.frame;

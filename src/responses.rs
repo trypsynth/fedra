@@ -4,7 +4,7 @@ use wxdragon::prelude::*;
 
 use crate::{
 	AppState, UiCommand,
-	config::SortOrder,
+	config::{AutoloadMode, SortOrder},
 	live_region,
 	mastodon::{Poll, Status},
 	network::{NetworkCommand, NetworkResponse, TimelineData},
@@ -100,7 +100,7 @@ pub(crate) fn process_network_responses(
 	suppress_selection: &Cell<bool>,
 	live_region: &StaticText,
 	quick_action_keys_enabled: &Cell<bool>,
-	autoload_enabled: &Cell<bool>,
+	autoload_mode: &Cell<AutoloadMode>,
 	sort_order_cell: &Cell<SortOrder>,
 	tray_hidden: &Cell<bool>,
 	ui_tx: &mpsc::Sender<UiCommand>,
@@ -218,7 +218,7 @@ pub(crate) fn process_network_responses(
 							suppress_selection,
 							live_region,
 							quick_action_keys_enabled,
-							autoload_enabled,
+							autoload_mode,
 							sort_order_cell,
 							tray_hidden,
 							ui_tx,

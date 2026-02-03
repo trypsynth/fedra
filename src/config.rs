@@ -22,8 +22,8 @@ pub struct Config {
 	pub always_show_link_dialog: bool,
 	#[serde(default = "default_quick_action_keys")]
 	pub quick_action_keys: bool,
-	#[serde(default = "default_autoload")]
-	pub autoload: bool,
+	#[serde(default, deserialize_with = "deserialize_autoload_mode")]
+	pub autoload: AutoloadMode,
 	#[serde(default = "default_fetch_limit")]
 	pub fetch_limit: u8,
 	#[serde(default)]
@@ -56,6 +56,14 @@ pub enum ContentWarningDisplay {
 	WarningOnly,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AutoloadMode {
+	Never,
+	#[default]
+	AtEnd,
+	AtBoundary,
+}
+
 fn default_enter_to_send() -> bool {
 	true
 }
@@ -68,8 +76,22 @@ fn default_quick_action_keys() -> bool {
 	false
 }
 
-fn default_autoload() -> bool {
-	true
+fn deserialize_autoload_mode<'de, D>(deserializer: D) -> Result<AutoloadMode, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	use serde::de::Error;
+	let value = serde_json::Value::deserialize(deserializer)?;
+	match value {
+		serde_json::Value::Bool(b) => Ok(if b { AutoloadMode::AtBoundary } else { AutoloadMode::Never }),
+		serde_json::Value::String(s) => match s.as_str() {
+			"Never" => Ok(AutoloadMode::Never),
+			"AtEnd" => Ok(AutoloadMode::AtEnd),
+			"AtBoundary" => Ok(AutoloadMode::AtBoundary),
+			_ => Err(D::Error::custom(format!("unknown autoload mode: {}", s))),
+		},
+		_ => Err(D::Error::custom("expected bool or string for autoload")),
+	}
 }
 
 fn default_fetch_limit() -> u8 {
@@ -85,7 +107,7 @@ impl Default for Config {
 			enter_to_send: true,
 			always_show_link_dialog: false,
 			quick_action_keys: false,
-			autoload: true,
+			autoload: AutoloadMode::default(),
 			fetch_limit: default_fetch_limit(),
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),

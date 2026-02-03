@@ -4,7 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, ContentWarningDisplay, SortOrder, TimestampFormat},
+	config::{Account, AutoloadMode, ContentWarningDisplay, SortOrder, TimestampFormat},
 	html::{self, Link},
 	mastodon::{Account as MastodonAccount, PollLimits, Status},
 	network::{NetworkCommand, ProfileUpdate},
@@ -656,12 +656,12 @@ pub fn prompt_for_options(
 	enter_to_send: bool,
 	always_show_link_dialog: bool,
 	quick_action_keys: bool,
-	autoload: bool,
+	autoload: AutoloadMode,
 	fetch_limit: u8,
 	content_warning_display: ContentWarningDisplay,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, bool, bool, u8, ContentWarningDisplay, SortOrder, TimestampFormat)> {
+) -> Option<(bool, bool, bool, AutoloadMode, u8, ContentWarningDisplay, SortOrder, TimestampFormat)> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 450).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -671,8 +671,20 @@ pub fn prompt_for_options(
 	link_checkbox.set_value(always_show_link_dialog);
 	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
-	let autoload_checkbox = CheckBox::builder(&panel).with_label("&Autoload posts when scrolling").build();
-	autoload_checkbox.set_value(autoload);
+	let autoload_label = StaticText::builder(&panel).with_label("&Autoload posts:").build();
+	let autoload_choices =
+		vec!["Never".to_string(), "When reaching the end".to_string(), "When navigating past the end".to_string()];
+	let autoload_choice =
+		ComboBox::builder(&panel).with_choices(autoload_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let autoload_index = match autoload {
+		AutoloadMode::Never => 0,
+		AutoloadMode::AtEnd => 1,
+		AutoloadMode::AtBoundary => 2,
+	};
+	autoload_choice.set_selection(autoload_index);
+	let autoload_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	autoload_sizer.add(&autoload_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	autoload_sizer.add(&autoload_choice, 1, SizerFlag::Expand, 0);
 	let fetch_limit_label = StaticText::builder(&panel).with_label("Posts to &fetch when loading more:").build();
 	let fetch_limit_spin = SpinCtrl::builder(&panel).with_range(1, 40).with_initial_value(fetch_limit as i32).build();
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -704,7 +716,7 @@ pub fn prompt_for_options(
 	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&autoload_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -731,12 +743,18 @@ pub fn prompt_for_options(
 		Some(2) => ContentWarningDisplay::WarningOnly,
 		_ => content_warning_display,
 	};
+	let new_autoload = match autoload_choice.get_selection() {
+		Some(0) => AutoloadMode::Never,
+		Some(1) => AutoloadMode::AtEnd,
+		Some(2) => AutoloadMode::AtBoundary,
+		_ => autoload,
+	};
 	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
 	Some((
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
 		quick_action_checkbox.get_value(),
-		autoload_checkbox.get_value(),
+		new_autoload,
 		new_fetch_limit,
 		new_cw_display,
 		new_sort,
