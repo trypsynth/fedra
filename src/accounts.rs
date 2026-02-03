@@ -89,7 +89,7 @@ pub fn switch_to_account(
 	timelines_selector: ListBox,
 	timeline_list: ListBox,
 	suppress_selection: &Cell<bool>,
-	live_region: &StaticText,
+	live_region: StaticText,
 	should_announce: bool,
 ) {
 	for timeline in state.timeline_manager.iter_mut() {
@@ -98,13 +98,12 @@ pub fn switch_to_account(
 	state.network_handle = None;
 	state.timeline_manager = TimelineManager::new();
 	state.cw_expanded.clear();
-	let (url, token) = match state.active_account().and_then(|a| {
+	let Some((url, token)) = state.active_account().and_then(|a| {
 		let url = Url::parse(&a.instance).ok()?;
 		let token = a.access_token.clone()?;
 		Some((url, token))
-	}) {
-		Some(val) => val,
-		None => return,
+	}) else {
+		return;
 	};
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
@@ -159,17 +158,20 @@ pub fn switch_to_account(
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
 	});
-	let (handle, title) = if let Some(account) = state.active_account() {
-		let host =
-			Url::parse(&account.instance).ok().and_then(|u| u.host_str().map(ToString::to_string)).unwrap_or_default();
-		let username = account.acct.as_deref().unwrap_or("?");
-		let h = if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") };
-		(h.clone(), format!("Fedra - {h}"))
-	} else {
-		("Unknown".to_string(), "Fedra".to_string())
-	};
+	let (handle, title) = state.active_account().map_or_else(
+		|| ("Unknown".to_string(), "Fedra".to_string()),
+		|account| {
+			let host = Url::parse(&account.instance)
+				.ok()
+				.and_then(|u| u.host_str().map(ToString::to_string))
+				.unwrap_or_default();
+			let username = account.acct.as_deref().unwrap_or("?");
+			let h = if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") };
+			(h.clone(), format!("Fedra - {h}"))
+		},
+	);
 	if should_announce {
-		live_region::announce(live_region, &format!("Switched to {handle}"));
+		live_region::announce(&live_region, &format!("Switched to {handle}"));
 	}
 	frame.set_label(&title);
 	if let Some(mb) = frame.get_menu_bar() {
@@ -186,12 +188,6 @@ pub fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &Timeli
 		Some(t) => t.clone(),
 		None => return,
 	};
-	let timeline = match state.timeline_manager.get_mut(timeline_type) {
-		Some(t) => t,
-		None => return,
-	};
-	if timeline.stream_handle.is_some() {
-		return;
-	}
+	let Some(timeline) = state.timeline_manager.get_mut(timeline_type) else { return };
 	timeline.stream_handle = streaming::start_streaming(base_url, access_token, timeline_type.clone());
 }

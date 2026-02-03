@@ -30,12 +30,12 @@ pub fn oauth_with_local_listener(client: &MastodonClient, app_name: &str) -> Res
 	if !launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default) {
 		return Err(anyhow::anyhow!("Failed to open browser"));
 	}
-	let code = wait_for_code(listener, addr.port()).context("OAuth callback timeout")?;
+	let code = wait_for_code(&listener, addr.port()).context("OAuth callback timeout")?;
 	let access_token = client.exchange_token(&credentials, &code, &redirect_uri)?;
 	Ok(OAuthResult { access_token, client_id: credentials.client_id, client_secret: credentials.client_secret })
 }
 
-fn wait_for_code(listener: TcpListener, port: u16) -> Option<String> {
+fn wait_for_code(listener: &TcpListener, port: u16) -> Option<String> {
 	let _ = listener.set_nonblocking(true);
 	let start = Instant::now();
 	loop {
