@@ -662,20 +662,41 @@ pub fn prompt_for_options(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 ) -> Option<(bool, bool, bool, AutoloadMode, u8, ContentWarningDisplay, SortOrder, TimestampFormat)> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 450).build();
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	let enter_checkbox = CheckBox::builder(&panel).with_label("Use &enter to send posts").build();
+
+	// Create notebook for tabs
+	let notebook = Notebook::builder(&panel).build();
+
+	// === General Tab ===
+	let general_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
+	let general_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let enter_checkbox = CheckBox::builder(&general_panel).with_label("Use &enter to send posts").build();
 	enter_checkbox.set_value(enter_to_send);
-	let link_checkbox = CheckBox::builder(&panel).with_label("Always prompt to open &links").build();
+	let link_checkbox = CheckBox::builder(&general_panel).with_label("Always prompt to open &links").build();
 	link_checkbox.set_value(always_show_link_dialog);
-	let quick_action_checkbox = CheckBox::builder(&panel).with_label("Use &quick action keys in timelines").build();
+	let quick_action_checkbox =
+		CheckBox::builder(&general_panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
-	let autoload_label = StaticText::builder(&panel).with_label("&Autoload posts:").build();
+
+	general_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add_stretch_spacer(1);
+	general_panel.set_sizer(general_sizer, true);
+	notebook.add_page(&general_panel, "General", true, None);
+
+	// === Timeline Tab ===
+	let timeline_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
+	let timeline_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let autoload_label = StaticText::builder(&timeline_panel).with_label("&Autoload posts:").build();
 	let autoload_choices =
 		vec!["Never".to_string(), "When reaching the end".to_string(), "When navigating past the end".to_string()];
 	let autoload_choice =
-		ComboBox::builder(&panel).with_choices(autoload_choices).with_style(ComboBoxStyle::ReadOnly).build();
+		ComboBox::builder(&timeline_panel).with_choices(autoload_choices).with_style(ComboBoxStyle::ReadOnly).build();
 	let autoload_index = match autoload {
 		AutoloadMode::Never => 0,
 		AutoloadMode::AtEnd => 1,
@@ -685,14 +706,19 @@ pub fn prompt_for_options(
 	let autoload_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	autoload_sizer.add(&autoload_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	autoload_sizer.add(&autoload_choice, 1, SizerFlag::Expand, 0);
-	let fetch_limit_label = StaticText::builder(&panel).with_label("Posts to &fetch when loading more:").build();
-	let fetch_limit_spin = SpinCtrl::builder(&panel).with_range(1, 40).with_initial_value(fetch_limit as i32).build();
+
+	let fetch_limit_label =
+		StaticText::builder(&timeline_panel).with_label("Posts to &fetch when loading more:").build();
+	let fetch_limit_spin =
+		SpinCtrl::builder(&timeline_panel).with_range(1, 40).with_initial_value(fetch_limit as i32).build();
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	fetch_limit_sizer.add(&fetch_limit_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	fetch_limit_sizer.add(&fetch_limit_spin, 0, SizerFlag::empty(), 0);
-	let cw_label = StaticText::builder(&panel).with_label("Content warning display:").build();
+
+	let cw_label = StaticText::builder(&timeline_panel).with_label("Content warning display:").build();
 	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
-	let cw_choice = ComboBox::builder(&panel).with_choices(cw_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let cw_choice =
+		ComboBox::builder(&timeline_panel).with_choices(cw_choices).with_style(ComboBoxStyle::ReadOnly).build();
 	let cw_index = match content_warning_display {
 		ContentWarningDisplay::Inline => 0,
 		ContentWarningDisplay::Hidden => 1,
@@ -702,10 +728,22 @@ pub fn prompt_for_options(
 	let cw_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	cw_sizer.add(&cw_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	cw_sizer.add(&cw_choice, 1, SizerFlag::Expand, 0);
-	let timestamp_checkbox = CheckBox::builder(&panel).with_label("Show relative &timestamps").build();
+
+	let timestamp_checkbox = CheckBox::builder(&timeline_panel).with_label("Show relative &timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
-	let sort_checkbox = CheckBox::builder(&panel).with_label("Show oldest timeline entries &first").build();
+	let sort_checkbox = CheckBox::builder(&timeline_panel).with_label("Show oldest timeline entries &first").build();
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
+
+	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add_stretch_spacer(1);
+	timeline_panel.set_sizer(timeline_sizer, true);
+	notebook.add_page(&timeline_panel, "Timeline", false, None);
+
+	// === Buttons ===
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
 	ok_button.set_default();
@@ -713,27 +751,23 @@ pub fn prompt_for_options(
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_stretch_spacer(1);
+
+	main_sizer.add(&notebook, 1, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
+
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
+
 	let result = dialog.show_modal();
 	if result != ID_OK {
 		return None;
 	}
+
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
@@ -750,6 +784,7 @@ pub fn prompt_for_options(
 		_ => autoload,
 	};
 	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
+
 	Some((
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
