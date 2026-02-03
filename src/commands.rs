@@ -187,9 +187,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::DeletePost => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -218,9 +216,7 @@ pub fn handle_ui_command(
 		UiCommand::EditPost => {
 			let (status, max_post_chars, enter_to_send) =
 				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
-			let status = if let Some(s) = status {
-				s
-			} else {
+			let Some(status) = status else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -234,13 +230,13 @@ pub fn handle_ui_command(
 				live_region::announce(&live_region, "Cannot verify ownership");
 				return;
 			}
-
-			let edit = match dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
-			{
-				Some(r) => r,
-				None => return,
+			if dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send).is_none() {
+				return;
+			}
+			let Some(edit) = dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
+			else {
+				return;
 			};
-
 			if let Some(handle) = &state.network_handle {
 				let media = edit
 					.media
@@ -273,9 +269,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::CopyPost => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -332,11 +326,8 @@ pub fn handle_ui_command(
 				&& active.timeline_type.supports_paging()
 			{
 				let now = Instant::now();
-				let can_load = match active.last_load_attempt {
-					Some(last) => now.duration_since(last) > Duration::from_secs(1),
-					None => true,
-				};
-
+				let can_load =
+					active.last_load_attempt.is_none_or(|last| now.duration_since(last) > Duration::from_secs(1));
 				if can_load {
 					active.loading_more = true;
 					active.last_load_attempt = Some(now);
@@ -347,7 +338,7 @@ pub fn handle_ui_command(
 								query: query.clone(),
 								search_type,
 								limit: Some(u32::from(state.config.fetch_limit)),
-								offset: Some(active.entries.len() as u32),
+								offset: Some(u32::try_from(active.entries.len()).unwrap()),
 							});
 						} else if let Some(last) = active.entries.last() {
 							// Regular timelines use max_id pagination
@@ -366,28 +357,18 @@ pub fn handle_ui_command(
 			if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 				return;
 			}
-			let active = match state.timeline_manager.active_mut() {
-				Some(t) => t,
-				None => return,
-			};
-			let list_index = if let Some(index) = active.selected_index {
-				index
-			} else {
+			let Some(active) = state.timeline_manager.active_mut() else { return };
+			let Some(list_index) = active.selected_index else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
-			let entry_index = match list_index_to_entry_index(list_index, active.entries.len(), state.config.sort_order)
-			{
-				Some(index) => index,
-				None => return,
+			let Some(entry_index) =
+				list_index_to_entry_index(list_index, active.entries.len(), state.config.sort_order)
+			else {
+				return;
 			};
-			let entry = match active.entries.get(entry_index) {
-				Some(entry) => entry,
-				None => return,
-			};
-			let status = if let Some(status) = entry.as_status() {
-				status
-			} else {
+			let Some(entry) = active.entries.get(entry_index) else { return };
+			let Some(status) = entry.as_status() else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -406,7 +387,7 @@ pub fn handle_ui_command(
 			let is_expanded = state.cw_expanded.contains(entry_id);
 			let text =
 				entry.display_text(state.config.timestamp_format, state.config.content_warning_display, is_expanded);
-			timeline_list.set_string(list_index as u32, &text);
+			timeline_list.set_string(u32::try_from(list_index).unwrap(), &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
 			app_shell::toggle_window_visibility(frame, tray_hidden);
@@ -425,7 +406,7 @@ pub fn handle_ui_command(
 			if state.timeline_manager.go_back() {
 				let index = state.timeline_manager.active_index();
 				with_suppressed_selection(suppress_selection, || {
-					timelines_selector.set_selection(index as u32, true);
+					timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 				});
 
 				if let Some(active) = state.timeline_manager.active_mut() {
@@ -475,7 +456,7 @@ pub fn handle_ui_command(
 				let current_selection = timelines_selector.get_selection().map(|s| s as usize);
 				if current_selection != Some(index) {
 					with_suppressed_selection(suppress_selection, || {
-						timelines_selector.set_selection(index as u32, true);
+						timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 					});
 				}
 				if let Some(active) = state.timeline_manager.active_mut() {
@@ -818,9 +799,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewProfile => {
-			let entry = if let Some(e) = get_selected_entry(state) {
-				e
-			} else {
+			let Some(entry) = get_selected_entry(state) else {
 				live_region::announce(&live_region, "No item selected");
 				return;
 			};
@@ -899,9 +878,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::OpenUserTimeline => {
-			let entry = if let Some(e) = get_selected_entry(state) {
-				e
-			} else {
+			let Some(entry) = get_selected_entry(state) else {
 				live_region::announce(&live_region, "No item selected");
 				return;
 			};
