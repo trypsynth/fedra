@@ -4,7 +4,7 @@ pub fn strip_html(html: &str) -> String {
 	for child in fragment.root_element().children() {
 		append_text(child, &mut output);
 	}
-	normalize_text(output)
+	normalize_text(&output)
 }
 
 fn append_text(node: ego_tree::NodeRef<scraper::node::Node>, output: &mut String) {
@@ -48,7 +48,7 @@ fn push_newline(output: &mut String) {
 	}
 }
 
-fn normalize_text(input: String) -> String {
+fn normalize_text(input: &str) -> String {
 	let mut output = String::with_capacity(input.len());
 	let mut last_was_space = false;
 	let mut last_was_newline = false;

@@ -306,13 +306,13 @@ pub fn handle_ui_command(
 			live_region::announce(&live_region, "Post copied");
 		}
 		UiCommand::Favorite => {
-			do_favorite(state, &live_region);
+			do_favorite(state, live_region);
 		}
 		UiCommand::Bookmark => {
-			do_bookmark(state, &live_region);
+			do_bookmark(state, live_region);
 		}
 		UiCommand::Boost => {
-			do_boost(state, &live_region);
+			do_boost(state, live_region);
 		}
 		UiCommand::Refresh => {
 			refresh_timeline(state, live_region);
@@ -320,19 +320,19 @@ pub fn handle_ui_command(
 		UiCommand::OpenTimeline(timeline_type) => {
 			open_timeline(
 				state,
-				&timelines_selector,
-				&timeline_list,
-				timeline_type,
+				timelines_selector,
+				timeline_list,
+				&timeline_type,
 				suppress_selection,
-				&live_region,
+				live_region,
 				frame,
 			);
 		}
 		UiCommand::CloseTimeline => {
-			close_timeline(state, &timelines_selector, &timeline_list, suppress_selection, &live_region, false);
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
 		}
 		UiCommand::CloseAndNavigateBack => {
-			close_timeline(state, &timelines_selector, &timeline_list, suppress_selection, &live_region, true);
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, true);
 		}
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
@@ -887,11 +887,11 @@ pub fn handle_ui_command(
 					};
 					open_timeline(
 						state,
-						&timelines_selector,
-						&timeline_list,
-						timeline_type,
+						timelines_selector,
+						timeline_list,
+						&timeline_type,
 						suppress_selection,
-						&live_region,
+						live_region,
 						frame,
 					);
 				}
@@ -966,11 +966,11 @@ pub fn handle_ui_command(
 					};
 					open_timeline(
 						state,
-						&timelines_selector,
-						&timeline_list,
-						timeline_type,
+						timelines_selector,
+						timeline_list,
+						&timeline_type,
 						suppress_selection,
-						&live_region,
+						live_region,
 						frame,
 					);
 				}
@@ -1022,9 +1022,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewMentions => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -1114,9 +1112,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewHashtags => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -1133,9 +1129,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewBoosts => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -1151,9 +1145,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewFavorites => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -1175,10 +1167,7 @@ pub fn handle_ui_command(
 			state.profile_dialog = None;
 		}
 		UiCommand::OpenLinks => {
-			let status = match get_selected_status(state) {
-				Some(s) => s,
-				None => return,
-			};
+			let Some(status) = get_selected_status(state) else { return };
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			let links = html::extract_links(&target.content);
 			if links.is_empty() {
@@ -1196,9 +1185,7 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ViewInBrowser => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
@@ -1250,11 +1237,11 @@ pub fn handle_ui_command(
 					let timeline_type = TimelineType::Hashtag { name: tag.name.clone() };
 					open_timeline(
 						state,
-						&timelines_selector,
-						&timeline_list,
-						timeline_type.clone(),
+						timelines_selector,
+						timeline_list,
+						&timeline_type,
 						suppress_selection,
-						&live_region,
+						live_region,
 						frame,
 					);
 					if let Some(handle) = &state.network_handle {
@@ -1262,9 +1249,7 @@ pub fn handle_ui_command(
 					}
 				}
 				TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
-					let status = if let Some(s) = entry.as_status() {
-						s
-					} else {
+					let Some(status) = entry.as_status() else {
 						live_region::announce(&live_region, "No post to view");
 						return;
 					};
@@ -1273,16 +1258,14 @@ pub fn handle_ui_command(
 					let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
 					open_timeline(
 						state,
-						&timelines_selector,
-						&timeline_list,
-						timeline_type.clone(),
+						timelines_selector,
+						timeline_list,
+						&timeline_type,
 						suppress_selection,
-						&live_region,
+						live_region,
 						frame,
 					);
-					let handle = if let Some(h) = &state.network_handle {
-						h
-					} else {
+					let Some(handle) = &state.network_handle else {
 						live_region::announce(&live_region, "Network not available");
 						return;
 					};
@@ -1291,16 +1274,12 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::Vote => {
-			let status = if let Some(s) = get_selected_status(state) {
-				s
-			} else {
+			let Some(status) = get_selected_status(state) else {
 				live_region::announce(&live_region, "No post selected");
 				return;
 			};
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-			let poll = if let Some(p) = &target.poll {
-				p
-			} else {
+			let Some(poll) = &target.poll else {
 				live_region::announce(&live_region, "No poll in this post");
 				return;
 			};
@@ -1346,11 +1325,11 @@ pub fn handle_ui_command(
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				open_timeline(
 					state,
-					&timelines_selector,
-					&timeline_list,
-					timeline_type,
+					timelines_selector,
+					timeline_list,
+					&timeline_type,
 					suppress_selection,
-					&live_region,
+					live_region,
 					frame,
 				);
 				if let Some(handle) = &state.network_handle {
@@ -1380,20 +1359,15 @@ pub fn get_selected_status(state: &AppState) -> Option<&Status> {
 }
 
 /// Sends a favorite or unfavorite request for the selected status.
-fn do_favorite(state: &AppState, live_region: &StaticText) {
-	let status = if let Some(s) = get_selected_status(state) {
-		s
-	} else {
-		live_region::announce(live_region, "No post selected");
+fn do_favorite(state: &AppState, live_region: StaticText) {
+	let Some(status) = get_selected_status(state) else {
+		live_region::announce(&live_region, "No post selected");
 		return;
 	};
-	let handle = if let Some(h) = &state.network_handle {
-		h
-	} else {
-		live_region::announce(live_region, "Network not available");
+	let Some(handle) = &state.network_handle else {
+		live_region::announce(&live_region, "Network not available");
 		return;
 	};
-	// Get the actual status to interact with (unwrap reblog if present)
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	let status_id = target.id.clone();
 	if target.favourited {
@@ -1403,17 +1377,13 @@ fn do_favorite(state: &AppState, live_region: &StaticText) {
 	}
 }
 
-fn do_bookmark(state: &AppState, live_region: &StaticText) {
-	let status = if let Some(s) = get_selected_status(state) {
-		s
-	} else {
-		live_region::announce(live_region, "No post selected");
+fn do_bookmark(state: &AppState, live_region: StaticText) {
+	let Some(status) = get_selected_status(state) else {
+		live_region::announce(&live_region, "No post selected");
 		return;
 	};
-	let handle = if let Some(h) = &state.network_handle {
-		h
-	} else {
-		live_region::announce(live_region, "Network not available");
+	let Some(handle) = &state.network_handle else {
+		live_region::announce(&live_region, "Network not available");
 		return;
 	};
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
@@ -1425,24 +1395,18 @@ fn do_bookmark(state: &AppState, live_region: &StaticText) {
 	}
 }
 
-/// Sends a boost or unboost request for the selected status.
-fn do_boost(state: &AppState, live_region: &StaticText) {
-	let status = if let Some(s) = get_selected_status(state) {
-		s
-	} else {
-		live_region::announce(live_region, "No post selected");
+fn do_boost(state: &AppState, live_region: StaticText) {
+	let Some(status) = get_selected_status(state) else {
+		live_region::announce(&live_region, "No post selected");
 		return;
 	};
-	let handle = if let Some(h) = &state.network_handle {
-		h
-	} else {
-		live_region::announce(live_region, "Network not available");
+	let Some(handle) = &state.network_handle else {
+		live_region::announce(&live_region, "Network not available");
 		return;
 	};
-	// Get the actual status to interact with (unwrap reblog if present)
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	if target.visibility == "direct" {
-		live_region::announce(live_region, "Cannot boost direct messages");
+		live_region::announce(&live_region, "Cannot boost direct messages");
 		return;
 	}
 	let status_id = target.id.clone();
@@ -1456,11 +1420,11 @@ fn do_boost(state: &AppState, live_region: &StaticText) {
 /// Opens a new timeline or switches to it if already open.
 fn open_timeline(
 	state: &mut AppState,
-	selector: &ListBox,
-	timeline_list: &ListBox,
-	timeline_type: TimelineType,
+	selector: ListBox,
+	timeline_list: ListBox,
+	timeline_type: &TimelineType,
 	suppress_selection: &Cell<bool>,
-	live_region: &StaticText,
+	live_region: StaticText,
 	frame: &Frame,
 ) {
 	if matches!(timeline_type, TimelineType::User { .. } | TimelineType::Thread { .. }) {
@@ -1468,14 +1432,14 @@ fn open_timeline(
 	}
 
 	if !state.timeline_manager.open(timeline_type.clone()) {
-		if let Some(index) = state.timeline_manager.index_of(&timeline_type) {
+		if let Some(index) = state.timeline_manager.index_of(timeline_type) {
 			state.timeline_manager.set_active(index);
 			with_suppressed_selection(suppress_selection, || {
-				selector.set_selection(index as u32, true);
+				selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
 			if let Some(active) = state.timeline_manager.active_mut() {
 				update_active_timeline_ui(
-					timeline_list,
+					&timeline_list,
 					active,
 					suppress_selection,
 					state.config.sort_order,
@@ -1488,14 +1452,14 @@ fn open_timeline(
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
-		live_region::announce(live_region, "Timeline already open");
+		live_region::announce(&live_region, "Timeline already open");
 		return;
 	}
 	selector.append(&timeline_type.display_name());
 	let new_index = state.timeline_manager.len() - 1;
 	state.timeline_manager.set_active(new_index);
 	with_suppressed_selection(suppress_selection, || {
-		selector.set_selection(new_index as u32, true);
+		selector.set_selection(u32::try_from(new_index).unwrap(), true);
 	});
 	if !matches!(timeline_type, TimelineType::Thread { .. } | TimelineType::Search { .. }) {
 		if let Some(handle) = &state.network_handle {
@@ -1505,7 +1469,7 @@ fn open_timeline(
 				max_id: None,
 			});
 		}
-		start_streaming_for_timeline(state, &timeline_type);
+		start_streaming_for_timeline(state, timeline_type);
 	}
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
@@ -1518,10 +1482,10 @@ fn open_timeline(
 /// Closes the current timeline if it's closeable.
 fn close_timeline(
 	state: &mut AppState,
-	selector: &ListBox,
-	timeline_list: &ListBox,
+	selector: ListBox,
+	timeline_list: ListBox,
 	suppress_selection: &Cell<bool>,
-	live_region: &StaticText,
+	live_region: StaticText,
 	use_history: bool,
 ) {
 	let active_type = match state.timeline_manager.active() {
@@ -1529,7 +1493,7 @@ fn close_timeline(
 		None => return,
 	};
 	if !active_type.is_closeable() {
-		live_region::announce(live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
+		live_region::announce(&live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
 		return;
 	}
 	if !state.timeline_manager.close(&active_type, use_history) {
@@ -1541,11 +1505,11 @@ fn close_timeline(
 	}
 	let active_index = state.timeline_manager.active_index();
 	with_suppressed_selection(suppress_selection, || {
-		selector.set_selection(active_index as u32, true);
+		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
 	if let Some(active) = state.timeline_manager.active_mut() {
 		update_active_timeline_ui(
-			timeline_list,
+			&timeline_list,
 			active,
 			suppress_selection,
 			state.config.sort_order,
