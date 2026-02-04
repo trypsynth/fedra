@@ -85,9 +85,6 @@ pub fn process_stream_events(
 				streaming::StreamEvent::Disconnected(timeline_type) => {
 					let _ = timeline_type;
 				}
-				streaming::StreamEvent::Error { timeline_type, message } => {
-					let _ = (timeline_type, message);
-				}
 			}
 		}
 	}

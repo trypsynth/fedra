@@ -21,7 +21,6 @@ pub enum StreamEvent {
 	Conversation { timeline_type: TimelineType, conversation: Box<Conversation> },
 	Connected(TimelineType),
 	Disconnected(TimelineType),
-	Error { timeline_type: TimelineType, message: String },
 }
 
 pub struct StreamHandle {
@@ -57,26 +56,22 @@ pub fn start_streaming(base_url: Url, access_token: String, timeline_type: Timel
 }
 
 fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEvent>) {
-	let mut retry_count = 0;
-	let max_retries = 5;
+	let mut retry_count: u32 = 0;
 	let base_delay = Duration::from_secs(1);
+	let max_delay = Duration::from_secs(60);
 	loop {
 		match connect_and_stream(&url, &timeline_type, &sender) {
 			Ok(()) => {
-				// Clean disconnect, stop streaming
+				// Receiver dropped or intentional shutdown.
 				break;
 			}
-			Err(e) => {
+			Err(_) => {
 				retry_count += 1;
-				if retry_count > max_retries {
-					let _ = sender.send(StreamEvent::Error {
-						timeline_type: timeline_type.clone(),
-						message: format!("Streaming failed after {max_retries} retries: {e}"),
-					});
+				if sender.send(StreamEvent::Disconnected(timeline_type.clone())).is_err() {
 					break;
 				}
-				let _ = sender.send(StreamEvent::Disconnected(timeline_type.clone()));
-				let delay = base_delay * 2u32.pow(retry_count - 1);
+				let exp = retry_count.saturating_sub(1).min(6);
+				let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
 				thread::sleep(delay);
 			}
 		}
@@ -85,7 +80,9 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 
 fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>) -> Result<(), String> {
 	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {e}"))?;
-	let _ = sender.send(StreamEvent::Connected(timeline_type.clone()));
+	if sender.send(StreamEvent::Connected(timeline_type.clone())).is_err() {
+		return Ok(());
+	}
 	loop {
 		match socket.read() {
 			Ok(Message::Text(text)) => {
@@ -99,7 +96,7 @@ fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<S
 				let _ = socket.send(Message::Pong(data));
 			}
 			Ok(Message::Close(_)) => {
-				return Ok(());
+				return Err("WebSocket closed".to_string());
 			}
 			Ok(_) => {
 				// Ignore other message types (Binary, Pong, Frame)
