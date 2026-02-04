@@ -91,7 +91,7 @@ mod windows_impl {
 
 #[cfg(not(target_os = "windows"))]
 mod windows_impl {
-	use wxdragon::prelude::wxWidget;
+	use wxdragon::prelude::WxWidget;
 
 	pub fn set_live_region(_window: &impl WxWidget) -> bool {
 		false
