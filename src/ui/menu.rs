@@ -324,11 +324,8 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };
 		let label = format!("Load &More\t{shortcut}");
 		load_more_item.set_label(&label);
-		let supports_paging = state
-			.timeline_manager
-			.active()
-			.map(|timeline| timeline.timeline_type.supports_paging())
-			.unwrap_or(false);
+		let supports_paging =
+			state.timeline_manager.active().is_some_and(|timeline| timeline.timeline_type.supports_paging());
 		load_more_item.enable(supports_paging);
 	}
 	if let Some(search_item) = menu_bar.find_item(ID_SEARCH) {

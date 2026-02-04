@@ -118,20 +118,20 @@ pub fn process_network_responses(
 					if is_active {
 						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
 					}
-					let new_entries: Vec<TimelineEntry> = match data {
-						TimelineData::Statuses(statuses) => statuses.into_iter().map(TimelineEntry::Status).collect(),
-						TimelineData::Notifications(notifications) => {
-							notifications.into_iter().map(TimelineEntry::Notification).collect()
+					let (new_entries, next_max_id): (Vec<TimelineEntry>, Option<String>) = match data {
+						TimelineData::Statuses(statuses, next) => {
+							(statuses.into_iter().map(TimelineEntry::Status).collect(), next)
+						}
+						TimelineData::Notifications(notifications, next) => {
+							(notifications.into_iter().map(TimelineEntry::Notification).collect(), next)
 						}
 					};
 
 					if max_id.is_some() {
 						let existing_ids: std::collections::HashSet<&str> =
-							timeline.entries.iter().map(|entry| entry.id()).collect();
-						let filtered: Vec<TimelineEntry> = new_entries
-							.into_iter()
-							.filter(|entry| !existing_ids.contains(entry.id()))
-							.collect();
+							timeline.entries.iter().map(super::timeline::TimelineEntry::id).collect();
+						let filtered: Vec<TimelineEntry> =
+							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
 						if filtered.is_empty() {
 							live_region::announce(live_region, "No more posts");
 						} else {
@@ -175,6 +175,7 @@ pub fn process_network_responses(
 							);
 						}
 					}
+					timeline.next_max_id = next_max_id;
 					timeline.loading_more = false;
 				}
 			}

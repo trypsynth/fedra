@@ -286,8 +286,8 @@ pub enum NetworkResponse {
 
 #[derive(Debug)]
 pub enum TimelineData {
-	Statuses(Vec<Status>),
-	Notifications(Vec<Notification>),
+	Statuses(Vec<Status>, Option<String>),
+	Notifications(Vec<Notification>, Option<String>),
 }
 
 fn post_with_media(
@@ -418,7 +418,7 @@ fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineDat
 		}
 	});
 	let sorted: Vec<Status> = indexed.into_iter().map(|(_, status)| status).collect();
-	TimelineData::Statuses(sorted)
+	TimelineData::Statuses(sorted, None)
 }
 
 fn network_loop(
@@ -433,7 +433,7 @@ fn network_loop(
 				let result = match timeline_type {
 					TimelineType::Notifications => client
 						.get_notifications(&access_token, limit, max_id.as_deref())
-						.map(TimelineData::Notifications),
+						.map(|(n, next)| TimelineData::Notifications(n, next)),
 					TimelineType::Thread { ref id, .. } => match client.get_status(&access_token, id) {
 						Ok(focus) => match client.get_status_context(&access_token, id) {
 							Ok(context) => Ok(prepare_thread_timeline(focus, context)),
@@ -443,7 +443,7 @@ fn network_loop(
 					},
 					_ => client
 						.get_timeline(&access_token, &timeline_type, limit, max_id.as_deref())
-						.map(TimelineData::Statuses),
+						.map(|(s, next)| TimelineData::Statuses(s, next)),
 				};
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}

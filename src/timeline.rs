@@ -76,7 +76,7 @@ impl TimelineType {
 	}
 
 	pub const fn supports_paging(&self) -> bool {
-		!matches!(self, Self::Thread { .. } | Self::Bookmarks | Self::Favorites)
+		!matches!(self, Self::Thread { .. })
 	}
 }
 
@@ -149,6 +149,7 @@ pub struct Timeline {
 	pub selected_id: Option<String>,
 	pub loading_more: bool,
 	pub last_load_attempt: Option<Instant>,
+	pub next_max_id: Option<String>,
 }
 
 impl Timeline {
@@ -161,6 +162,7 @@ impl Timeline {
 			selected_id: None,
 			loading_more: false,
 			last_load_attempt: None,
+			next_max_id: None,
 		}
 	}
 }

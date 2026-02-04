@@ -31,11 +31,11 @@ fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
 	let mut min_id_str: Option<String> = None;
 	for entry in entries {
 		let id_str = entry.id();
-		if let Ok(id) = id_str.parse::<u128>() {
-			if min_id.map_or(true, |current| id < current) {
-				min_id = Some(id);
-				min_id_str = Some(id_str.to_string());
-			}
+		if let Ok(id) = id_str.parse::<u128>()
+			&& min_id.is_none_or(|current| id < current)
+		{
+			min_id = Some(id);
+			min_id_str = Some(id_str.to_string());
 		}
 	}
 	min_id_str.or_else(|| entries.last().map(|entry| entry.id().to_string()))
@@ -355,13 +355,19 @@ pub fn handle_ui_command(
 								limit: Some(u32::from(state.config.fetch_limit)),
 								offset: Some(u32::try_from(active.entries.len()).unwrap()),
 							});
-						} else if let Some(max_id) = paging_max_id(&active.entries) {
-							// Regular timelines use max_id pagination
-							handle.send(NetworkCommand::FetchTimeline {
-								timeline_type: active.timeline_type.clone(),
-								limit: Some(u32::from(state.config.fetch_limit)),
-								max_id: Some(max_id),
-							});
+						} else {
+							let max_id = active.next_max_id.clone().or_else(|| paging_max_id(&active.entries));
+							if let Some(max_id) = max_id {
+								// Regular timelines use max_id pagination
+								handle.send(NetworkCommand::FetchTimeline {
+									timeline_type: active.timeline_type.clone(),
+									limit: Some(u32::from(state.config.fetch_limit)),
+									max_id: Some(max_id),
+								});
+							} else {
+								active.loading_more = false;
+								live_region::announce(&live_region, "No more posts available");
+							}
 						}
 					}
 				}
@@ -1378,13 +1384,13 @@ fn do_favorite(state: &AppState, live_region: &StaticText) {
 	let status = if let Some(s) = get_selected_status(state) {
 		s
 	} else {
-		live_region::announce(&live_region, "No post selected");
+		live_region::announce(live_region, "No post selected");
 		return;
 	};
 	let handle = if let Some(h) = &state.network_handle {
 		h
 	} else {
-		live_region::announce(&live_region, "Network not available");
+		live_region::announce(live_region, "Network not available");
 		return;
 	};
 	// Get the actual status to interact with (unwrap reblog if present)
@@ -1401,13 +1407,13 @@ fn do_bookmark(state: &AppState, live_region: &StaticText) {
 	let status = if let Some(s) = get_selected_status(state) {
 		s
 	} else {
-		live_region::announce(&live_region, "No post selected");
+		live_region::announce(live_region, "No post selected");
 		return;
 	};
 	let handle = if let Some(h) = &state.network_handle {
 		h
 	} else {
-		live_region::announce(&live_region, "Network not available");
+		live_region::announce(live_region, "Network not available");
 		return;
 	};
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
@@ -1424,19 +1430,19 @@ fn do_boost(state: &AppState, live_region: &StaticText) {
 	let status = if let Some(s) = get_selected_status(state) {
 		s
 	} else {
-		live_region::announce(&live_region, "No post selected");
+		live_region::announce(live_region, "No post selected");
 		return;
 	};
 	let handle = if let Some(h) = &state.network_handle {
 		h
 	} else {
-		live_region::announce(&live_region, "Network not available");
+		live_region::announce(live_region, "Network not available");
 		return;
 	};
 	// Get the actual status to interact with (unwrap reblog if present)
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	if target.visibility == "direct" {
-		live_region::announce(&live_region, "Cannot boost direct messages");
+		live_region::announce(live_region, "Cannot boost direct messages");
 		return;
 	}
 	let status_id = target.id.clone();
@@ -1482,7 +1488,7 @@ fn open_timeline(
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
-		live_region::announce(&live_region, "Timeline already open");
+		live_region::announce(live_region, "Timeline already open");
 		return;
 	}
 	selector.append(&timeline_type.display_name());
@@ -1523,7 +1529,7 @@ fn close_timeline(
 		None => return,
 	};
 	if !active_type.is_closeable() {
-		live_region::announce(&live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
+		live_region::announce(live_region, &format!("Cannot close the {} timeline", active_type.display_name()));
 		return;
 	}
 	if !state.timeline_manager.close(&active_type, use_history) {

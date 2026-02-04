@@ -681,13 +681,32 @@ impl MastodonClient {
 		Ok(payload.id)
 	}
 
+	fn parse_link_header(header: &str) -> Option<String> {
+		for link in header.split(',') {
+			let parts: Vec<&str> = link.split(';').collect();
+			if parts.len() < 2 {
+				continue;
+			}
+			let url_part = parts[0].trim().trim_start_matches('<').trim_end_matches('>');
+			let rel_part = parts[1].trim();
+
+			if rel_part.contains("rel=\"next\"")
+				&& let Ok(url) = Url::parse(url_part)
+				&& let Some((_, value)) = url.query_pairs().find(|(key, _)| key == "max_id")
+			{
+				return Some(value.to_string());
+			}
+		}
+		None
+	}
+
 	pub fn get_timeline(
 		&self,
 		access_token: &str,
 		timeline_type: &TimelineType,
 		limit: Option<u32>,
 		max_id: Option<&str>,
-	) -> Result<Vec<Status>> {
+	) -> Result<(Vec<Status>, Option<String>)> {
 		let mut url = self.base_url.join(&timeline_type.api_path())?;
 		{
 			let mut query = url.query_pairs_mut();
@@ -709,8 +728,12 @@ impl MastodonClient {
 			.context("Failed to fetch timeline")?
 			.error_for_status()
 			.context("Instance rejected timeline request")?;
+
+		let next_max_id =
+			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
+
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
-		Ok(statuses)
+		Ok((statuses, next_max_id))
 	}
 
 	pub fn get_notifications(
@@ -718,7 +741,7 @@ impl MastodonClient {
 		access_token: &str,
 		limit: Option<u32>,
 		max_id: Option<&str>,
-	) -> Result<Vec<Notification>> {
+	) -> Result<(Vec<Notification>, Option<String>)> {
 		let mut url = self.base_url.join("api/v1/notifications")?;
 		{
 			let mut query = url.query_pairs_mut();
@@ -737,8 +760,12 @@ impl MastodonClient {
 			.context("Failed to fetch notifications")?
 			.error_for_status()
 			.context("Instance rejected notifications request")?;
+
+		let next_max_id =
+			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
+
 		let notifications: Vec<Notification> = response.json().context("Invalid notifications response")?;
-		Ok(notifications)
+		Ok((notifications, next_max_id))
 	}
 
 	pub fn verify_credentials(&self, access_token: &str) -> Result<Account> {
