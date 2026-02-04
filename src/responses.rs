@@ -34,7 +34,14 @@ pub fn process_stream_events(
 		let events = handle.drain();
 		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
 		if is_active {
-			sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
+			let effective_sort_order = if state.config.preserve_thread_order
+				&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
+			{
+				SortOrder::OldestToNewest
+			} else {
+				state.config.sort_order
+			};
+			sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 		}
 		for event in events {
 			match event {
@@ -83,6 +90,7 @@ pub fn process_stream_events(
 			state.config.timestamp_format,
 			state.config.content_warning_display,
 			&state.cw_expanded,
+			state.config.preserve_thread_order,
 		);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
@@ -116,7 +124,14 @@ pub fn process_network_responses(
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
-						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
+						let effective_sort_order = if state.config.preserve_thread_order
+							&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
+						{
+							SortOrder::OldestToNewest
+						} else {
+							state.config.sort_order
+						};
+						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
 					let (new_entries, next_max_id): (Vec<TimelineEntry>, Option<String>) = match data {
 						TimelineData::Statuses(statuses, next) => {
@@ -158,6 +173,7 @@ pub fn process_network_responses(
 									state.config.timestamp_format,
 									state.config.content_warning_display,
 									&state.cw_expanded,
+									state.config.preserve_thread_order,
 								);
 							}
 						}
@@ -172,6 +188,7 @@ pub fn process_network_responses(
 								state.config.timestamp_format,
 								state.config.content_warning_display,
 								&state.cw_expanded,
+								state.config.preserve_thread_order,
 							);
 						}
 					}
@@ -344,6 +361,7 @@ pub fn process_network_responses(
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 				live_region::announce(*live_region, "Deleted");
@@ -363,6 +381,7 @@ pub fn process_network_responses(
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 				live_region::announce(*live_region, "Edited");
@@ -631,6 +650,7 @@ pub fn process_network_responses(
 							state.config.timestamp_format,
 							state.config.content_warning_display,
 							&state.cw_expanded,
+							state.config.preserve_thread_order,
 						);
 					}
 					live_region::announce(*live_region, "Vote submitted");
@@ -661,7 +681,14 @@ pub fn process_network_responses(
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
-						sync_timeline_selection_from_list(timeline, timeline_list, state.config.sort_order);
+						let effective_sort_order = if state.config.preserve_thread_order
+							&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
+						{
+							SortOrder::OldestToNewest
+						} else {
+							state.config.sort_order
+						};
+						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
 					let mut new_entries: Vec<TimelineEntry> = Vec::new();
 					for account in results.accounts {
@@ -701,6 +728,7 @@ pub fn process_network_responses(
 								state.config.timestamp_format,
 								state.config.content_warning_display,
 								&state.cw_expanded,
+								state.config.preserve_thread_order,
 							);
 						}
 					}

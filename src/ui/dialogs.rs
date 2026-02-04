@@ -657,8 +657,9 @@ pub fn prompt_for_options(
 	content_warning_display: ContentWarningDisplay,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
-) -> Option<(bool, bool, bool, AutoloadMode, u8, ContentWarningDisplay, SortOrder, TimestampFormat)> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 400).build();
+	preserve_thread_order: bool,
+) -> Option<(bool, bool, bool, AutoloadMode, u8, ContentWarningDisplay, SortOrder, TimestampFormat, bool)> {
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 430).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
@@ -729,12 +730,15 @@ pub fn prompt_for_options(
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&timeline_panel).with_label("Show oldest timeline entries &first").build();
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
+	let thread_order_checkbox = CheckBox::builder(&timeline_panel).with_label("Always preserve thread &order").build();
+	thread_order_checkbox.set_value(preserve_thread_order);
 
 	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_stretch_spacer(1);
 	timeline_panel.set_sizer(timeline_sizer, true);
 	notebook.add_page(&timeline_panel, "Timeline", false, None);
@@ -790,6 +794,7 @@ pub fn prompt_for_options(
 		new_cw_display,
 		new_sort,
 		new_timestamp,
+		thread_order_checkbox.get_value(),
 	))
 }
 

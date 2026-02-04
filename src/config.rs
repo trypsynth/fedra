@@ -32,6 +32,8 @@ pub struct Config {
 	pub timestamp_format: TimestampFormat,
 	#[serde(default)]
 	pub content_warning_display: ContentWarningDisplay,
+	#[serde(default = "default_preserve_thread_order")]
+	pub preserve_thread_order: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -76,6 +78,10 @@ const fn default_quick_action_keys() -> bool {
 	false
 }
 
+const fn default_preserve_thread_order() -> bool {
+	true
+}
+
 fn deserialize_autoload_mode<'de, D>(deserializer: D) -> Result<AutoloadMode, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -112,6 +118,7 @@ impl Default for Config {
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
 			content_warning_display: ContentWarningDisplay::default(),
+			preserve_thread_order: true,
 		}
 	}
 }

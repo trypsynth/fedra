@@ -382,8 +382,13 @@ pub fn handle_ui_command(
 				live_region::announce(live_region, "No post selected");
 				return;
 			};
-			let Some(entry_index) =
-				list_index_to_entry_index(list_index, active.entries.len(), state.config.sort_order)
+			let effective_sort_order =
+				if state.config.preserve_thread_order && matches!(active.timeline_type, TimelineType::Thread { .. }) {
+					SortOrder::OldestToNewest
+				} else {
+					state.config.sort_order
+				};
+			let Some(entry_index) = list_index_to_entry_index(list_index, active.entries.len(), effective_sort_order)
 			else {
 				return;
 			};
@@ -421,7 +426,14 @@ pub fn handle_ui_command(
 		}
 		UiCommand::GoBack => {
 			if let Some(active) = state.timeline_manager.active_mut() {
-				sync_timeline_selection_from_list(active, &timeline_list, state.config.sort_order);
+				let effective_sort_order = if state.config.preserve_thread_order
+					&& matches!(active.timeline_type, TimelineType::Thread { .. })
+				{
+					SortOrder::OldestToNewest
+				} else {
+					state.config.sort_order
+				};
+				sync_timeline_selection_from_list(active, &timeline_list, effective_sort_order);
 			}
 			if state.timeline_manager.go_back() {
 				let index = state.timeline_manager.active_index();
@@ -438,6 +450,7 @@ pub fn handle_ui_command(
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 				if let Some(mb) = frame.get_menu_bar() {
@@ -470,7 +483,14 @@ pub fn handle_ui_command(
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
-					sync_timeline_selection_from_list(active, &timeline_list, state.config.sort_order);
+					let effective_sort_order = if state.config.preserve_thread_order
+						&& matches!(active.timeline_type, TimelineType::Thread { .. })
+					{
+						SortOrder::OldestToNewest
+					} else {
+						state.config.sort_order
+					};
+					sync_timeline_selection_from_list(active, &timeline_list, effective_sort_order);
 				}
 				state.timeline_manager.set_active(index);
 				let current_selection = timelines_selector.get_selection().map(|s| s as usize);
@@ -488,6 +508,7 @@ pub fn handle_ui_command(
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 				if let Some(mb) = frame.get_menu_bar() {
@@ -497,8 +518,15 @@ pub fn handle_ui_command(
 		}
 		UiCommand::TimelineEntrySelectionChanged(index) => {
 			if let Some(active) = state.timeline_manager.active_mut() {
+				let effective_sort_order = if state.config.preserve_thread_order
+					&& matches!(active.timeline_type, TimelineType::Thread { .. })
+				{
+					SortOrder::OldestToNewest
+				} else {
+					state.config.sort_order
+				};
 				active.selected_index = Some(index);
-				active.selected_id = list_index_to_entry_index(index, active.entries.len(), state.config.sort_order)
+				active.selected_id = list_index_to_entry_index(index, active.entries.len(), effective_sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
 			}
 			if let Some(mb) = frame.get_menu_bar() {
@@ -515,6 +543,7 @@ pub fn handle_ui_command(
 				content_warning_display,
 				sort_order,
 				timestamp_format,
+				preserve_thread_order,
 			)) = dialogs::prompt_for_options(
 				frame,
 				state.config.enter_to_send,
@@ -525,10 +554,12 @@ pub fn handle_ui_command(
 				state.config.content_warning_display,
 				state.config.sort_order,
 				state.config.timestamp_format,
+				state.config.preserve_thread_order,
 			) {
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
-					|| state.config.content_warning_display != content_warning_display;
+					|| state.config.content_warning_display != content_warning_display
+					|| state.config.preserve_thread_order != preserve_thread_order;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
@@ -546,6 +577,7 @@ pub fn handle_ui_command(
 				}
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
+				state.config.preserve_thread_order = preserve_thread_order;
 				let store = config::ConfigStore::new();
 				if let Err(err) = store.save(&state.config) {
 					dialogs::show_error(frame, &err);
@@ -559,6 +591,7 @@ pub fn handle_ui_command(
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 			}
@@ -1345,7 +1378,14 @@ pub fn get_selected_entry(state: &AppState) -> Option<&TimelineEntry> {
 	let timeline = state.timeline_manager.active()?;
 	let index = timeline.selected_index?;
 
-	let final_index = match state.config.sort_order {
+	let effective_sort_order =
+		if state.config.preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. }) {
+			SortOrder::OldestToNewest
+		} else {
+			state.config.sort_order
+		};
+
+	let final_index = match effective_sort_order {
 		SortOrder::NewestToOldest => index,
 		SortOrder::OldestToNewest => timeline.entries.len().checked_sub(1)?.checked_sub(index)?,
 	};
@@ -1446,6 +1486,7 @@ fn open_timeline(
 					state.config.timestamp_format,
 					state.config.content_warning_display,
 					&state.cw_expanded,
+					state.config.preserve_thread_order,
 				);
 			}
 		}
@@ -1516,6 +1557,7 @@ fn close_timeline(
 			state.config.timestamp_format,
 			state.config.content_warning_display,
 			&state.cw_expanded,
+			state.config.preserve_thread_order,
 		);
 	}
 }

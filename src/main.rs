@@ -235,6 +235,7 @@ fn main() {
 						state.config.timestamp_format,
 						state.config.content_warning_display,
 						&state.cw_expanded,
+						state.config.preserve_thread_order,
 					);
 				}
 				last_ui_refresh = Instant::now();

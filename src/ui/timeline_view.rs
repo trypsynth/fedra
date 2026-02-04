@@ -128,9 +128,23 @@ pub fn update_active_timeline_ui(
 	timestamp_format: TimestampFormat,
 	cw_display: ContentWarningDisplay,
 	cw_expanded: &HashSet<String>,
+	preserve_thread_order: bool,
 ) {
+	let effective_sort_order = if preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. })
+	{
+		SortOrder::OldestToNewest
+	} else {
+		sort_order
+	};
 	with_suppressed_selection(suppress_selection, || {
-		update_timeline_ui(timeline_list, &timeline.entries, sort_order, timestamp_format, cw_display, cw_expanded);
-		apply_timeline_selection(timeline_list, timeline, sort_order);
+		update_timeline_ui(
+			timeline_list,
+			&timeline.entries,
+			effective_sort_order,
+			timestamp_format,
+			cw_display,
+			cw_expanded,
+		);
+		apply_timeline_selection(timeline_list, timeline, effective_sort_order);
 	});
 }
