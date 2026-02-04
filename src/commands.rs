@@ -135,7 +135,15 @@ pub fn handle_ui_command(
 				live_region::announce(live_region, "No account configured");
 				return;
 			}
-			let Some(post) = dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send) else {
+			let default_visibility =
+				if state.timeline_manager.active().is_some_and(|t| t.timeline_type == TimelineType::Direct) {
+					Some(dialogs::PostVisibility::Direct)
+				} else {
+					None
+				};
+			let Some(post) =
+				dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send, default_visibility)
+			else {
 				return;
 			};
 			if let Some(handle) = &state.network_handle {
@@ -541,6 +549,7 @@ pub fn handle_ui_command(
 				sort_order,
 				timestamp_format,
 				preserve_thread_order,
+				default_timelines,
 			)) = dialogs::prompt_for_options(
 				frame,
 				state.config.enter_to_send,
@@ -552,6 +561,7 @@ pub fn handle_ui_command(
 				state.config.sort_order,
 				state.config.timestamp_format,
 				state.config.preserve_thread_order,
+				state.config.default_timelines.clone(),
 			) {
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
@@ -563,6 +573,7 @@ pub fn handle_ui_command(
 				state.config.autoload = autoload;
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
+				state.config.default_timelines = default_timelines;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();
 				}

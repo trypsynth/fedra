@@ -10,7 +10,7 @@ use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	mastodon::{Account, MastodonClient, Notification, SearchResults, SearchType, Status, StatusContext},
+	mastodon::{Account, Conversation, MastodonClient, Notification, SearchResults, SearchType, Status, StatusContext},
 	timeline::TimelineType,
 };
 
@@ -289,6 +289,7 @@ pub enum NetworkResponse {
 pub enum TimelineData {
 	Statuses(Vec<Status>, Option<String>),
 	Notifications(Vec<Notification>, Option<String>),
+	Conversations(Vec<Conversation>, Option<String>),
 }
 
 fn post_with_media(
@@ -435,6 +436,9 @@ fn network_loop(
 					TimelineType::Notifications => client
 						.get_notifications(access_token, limit, max_id.as_deref())
 						.map(|(n, next)| TimelineData::Notifications(n, next)),
+					TimelineType::Direct => client
+						.get_conversations(access_token, limit, max_id.as_deref())
+						.map(|(c, next)| TimelineData::Conversations(c, next)),
 					TimelineType::Thread { ref id, .. } => match client.get_status(access_token, id) {
 						Ok(focus) => match client.get_status_context(access_token, id) {
 							Ok(context) => Ok(prepare_thread_timeline(focus, context)),

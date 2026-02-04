@@ -69,6 +69,16 @@ pub fn process_stream_events(
 						}
 					}
 				}
+				streaming::StreamEvent::Conversation { timeline_type, conversation } => {
+					if timeline.timeline_type == timeline_type
+						&& let Some(status) = conversation.last_status
+					{
+						timeline.entries.insert(0, TimelineEntry::Status(status));
+						if is_active {
+							active_needs_update = true;
+						}
+					}
+				}
 				streaming::StreamEvent::Connected(timeline_type) => {
 					let _ = timeline_type;
 				}
@@ -140,6 +150,13 @@ pub fn process_network_responses(
 						TimelineData::Notifications(notifications, next) => {
 							(notifications.into_iter().map(TimelineEntry::Notification).collect(), next)
 						}
+						TimelineData::Conversations(conversations, next) => (
+							conversations
+								.into_iter()
+								.filter_map(|c| c.last_status.map(TimelineEntry::Status))
+								.collect(),
+							next,
+						),
 					};
 
 					if max_id.is_some() {

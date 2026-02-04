@@ -10,6 +10,7 @@ use crate::{
 pub enum TimelineType {
 	Home,
 	Notifications,
+	Direct,
 	Local,
 	Federated,
 	Bookmarks,
@@ -25,6 +26,7 @@ impl TimelineType {
 		match self {
 			Self::Home => "Home".to_string(),
 			Self::Notifications => "Notifications".to_string(),
+			Self::Direct => "Direct Messages".to_string(),
 			Self::Local => "Local".to_string(),
 			Self::Federated => "Federated".to_string(),
 			Self::Bookmarks => "Bookmarks".to_string(),
@@ -40,6 +42,7 @@ impl TimelineType {
 		match self {
 			Self::Home => "api/v1/timelines/home".to_string(),
 			Self::Notifications => "api/v1/notifications".to_string(),
+			Self::Direct => "api/v1/conversations".to_string(),
 			Self::Local | Self::Federated => "api/v1/timelines/public".to_string(),
 			Self::Bookmarks => "api/v1/bookmarks".to_string(),
 			Self::Favorites => "api/v1/favourites".to_string(),
@@ -61,6 +64,7 @@ impl TimelineType {
 		match self {
 			Self::Home => Some("user"),
 			Self::Notifications => Some("user"),
+			Self::Direct => Some("direct"),
 			Self::Local => Some("public:local"),
 			Self::Federated => Some("public"),
 			Self::Bookmarks | Self::Favorites => None,

@@ -9,7 +9,7 @@ use tungstenite::{Message, connect};
 use url::Url;
 
 use crate::{
-	mastodon::{Notification, Status},
+	mastodon::{Conversation, Notification, Status},
 	timeline::TimelineType,
 };
 
@@ -18,6 +18,7 @@ pub enum StreamEvent {
 	Update { timeline_type: TimelineType, status: Box<Status> },
 	Delete { timeline_type: TimelineType, id: String },
 	Notification { timeline_type: TimelineType, notification: Box<Notification> },
+	Conversation { timeline_type: TimelineType, conversation: Box<Conversation> },
 	Connected(TimelineType),
 	Disconnected(TimelineType),
 	Error { timeline_type: TimelineType, message: String },
@@ -146,6 +147,17 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 			Some(StreamEvent::Notification {
 				timeline_type: timeline_type.clone(),
 				notification: Box::new(notification),
+			})
+		}
+		"conversation" => {
+			if *timeline_type != TimelineType::Direct {
+				return None;
+			}
+			let payload = msg.payload?;
+			let conversation: Conversation = serde_json::from_str(&payload).ok()?;
+			Some(StreamEvent::Conversation {
+				timeline_type: timeline_type.clone(),
+				conversation: Box::new(conversation),
 			})
 		}
 		_ => None,

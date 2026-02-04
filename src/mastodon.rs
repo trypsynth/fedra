@@ -155,6 +155,15 @@ pub struct Relationship {
 	pub note: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Conversation {
+	pub id: String,
+	pub accounts: Vec<Account>,
+	pub last_status: Option<Status>,
+	pub unread: bool,
+}
+
 impl Status {
 	pub fn display_text(&self) -> String {
 		strip_html(&self.content)
@@ -768,6 +777,38 @@ impl MastodonClient {
 
 		let notifications: Vec<Notification> = response.json().context("Invalid notifications response")?;
 		Ok((notifications, next_max_id))
+	}
+
+	pub fn get_conversations(
+		&self,
+		access_token: &str,
+		limit: Option<u32>,
+		max_id: Option<&str>,
+	) -> Result<(Vec<Conversation>, Option<String>)> {
+		let mut url = self.base_url.join("api/v1/conversations")?;
+		{
+			let mut query = url.query_pairs_mut();
+			if let Some(limit) = limit {
+				query.append_pair("limit", &limit.to_string());
+			}
+			if let Some(max_id) = max_id {
+				query.append_pair("max_id", max_id);
+			}
+		}
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch conversations")?
+			.error_for_status()
+			.context("Instance rejected conversations request")?;
+
+		let next_max_id =
+			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
+
+		let conversations: Vec<Conversation> = response.json().context("Invalid conversations response")?;
+		Ok((conversations, next_max_id))
 	}
 
 	pub fn verify_credentials(&self, access_token: &str) -> Result<Account> {

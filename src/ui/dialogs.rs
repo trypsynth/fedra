@@ -4,7 +4,7 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, AutoloadMode, ContentWarningDisplay, SortOrder, TimestampFormat},
+	config::{Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, SortOrder, TimestampFormat},
 	html::{self, Link},
 	mastodon::{Account as MastodonAccount, Mention, PollLimits, SearchType, Status, Tag},
 	network::{NetworkCommand, ProfileUpdate},
@@ -648,6 +648,54 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	Some(selected_indices)
 }
 
+pub fn prompt_for_default_timelines(frame: &Frame, initial: Vec<DefaultTimeline>) -> Option<Vec<DefaultTimeline>> {
+	let dialog = Dialog::builder(frame, "Default Timelines").with_size(350, 300).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let info_label = StaticText::builder(&panel)
+		.with_label("Select timelines to open automatically on startup:\n(Home and Notifications are always included)")
+		.build();
+	main_sizer.add(&info_label, 0, SizerFlag::Expand | SizerFlag::All, 10);
+
+	let mut checkboxes = Vec::new();
+	for timeline in DefaultTimeline::all() {
+		let cb = CheckBox::builder(&panel).with_label(timeline.display_name()).build();
+		cb.set_value(initial.contains(timeline));
+		main_sizer.add(&cb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 10);
+		checkboxes.push((cb, *timeline));
+	}
+
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
+	ok_button.set_default();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.centre();
+
+	if dialog.show_modal() == ID_OK {
+		let mut selected = Vec::new();
+		for (cb, timeline) in checkboxes {
+			if cb.get_value() {
+				selected.push(timeline);
+			}
+		}
+		Some(selected)
+	} else {
+		None
+	}
+}
+
 pub fn prompt_for_options(
 	frame: &Frame,
 	enter_to_send: bool,
@@ -659,7 +707,19 @@ pub fn prompt_for_options(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 	preserve_thread_order: bool,
-) -> Option<(bool, bool, bool, AutoloadMode, u8, ContentWarningDisplay, SortOrder, TimestampFormat, bool)> {
+	default_timelines_val: Vec<DefaultTimeline>,
+) -> Option<(
+	bool,
+	bool,
+	bool,
+	AutoloadMode,
+	u8,
+	ContentWarningDisplay,
+	SortOrder,
+	TimestampFormat,
+	bool,
+	Vec<DefaultTimeline>,
+)> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 430).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -740,6 +800,19 @@ pub fn prompt_for_options(
 	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	let customize_button = Button::builder(&timeline_panel).with_label("Customize Default Timelines...").build();
+	let current_defaults = Rc::new(RefCell::new(default_timelines_val));
+	let defaults_clone = current_defaults.clone();
+	let parent_frame = *frame;
+	customize_button.on_click(move |_| {
+		let initial = defaults_clone.borrow().clone();
+		if let Some(updated) = prompt_for_default_timelines(&parent_frame, initial) {
+			*defaults_clone.borrow_mut() = updated;
+		}
+	});
+	timeline_sizer.add(&customize_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
 	timeline_sizer.add_stretch_spacer(1);
 	timeline_panel.set_sizer(timeline_sizer, true);
 	notebook.add_page(&timeline_panel, "Timeline", false, None);
@@ -796,6 +869,7 @@ pub fn prompt_for_options(
 		new_sort,
 		new_timestamp,
 		thread_order_checkbox.get_value(),
+		current_defaults.borrow().clone(),
 	))
 }
 
@@ -1053,6 +1127,7 @@ pub fn prompt_for_post(
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
+	default_visibility: Option<PostVisibility>,
 ) -> Option<PostResult> {
 	prompt_for_compose(
 		frame,
@@ -1064,7 +1139,7 @@ pub fn prompt_for_post(
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),
 			initial_cw: None,
-			default_visibility: PostVisibility::Public,
+			default_visibility: default_visibility.unwrap_or(PostVisibility::Public),
 			can_change_visibility: true,
 		},
 		Vec::new(),

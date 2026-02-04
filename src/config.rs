@@ -34,6 +34,33 @@ pub struct Config {
 	pub content_warning_display: ContentWarningDisplay,
 	#[serde(default = "default_preserve_thread_order")]
 	pub preserve_thread_order: bool,
+	#[serde(default = "default_timelines")]
+	pub default_timelines: Vec<DefaultTimeline>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefaultTimeline {
+	Local,
+	Federated,
+	Direct,
+	Bookmarks,
+	Favorites,
+}
+
+impl DefaultTimeline {
+	pub const fn all() -> &'static [Self] {
+		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites]
+	}
+
+	pub const fn display_name(&self) -> &'static str {
+		match self {
+			Self::Local => "Local",
+			Self::Federated => "Federated",
+			Self::Direct => "Direct Messages",
+			Self::Bookmarks => "Bookmarks",
+			Self::Favorites => "Favorites",
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -82,6 +109,10 @@ const fn default_preserve_thread_order() -> bool {
 	true
 }
 
+fn default_timelines() -> Vec<DefaultTimeline> {
+	vec![DefaultTimeline::Local, DefaultTimeline::Direct]
+}
+
 fn deserialize_autoload_mode<'de, D>(deserializer: D) -> Result<AutoloadMode, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -119,6 +150,7 @@ impl Default for Config {
 			timestamp_format: TimestampFormat::default(),
 			content_warning_display: ContentWarningDisplay::default(),
 			preserve_thread_order: true,
+			default_timelines: default_timelines(),
 		}
 	}
 }

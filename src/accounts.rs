@@ -133,7 +133,18 @@ pub fn switch_to_account(
 	}
 	state.timeline_manager.open(TimelineType::Home);
 	state.timeline_manager.open(TimelineType::Notifications);
-	state.timeline_manager.open(TimelineType::Local);
+	let default_timelines = state.config.default_timelines.clone();
+	for default in &default_timelines {
+		let timeline_type = match default {
+			crate::config::DefaultTimeline::Local => TimelineType::Local,
+			crate::config::DefaultTimeline::Federated => TimelineType::Federated,
+			crate::config::DefaultTimeline::Direct => TimelineType::Direct,
+			crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
+			crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+		};
+		state.timeline_manager.open(timeline_type);
+	}
+
 	if let Some(handle) = &state.network_handle {
 		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40), max_id: None });
 		handle.send(NetworkCommand::FetchTimeline {
@@ -141,15 +152,29 @@ pub fn switch_to_account(
 			limit: Some(40),
 			max_id: None,
 		});
-		handle.send(NetworkCommand::FetchTimeline {
-			timeline_type: TimelineType::Local,
-			limit: Some(40),
-			max_id: None,
-		});
+		for default in &default_timelines {
+			let timeline_type = match default {
+				crate::config::DefaultTimeline::Local => TimelineType::Local,
+				crate::config::DefaultTimeline::Federated => TimelineType::Federated,
+				crate::config::DefaultTimeline::Direct => TimelineType::Direct,
+				crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
+				crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+			};
+			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+		}
 	}
 	start_streaming_for_timeline(state, &TimelineType::Home);
 	start_streaming_for_timeline(state, &TimelineType::Notifications);
-	start_streaming_for_timeline(state, &TimelineType::Local);
+	for default in &default_timelines {
+		let timeline_type = match default {
+			crate::config::DefaultTimeline::Local => TimelineType::Local,
+			crate::config::DefaultTimeline::Federated => TimelineType::Federated,
+			crate::config::DefaultTimeline::Direct => TimelineType::Direct,
+			crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
+			crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+		};
+		start_streaming_for_timeline(state, &timeline_type);
+	}
 	timelines_selector.clear();
 	for name in state.timeline_manager.display_names() {
 		timelines_selector.append(&name);
