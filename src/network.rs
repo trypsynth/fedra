@@ -1,5 +1,6 @@
 use std::{
 	cmp::Ordering,
+	slice,
 	sync::mpsc::{self, Receiver, Sender},
 	thread::{self, JoinHandle},
 };
@@ -298,7 +299,7 @@ fn post_with_media(
 	spoiler_text: Option<&str>,
 	content_type: Option<&str>,
 	media: Vec<MediaUpload>,
-	poll: Option<PollData>,
+	poll: Option<&PollData>,
 	in_reply_to_id: Option<&str>,
 ) -> Result<()> {
 	let mut media_ids = Vec::new();
@@ -322,7 +323,7 @@ fn post_with_media(
 		spoiler_text,
 		&media_ids,
 		content_type,
-		poll.as_ref(),
+		poll,
 		in_reply_to_id,
 	)
 }
@@ -334,7 +335,7 @@ fn edit_with_media(
 	content: &str,
 	spoiler_text: Option<&str>,
 	media: Vec<EditMedia>,
-	poll: Option<PollData>,
+	poll: Option<&PollData>,
 ) -> Result<Status> {
 	let mut media_ids = Vec::new();
 	let mut upload_failed = None;
@@ -355,7 +356,7 @@ fn edit_with_media(
 	if let Some(err) = upload_failed {
 		return Err(err);
 	}
-	client.edit_status(access_token, status_id, content, spoiler_text, &media_ids, poll.as_ref())
+	client.edit_status(access_token, status_id, content, spoiler_text, &media_ids, poll)
 }
 
 pub struct NetworkHandle {
@@ -397,7 +398,7 @@ pub fn start_network(base_url: Url, access_token: String) -> Result<NetworkHandl
 	let (cmd_tx, cmd_rx) = mpsc::channel();
 	let (resp_tx, resp_rx) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		network_loop(client, access_token, cmd_rx, resp_tx);
+		network_loop(&client, &access_token, &cmd_rx, &resp_tx);
 	});
 	Ok(NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread })
 }
@@ -422,86 +423,93 @@ fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineDat
 }
 
 fn network_loop(
-	client: MastodonClient,
-	access_token: String,
-	commands: Receiver<NetworkCommand>,
-	responses: Sender<NetworkResponse>,
+	client: &MastodonClient,
+	access_token: &str,
+	commands: &Receiver<NetworkCommand>,
+	responses: &Sender<NetworkResponse>,
 ) {
 	loop {
 		match commands.recv() {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
 				let result = match timeline_type {
 					TimelineType::Notifications => client
-						.get_notifications(&access_token, limit, max_id.as_deref())
+						.get_notifications(access_token, limit, max_id.as_deref())
 						.map(|(n, next)| TimelineData::Notifications(n, next)),
-					TimelineType::Thread { ref id, .. } => match client.get_status(&access_token, id) {
-						Ok(focus) => match client.get_status_context(&access_token, id) {
+					TimelineType::Thread { ref id, .. } => match client.get_status(access_token, id) {
+						Ok(focus) => match client.get_status_context(access_token, id) {
 							Ok(context) => Ok(prepare_thread_timeline(focus, context)),
 							Err(e) => Err(e),
 						},
 						Err(e) => Err(e),
 					},
 					_ => client
-						.get_timeline(&access_token, &timeline_type, limit, max_id.as_deref())
+						.get_timeline(access_token, &timeline_type, limit, max_id.as_deref())
 						.map(|(s, next)| TimelineData::Statuses(s, next)),
 				};
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}
 			Ok(NetworkCommand::FetchThread { timeline_type, focus }) => {
 				let result = client
-					.get_status_context(&access_token, &focus.id)
+					.get_status_context(access_token, &focus.id)
 					.map(|context| prepare_thread_timeline(focus, context));
 				let _ = responses.send(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None });
 			}
 			Ok(NetworkCommand::LookupAccount { handle }) => {
-				let result = client.lookup_account(&access_token, &handle);
+				let result = client.lookup_account(access_token, &handle);
 				let _ = responses.send(NetworkResponse::AccountLookupResult { handle, result });
 			}
 			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
 				let result = post_with_media(
-					&client,
-					&access_token,
+					client,
+					access_token,
 					&content,
 					&visibility,
 					spoiler_text.as_deref(),
 					content_type.as_deref(),
 					media,
-					poll,
+					poll.as_ref(),
 					None,
 				);
 				let _ = responses.send(NetworkResponse::PostComplete(result));
 			}
 			Ok(NetworkCommand::EditStatus { status_id, content, spoiler_text, media, poll }) => {
-				let result =
-					edit_with_media(&client, &access_token, &status_id, &content, spoiler_text.as_deref(), media, poll);
+				let result = edit_with_media(
+					client,
+					access_token,
+					&status_id,
+					&content,
+					spoiler_text.as_deref(),
+					media,
+					poll.as_ref(),
+				);
 				let _ = responses.send(NetworkResponse::StatusEdited { _status_id: status_id, result });
 			}
 			Ok(NetworkCommand::DeleteStatus { status_id }) => {
-				let result = client.delete_status(&access_token, &status_id);
+				let result = client.delete_status(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::StatusDeleted { status_id, result });
 			}
 			Ok(NetworkCommand::Favorite { status_id }) => {
-				let result = client.favorite(&access_token, &status_id);
+				let result = client.favorite(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Favorited { status_id, result });
 			}
 			Ok(NetworkCommand::Bookmark { status_id }) => {
-				let result = client.bookmark(&access_token, &status_id);
+				let result = client.bookmark(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Bookmarked { status_id, result });
 			}
 			Ok(NetworkCommand::Unfavorite { status_id }) => {
-				let result = client.unfavorite(&access_token, &status_id);
+				let result = client.unfavorite(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Unfavorited { status_id, result });
 			}
 			Ok(NetworkCommand::Unbookmark { status_id }) => {
-				let result = client.unbookmark(&access_token, &status_id);
+				let result = client.unbookmark(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Unbookmarked { status_id, result });
 			}
 			Ok(NetworkCommand::Boost { status_id }) => {
-				let result = client.reblog(&access_token, &status_id);
+				let result = client.reblog(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Boosted { status_id, result });
 			}
 			Ok(NetworkCommand::Unboost { status_id }) => {
-				let result = client.unreblog(&access_token, &status_id);
+				let result = client.unreblog(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::Unboosted { status_id, result });
 			}
 			Ok(NetworkCommand::Reply {
@@ -514,30 +522,30 @@ fn network_loop(
 				poll,
 			}) => {
 				let result = post_with_media(
-					&client,
-					&access_token,
+					client,
+					access_token,
 					&content,
 					&visibility,
 					spoiler_text.as_deref(),
 					content_type.as_deref(),
 					media,
-					poll,
+					poll.as_ref(),
 					Some(&in_reply_to_id),
 				);
 				let _ = responses.send(NetworkResponse::Replied(result));
 			}
 			Ok(NetworkCommand::FollowTag { name }) => {
-				let result = client.follow_tag(&access_token, &name);
+				let result = client.follow_tag(access_token, &name);
 				let _ = responses.send(NetworkResponse::TagFollowed { name, result });
 			}
 			Ok(NetworkCommand::UnfollowTag { name }) => {
-				let result = client.unfollow_tag(&access_token, &name);
+				let result = client.unfollow_tag(access_token, &name);
 				let _ = responses.send(NetworkResponse::TagUnfollowed { name, result });
 			}
 			Ok(NetworkCommand::FetchTagsInfo { names }) => {
 				let mut tags = Vec::new();
 				for name in names {
-					if let Ok(tag) = client.get_tag(&access_token, &name) {
+					if let Ok(tag) = client.get_tag(access_token, &name) {
 						tags.push(tag);
 					}
 				}
@@ -545,23 +553,23 @@ fn network_loop(
 				let _ = responses.send(NetworkResponse::TagsInfoFetched { result });
 			}
 			Ok(NetworkCommand::FetchRebloggedBy { status_id }) => {
-				let result = client.get_reblogged_by(&access_token, &status_id);
+				let result = client.get_reblogged_by(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::RebloggedByLoaded { result });
 			}
 			Ok(NetworkCommand::FetchFavoritedBy { status_id }) => {
-				let result = client.get_favourited_by(&access_token, &status_id);
+				let result = client.get_favourited_by(access_token, &status_id);
 				let _ = responses.send(NetworkResponse::FavoritedByLoaded { result });
 			}
 			Ok(NetworkCommand::FetchFollowers { account_id }) => {
-				let result = client.get_followers(&access_token, &account_id);
+				let result = client.get_followers(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::FollowersLoaded { result });
 			}
 			Ok(NetworkCommand::FetchFollowing { account_id }) => {
-				let result = client.get_following(&access_token, &account_id);
+				let result = client.get_following(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::FollowingLoaded { result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
-				let result = client.follow_account_with_options(&access_token, &account_id, reblogs);
+				let result = client.follow_account_with_options(access_token, &account_id, reblogs);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -570,7 +578,7 @@ fn network_loop(
 				});
 			}
 			Ok(NetworkCommand::UnfollowAccount { account_id, target_name }) => {
-				let result = client.unfollow_account(&access_token, &account_id);
+				let result = client.unfollow_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -579,7 +587,7 @@ fn network_loop(
 				});
 			}
 			Ok(NetworkCommand::BlockAccount { account_id, target_name }) => {
-				let result = client.block_account(&access_token, &account_id);
+				let result = client.block_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -588,7 +596,7 @@ fn network_loop(
 				});
 			}
 			Ok(NetworkCommand::UnblockAccount { account_id, target_name }) => {
-				let result = client.unblock_account(&access_token, &account_id);
+				let result = client.unblock_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -597,7 +605,7 @@ fn network_loop(
 				});
 			}
 			Ok(NetworkCommand::MuteAccount { account_id, target_name }) => {
-				let result = client.mute_account(&access_token, &account_id);
+				let result = client.mute_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -606,7 +614,7 @@ fn network_loop(
 				});
 			}
 			Ok(NetworkCommand::UnmuteAccount { account_id, target_name }) => {
-				let result = client.unmute_account(&access_token, &account_id);
+				let result = client.unmute_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::RelationshipUpdated {
 					_account_id: account_id,
 					target_name,
@@ -616,24 +624,24 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::FetchRelationship { account_id }) => {
 				let result =
-					client.get_relationships(&access_token, &[account_id.clone()]).map(|mut rels| rels.remove(0));
+					client.get_relationships(access_token, slice::from_ref(&account_id)).map(|mut rels| rels.remove(0));
 				let _ = responses.send(NetworkResponse::RelationshipLoaded { _account_id: account_id, result });
 			}
 			Ok(NetworkCommand::FetchAccount { account_id }) => {
-				let result = client.get_account(&access_token, &account_id);
+				let result = client.get_account(access_token, &account_id);
 				let _ = responses.send(NetworkResponse::AccountFetched { result });
 			}
 			Ok(NetworkCommand::VotePoll { poll_id, choices }) => {
-				let result = client.vote_poll(&access_token, &poll_id, &choices);
+				let result = client.vote_poll(access_token, &poll_id, &choices);
 				let _ = responses.send(NetworkResponse::PollVoted { result });
 			}
 			Ok(NetworkCommand::FetchCredentials) => {
-				let result = client.verify_credentials(&access_token);
+				let result = client.verify_credentials(access_token);
 				let _ = responses.send(NetworkResponse::CredentialsFetched { result });
 			}
 			Ok(NetworkCommand::UpdateProfile { update }) => {
 				let result = client.update_credentials(
-					&access_token,
+					access_token,
 					update.display_name.as_deref(),
 					update.note.as_deref(),
 					update.avatar.as_deref(),
@@ -649,7 +657,7 @@ fn network_loop(
 				let _ = responses.send(NetworkResponse::ProfileUpdated { result });
 			}
 			Ok(NetworkCommand::Search { query, search_type, limit, offset }) => {
-				let result = client.search(&access_token, &query, search_type, limit, offset);
+				let result = client.search(access_token, &query, search_type, limit, offset);
 				let _ = responses.send(NetworkResponse::SearchLoaded { query, search_type, result, offset });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {

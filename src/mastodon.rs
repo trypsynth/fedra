@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
@@ -125,7 +127,7 @@ pub enum SearchType {
 }
 
 impl SearchType {
-	pub const fn as_api_str(&self) -> Option<&'static str> {
+	pub const fn as_api_str(self) -> Option<&'static str> {
 		match self {
 			Self::All => None,
 			Self::Accounts => Some("accounts"),
@@ -137,6 +139,7 @@ impl SearchType {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Relationship {
 	pub id: String,
 	pub following: bool,
@@ -163,13 +166,13 @@ impl Status {
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
 	) -> String {
-		match &self.reblog {
-			Some(boosted) => {
+		self.reblog.as_ref().map_or_else(
+			|| self.base_display(timestamp_format, cw_display, cw_expanded),
+			|boosted| {
 				let post_booster = self.account.display_name_or_username();
 				format!("{} boosted {}", post_booster, boosted.base_display(timestamp_format, cw_display, cw_expanded))
-			}
-			None => self.base_display(timestamp_format, cw_display, cw_expanded),
-		}
+			},
+		)
 	}
 
 	pub fn details_display(
@@ -199,9 +202,8 @@ impl Status {
 			out.push_str(&media);
 		}
 		if let Some(poll_text) = self.poll_summary() {
-			out.push_str(&format!(" {poll_text}"));
+			let _ = write!(out, " {poll_text}");
 		}
-		// Metadata line: time, visibility, client
 		let mut meta = Vec::new();
 		if let Some(when) = friendly_time(&self.created_at, timestamp_format) {
 			meta.push(when);
@@ -281,10 +283,10 @@ impl Status {
 			.join("; ");
 		let mut summary = format!("media {count}");
 		if !types.is_empty() {
-			summary.push_str(&format!(" ({types})"));
+			let _ = write!(summary, " ({types})");
 		}
 		if !alt_texts.is_empty() {
-			summary.push_str(&format!(" [{alt_texts}]"));
+			let _ = write!(summary, " [{alt_texts}]");
 		}
 		Some(summary)
 	}
@@ -294,13 +296,13 @@ impl Status {
 		let show_results = poll.voted.unwrap_or(false) || poll.expired;
 
 		if show_results {
-			let total = poll.votes_count.max(1) as f64;
+			let total = poll.votes_count.max(1);
 			let options: Vec<String> = poll
 				.options
 				.iter()
 				.map(|opt| {
 					let votes = opt.votes_count.unwrap_or(0);
-					let pct = (votes as f64 / total * 100.0).round() as u64;
+					let pct = votes.saturating_mul(100).saturating_add(total / 2) / total;
 					format!("{}: {}%", opt.title, pct)
 				})
 				.collect();
@@ -385,16 +387,17 @@ impl Notification {
 			"admin.report" => self.format_admin_report(actor),
 			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
 			"moderation_warning" => "You have received a moderation warning".to_string(),
-			_ => match self.status_text_if_any(timestamp_format, cw_display, cw_expanded) {
-				Some(text) => format!("{} {}: {}", actor, self.kind, text),
-				None => format!("{} {}", actor, self.kind),
-			},
+			_ => self.status_text_if_any(timestamp_format, cw_display, cw_expanded).map_or_else(
+				|| format!("{} {}", actor, self.kind),
+				|text| format!("{} {}: {}", actor, self.kind, text),
+			),
 		}
 	}
 
 	fn format_admin_report(&self, reporter: &str) -> String {
-		match &self.report {
-			Some(report) => {
+		self.report.as_ref().map_or_else(
+			|| format!("{reporter} filed a report"),
+			|report| {
 				let target = report.target_account.as_ref().map_or("unknown user", Account::display_name_or_username);
 				let category = match report.category.as_str() {
 					"spam" => "spam",
@@ -409,9 +412,8 @@ impl Notification {
 				} else {
 					format!("{} reported {} for {}: {}", reporter, target, category, report.comment)
 				}
-			}
-			None => format!("{reporter} filed a report"),
-		}
+			},
+		)
 	}
 
 	fn status_text(

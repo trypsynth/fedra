@@ -1,4 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(clippy::too_many_arguments, clippy::too_many_lines)] // temp
 #![deny(warnings)]
 #![windows_subsystem = "windows"]
 

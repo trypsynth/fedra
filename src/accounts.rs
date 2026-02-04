@@ -171,7 +171,7 @@ pub fn switch_to_account(
 		},
 	);
 	if should_announce {
-		live_region::announce(&live_region, &format!("Switched to {handle}"));
+		live_region::announce(live_region, &format!("Switched to {handle}"));
 	}
 	frame.set_label(&title);
 	if let Some(mb) = frame.get_menu_bar() {

@@ -133,7 +133,7 @@ pub fn process_network_responses(
 						let filtered: Vec<TimelineEntry> =
 							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
 						if filtered.is_empty() {
-							live_region::announce(live_region, "No more posts");
+							live_region::announce(*live_region, "No more posts");
 						} else {
 							timeline.entries.extend(filtered.clone());
 						}
@@ -183,7 +183,7 @@ pub fn process_network_responses(
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(live_region, &format!("Failed to load timeline: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load timeline: {err}"));
 			}
 			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
 				let action = state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);
@@ -213,7 +213,7 @@ pub fn process_network_responses(
 							dlg.show();
 							state.profile_dialog = Some(dlg);
 						} else {
-							live_region::announce(live_region, "Network not available");
+							live_region::announce(*live_region, "Network not available");
 						}
 					}
 					UserLookupAction::Timeline => {
@@ -240,13 +240,13 @@ pub fn process_network_responses(
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
 				state.pending_user_lookup_action = None;
-				live_region::announce(live_region, &format!("Failed to find user {handle}: {err}"));
+				live_region::announce(*live_region, &format!("Failed to find user {handle}: {err}"));
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
-				live_region::announce(live_region, "Posted");
+				live_region::announce(*live_region, "Posted");
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to post: {err}"));
+				live_region::announce(*live_region, &format!("Failed to post: {err}"));
 			}
 			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -256,10 +256,10 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Favorited");
+				live_region::announce(*live_region, "Favorited");
 			}
 			NetworkResponse::Favorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to favorite: {err}"));
+				live_region::announce(*live_region, &format!("Failed to favorite: {err}"));
 			}
 			NetworkResponse::Bookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -268,10 +268,10 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Bookmarked");
+				live_region::announce(*live_region, "Bookmarked");
 			}
 			NetworkResponse::Bookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to bookmark: {err}"));
+				live_region::announce(*live_region, &format!("Failed to bookmark: {err}"));
 			}
 			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -281,10 +281,10 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unfavorited");
+				live_region::announce(*live_region, "Unfavorited");
 			}
 			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unfavorite: {err}"));
+				live_region::announce(*live_region, &format!("Failed to unfavorite: {err}"));
 			}
 			NetworkResponse::Unbookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -293,10 +293,10 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unbookmarked");
+				live_region::announce(*live_region, "Unbookmarked");
 			}
 			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unbookmark: {err}"));
+				live_region::announce(*live_region, &format!("Failed to unbookmark: {err}"));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -309,10 +309,10 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Boosted");
+				live_region::announce(*live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to boost: {err}"));
+				live_region::announce(*live_region, &format!("Failed to boost: {err}"));
 			}
 			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -322,16 +322,16 @@ pub fn process_network_responses(
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unboosted");
+				live_region::announce(*live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unboost: {err}"));
+				live_region::announce(*live_region, &format!("Failed to unboost: {err}"));
 			}
 			NetworkResponse::Replied(Ok(())) => {
-				live_region::announce(live_region, "Reply sent");
+				live_region::announce(*live_region, "Reply sent");
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to reply: {err}"));
+				live_region::announce(*live_region, &format!("Failed to reply: {err}"));
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
@@ -346,10 +346,10 @@ pub fn process_network_responses(
 						&state.cw_expanded,
 					);
 				}
-				live_region::announce(live_region, "Deleted");
+				live_region::announce(*live_region, "Deleted");
 			}
 			NetworkResponse::StatusDeleted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to delete: {err}"));
+				live_region::announce(*live_region, &format!("Failed to delete: {err}"));
 			}
 			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
 				let status_clone = status.clone();
@@ -365,30 +365,30 @@ pub fn process_network_responses(
 						&state.cw_expanded,
 					);
 				}
-				live_region::announce(live_region, "Edited");
+				live_region::announce(*live_region, "Edited");
 			}
 			NetworkResponse::StatusEdited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to edit: {err}"));
+				live_region::announce(*live_region, &format!("Failed to edit: {err}"));
 			}
 			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, true);
 				if let Some(dlg) = &state.hashtag_dialog {
 					dlg.update_tag(&name, true);
 				}
-				live_region::announce(live_region, &format!("Followed #{name}"));
+				live_region::announce(*live_region, &format!("Followed #{name}"));
 			}
 			NetworkResponse::TagFollowed { name, result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to follow #{name}: {err}"));
+				live_region::announce(*live_region, &format!("Failed to follow #{name}: {err}"));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, false);
 				if let Some(dlg) = &state.hashtag_dialog {
 					dlg.update_tag(&name, false);
 				}
-				live_region::announce(live_region, &format!("Unfollowed #{name}"));
+				live_region::announce(*live_region, &format!("Unfollowed #{name}"));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to unfollow #{name}: {err}"));
+				live_region::announce(*live_region, &format!("Failed to unfollow #{name}: {err}"));
 			}
 			NetworkResponse::TagsInfoFetched { result: Ok(tags) } => {
 				if let Some(handle) = &state.network_handle {
@@ -402,7 +402,7 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to load hashtags: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load hashtags: {err}"));
 			}
 			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -433,7 +433,7 @@ pub fn process_network_responses(
 								dlg.show();
 								state.profile_dialog = Some(dlg);
 							} else {
-								live_region::announce(live_region, "Network not available");
+								live_region::announce(*live_region, "Network not available");
 							}
 						}
 						UserLookupAction::Timeline => {
@@ -460,7 +460,7 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::RebloggedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load boosts: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load boosts: {err}"));
 			}
 			NetworkResponse::FavoritedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -491,7 +491,7 @@ pub fn process_network_responses(
 								dlg.show();
 								state.profile_dialog = Some(dlg);
 							} else {
-								live_region::announce(live_region, "Network not available");
+								live_region::announce(*live_region, "Network not available");
 							}
 						}
 						UserLookupAction::Timeline => {
@@ -518,11 +518,11 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load favorites: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load favorites: {err}"));
 			}
 			NetworkResponse::FollowersLoaded { result: Ok(accounts), .. } => {
 				if accounts.is_empty() {
-					live_region::announce(live_region, "No followers found");
+					live_region::announce(*live_region, "No followers found");
 					continue;
 				}
 				if let Some(account) =
@@ -549,11 +549,11 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load followers: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load followers: {err}"));
 			}
 			NetworkResponse::FollowingLoaded { result: Ok(accounts), .. } => {
 				if accounts.is_empty() {
-					live_region::announce(live_region, "No following found");
+					live_region::announce(*live_region, "No following found");
 					continue;
 				}
 				if let Some(account) =
@@ -580,7 +580,7 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load following: {err}"));
+				live_region::announce(*live_region, &format!("Failed to load following: {err}"));
 			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {
@@ -599,10 +599,10 @@ pub fn process_network_responses(
 						}
 						crate::network::RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
 					};
-					live_region::announce(live_region, &msg);
+					live_region::announce(*live_region, &msg);
 				}
 				Err(err) => {
-					live_region::announce(live_region, &format!("Failed to update relationship: {err}"));
+					live_region::announce(*live_region, &format!("Failed to update relationship: {err}"));
 				}
 			},
 			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
@@ -633,10 +633,10 @@ pub fn process_network_responses(
 							&state.cw_expanded,
 						);
 					}
-					live_region::announce(live_region, "Vote submitted");
+					live_region::announce(*live_region, "Vote submitted");
 				}
 				Err(err) => {
-					live_region::announce(live_region, &format!("Failed to vote: {err}"));
+					live_region::announce(*live_region, &format!("Failed to vote: {err}"));
 				}
 			},
 			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
@@ -647,14 +647,14 @@ pub fn process_network_responses(
 				}
 			}
 			NetworkResponse::CredentialsFetched { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to fetch profile: {err}"));
+				live_region::announce(*live_region, &format!("Failed to fetch profile: {err}"));
 			}
 			NetworkResponse::ProfileUpdated { result: Ok(_) } => {
-				live_region::announce(live_region, "Profile updated");
+				live_region::announce(*live_region, "Profile updated");
 				let _ = ui_tx.send(UiCommand::Refresh);
 			}
 			NetworkResponse::ProfileUpdated { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to update profile: {err}"));
+				live_region::announce(*live_region, &format!("Failed to update profile: {err}"));
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
@@ -676,7 +676,7 @@ pub fn process_network_responses(
 					let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
 					if is_load_more {
 						if new_entries.is_empty() {
-							live_region::announce(live_region, "No more results");
+							live_region::announce(*live_region, "No more results");
 						} else {
 							timeline.entries.extend(new_entries.clone());
 							if is_active {
@@ -712,7 +712,7 @@ pub fn process_network_responses(
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(live_region, &format!("Search for '{query}' failed: {err}"));
+				live_region::announce(*live_region, &format!("Search for '{query}' failed: {err}"));
 			}
 		}
 	}
