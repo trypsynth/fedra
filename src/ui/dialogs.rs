@@ -122,6 +122,7 @@ struct ComposeDialogConfig {
 	initial_content: String,
 	initial_cw: Option<String>,
 	default_visibility: PostVisibility,
+	can_change_visibility: bool,
 }
 
 const fn visibility_index(visibility: PostVisibility) -> usize {
@@ -805,6 +806,7 @@ fn prompt_for_compose(
 	enter_to_send: bool,
 	config: ComposeDialogConfig,
 	initial_media: Vec<PostMedia>,
+	initial_poll: Option<PostPoll>,
 ) -> Option<PostResult> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let title_prefix = config.title_prefix;
@@ -837,6 +839,10 @@ fn prompt_for_compose(
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
 	visibility_choice.set_selection(visibility_index(default_visibility) as u32);
+	if !config.can_change_visibility {
+		visibility_label.enable(false);
+		visibility_choice.enable(false);
+	}
 	let visibility_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	visibility_sizer.add(&visibility_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	visibility_sizer.add(&visibility_choice, 1, SizerFlag::Expand, 0);
@@ -908,7 +914,19 @@ fn prompt_for_compose(
 			media_count_update.set_label(&label);
 		}
 	});
-	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(None));
+	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(initial_poll));
+	{
+		if let Some(poll) = poll_state.borrow().as_ref() {
+			let option_count = poll.options.len();
+			poll_button.set_label("Edit Poll...");
+			let label = if option_count == 1 {
+				"Poll with 1 option.".to_string()
+			} else {
+				format!("Poll with {option_count} options.")
+			};
+			poll_summary_label.set_label(&label);
+		}
+	}
 	let poll_state_manage = poll_state.clone();
 	let poll_summary_update = poll_summary_label;
 	let poll_button_update = poll_button;
@@ -1047,8 +1065,10 @@ pub fn prompt_for_post(
 			initial_content: String::new(),
 			initial_cw: None,
 			default_visibility: PostVisibility::Public,
+			can_change_visibility: true,
 		},
 		Vec::new(),
+		None,
 	)
 }
 
@@ -1106,8 +1126,10 @@ pub fn prompt_for_reply(
 			initial_content: mention,
 			initial_cw,
 			default_visibility,
+			can_change_visibility: true,
 		},
 		Vec::new(),
+		None,
 	)
 }
 
@@ -1131,6 +1153,11 @@ pub fn prompt_for_edit(
 		.iter()
 		.map(|m| PostMedia { path: m.id.clone(), description: m.description.clone(), is_existing: true })
 		.collect();
+	let initial_poll = status.poll.as_ref().map(|p| PostPoll {
+		options: p.options.iter().map(|o| o.title.clone()).collect(),
+		expires_in: 3600, // API doesn't return original expires_in, defaulting to 1 hour
+		multiple: p.multiple,
+	});
 
 	prompt_for_compose(
 		frame,
@@ -1143,8 +1170,10 @@ pub fn prompt_for_edit(
 			initial_content: status.display_text(),
 			initial_cw,
 			default_visibility,
+			can_change_visibility: false,
 		},
 		initial_media,
+		initial_poll,
 	)
 }
 

@@ -245,9 +245,6 @@ pub fn handle_ui_command(
 				live_region::announce(live_region, "Cannot verify ownership");
 				return;
 			}
-			if dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send).is_none() {
-				return;
-			}
 			let Some(edit) = dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
 			else {
 				return;
