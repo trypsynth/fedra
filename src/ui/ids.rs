@@ -56,6 +56,8 @@ define_ids! {
 	// Help
 	ID_VIEW_HELP,
 	ID_SEARCH,
+	// Internal
+	ID_UI_WAKE,
 }
 
 // Key codes

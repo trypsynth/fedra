@@ -7,7 +7,7 @@ use std::{
 
 use wxdragon::prelude::*;
 
-use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand};
+use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand, ui_wake::UiCommandSender};
 
 #[cfg(target_os = "windows")]
 pub struct HotkeyHandle {
@@ -47,7 +47,7 @@ impl AppShell {
 	}
 }
 
-pub fn install_app_shell(frame: &Frame, ui_tx: mpsc::Sender<UiCommand>) -> AppShell {
+pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
 	let mut tray_menu = Menu::builder()
 		.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
 		.append_separator()
@@ -122,7 +122,7 @@ fn is_window_active(frame: &Frame) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn start_hotkey_listener(ui_tx: mpsc::Sender<UiCommand>) -> Option<HotkeyHandle> {
+fn start_hotkey_listener(ui_tx: UiCommandSender) -> Option<HotkeyHandle> {
 	use windows::Win32::{
 		System::Threading::GetCurrentThreadId,
 		UI::{

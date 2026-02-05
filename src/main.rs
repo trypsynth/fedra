@@ -16,6 +16,7 @@ mod responses;
 mod streaming;
 mod timeline;
 mod ui;
+mod ui_wake;
 
 use std::{
 	cell::Cell,
@@ -31,9 +32,9 @@ pub(crate) use crate::ui::ids::{
 	ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST, ID_DIRECT_TIMELINE,
 	ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
-	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TRAY_EXIT, ID_TRAY_TOGGLE, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES,
-	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD,
-	ID_VIEW_USER_TIMELINE, ID_VOTE, KEY_DELETE,
+	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TRAY_EXIT, ID_TRAY_TOGGLE, ID_UI_WAKE, ID_VIEW_BOOSTS,
+	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
+	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, KEY_DELETE,
 };
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
@@ -48,6 +49,7 @@ use crate::{
 		timeline_view::update_active_timeline_ui,
 		window::{bind_input_handlers, build_main_window},
 	},
+	ui_wake::{UiCommandSender, UiWaker},
 };
 
 pub(crate) struct AppState {
@@ -66,10 +68,11 @@ pub(crate) struct AppState {
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
+	pub(crate) ui_waker: UiWaker,
 }
 
 impl AppState {
-	fn new(config: Config) -> Self {
+	fn new(config: Config, ui_waker: UiWaker) -> Self {
 		Self {
 			config,
 			timeline_manager: TimelineManager::new(),
@@ -86,6 +89,7 @@ impl AppState {
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
 			app_shell: None,
+			ui_waker,
 		}
 	}
 
@@ -118,7 +122,7 @@ fn drain_ui_commands(
 	autoload_mode: &Cell<config::AutoloadMode>,
 	sort_order_cell: &Cell<config::SortOrder>,
 	tray_hidden: &Cell<bool>,
-	ui_tx: &mpsc::Sender<UiCommand>,
+	ui_tx: &UiCommandSender,
 ) {
 	while let Ok(cmd) = ui_rx.try_recv() {
 		handle_ui_command(
@@ -145,17 +149,21 @@ fn main() {
 		let timelines_selector = window_parts.timelines_selector;
 		let timeline_list = window_parts.timeline_list;
 		let live_region_label = window_parts.live_region_label;
-		let (ui_tx, ui_rx) = mpsc::channel();
+		let (ui_tx_raw, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
 		let suppress_selection = Rc::new(Cell::new(false));
-		let timer_busy = Rc::new(Cell::new(false));
+		let wake_busy = Rc::new(Cell::new(false));
+		let wake_reschedule = Rc::new(Cell::new(false));
 		let tray_hidden = Rc::new(Cell::new(false));
 		let store = config::ConfigStore::new();
 		let config = store.load();
+		let ui_alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+		let ui_waker = UiWaker::new(frame, ui_alive.clone());
+		let ui_tx = UiCommandSender::new(ui_tx_raw, ui_waker.clone());
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
-		let mut state = AppState::new(config);
+		let mut state = AppState::new(config, ui_waker.clone());
 
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
@@ -177,52 +185,55 @@ fn main() {
 		app_shell.clone().attach_destroy(&frame);
 		state.app_shell = Some(app_shell);
 
-		let timer = Rc::new(Timer::new(&frame));
-		let shutdown_timer = is_shutting_down.clone();
-		let suppress_timer = suppress_selection.clone();
-		let busy_timer = timer_busy;
-		let frame_timer = frame;
-		let timelines_selector_timer = timelines_selector;
-		let timeline_list_timer = timeline_list;
-		let live_region_timer = live_region_label;
+		let shutdown_wake = is_shutting_down.clone();
+		let suppress_wake = suppress_selection.clone();
+		let busy_wake = wake_busy.clone();
+		let reschedule_wake = wake_reschedule.clone();
+		let frame_wake = frame;
+		let timelines_selector_wake = timelines_selector;
+		let timeline_list_wake = timeline_list;
+		let live_region_wake = live_region_label;
 		let mut state = state;
-		let timer_tick = timer.clone();
+		let ui_waker_handler = ui_waker.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
 		let sort_order_drain = sort_order_cell.clone();
 		let tray_hidden_drain = tray_hidden;
 		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = Instant::now();
-		timer_tick.on_tick(move |_| {
-			if shutdown_timer.get() {
+		frame.bind_with_id_internal(EventType::MENU, ID_UI_WAKE, move |_| {
+			if shutdown_wake.get() {
 				return;
 			}
-			if busy_timer.get() {
+			if busy_wake.get() {
+				reschedule_wake.set(true);
+				ui_waker_handler.reset();
 				return;
 			}
-			busy_timer.set(true);
+			busy_wake.set(true);
+			ui_waker_handler.reset();
 			drain_ui_commands(
 				&ui_rx,
 				&mut state,
-				&frame_timer,
-				timelines_selector_timer,
-				timeline_list_timer,
-				&suppress_timer,
-				live_region_timer,
+				&frame_wake,
+				timelines_selector_wake,
+				timeline_list_wake,
+				&suppress_wake,
+				live_region_wake,
 				&quick_action_keys_drain,
 				&autoload_drain,
 				&sort_order_drain,
 				&tray_hidden_drain,
 				&ui_tx_timer,
 			);
-			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer, &frame_timer, &ui_tx_timer);
+			process_stream_events(&mut state, &timeline_list_wake, &suppress_wake, &frame_wake);
 			process_network_responses(
-				&frame_timer,
+				&frame_wake,
 				&mut state,
-				&timelines_selector_timer,
-				&timeline_list_timer,
-				&suppress_timer,
-				&live_region_timer,
+				&timelines_selector_wake,
+				&timeline_list_wake,
+				&suppress_wake,
+				&live_region_wake,
 				&quick_action_keys_drain,
 				&autoload_drain,
 				&sort_order_drain,
@@ -234,9 +245,9 @@ fn main() {
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
 					update_active_timeline_ui(
-						&timeline_list_timer,
+						&timeline_list_wake,
 						active,
-						&suppress_timer,
+						&suppress_wake,
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
@@ -247,9 +258,25 @@ fn main() {
 				last_ui_refresh = Instant::now();
 			}
 
-			busy_timer.set(false);
+			busy_wake.set(false);
+			if reschedule_wake.replace(false) {
+				ui_waker_handler.wake();
+			}
 		});
-		timer.start(100, false);
+
+		let refresh_timer = Rc::new(Timer::new(&frame));
+		let refresh_waker = ui_waker.clone();
+		refresh_timer.on_tick(move |_| {
+			refresh_waker.wake();
+		});
+		refresh_timer.start(60_000, false);
+		let refresh_timer_keepalive = refresh_timer.clone();
+		let ui_alive_destroy = ui_alive.clone();
+		frame.on_destroy(move |_| {
+			ui_alive_destroy.store(false, std::sync::atomic::Ordering::SeqCst);
+			refresh_timer_keepalive.stop();
+		});
+
 		bind_input_handlers(
 			&window_parts,
 			ui_tx.clone(),
@@ -258,7 +285,6 @@ fn main() {
 			quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,
-			timer,
 		);
 		frame.show(true);
 		frame.centre();

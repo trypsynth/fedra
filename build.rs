@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+
 use std::{
 	env, fs,
 	path::{Path, PathBuf},
@@ -15,10 +17,8 @@ fn main() {
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-changed=Cargo.toml");
 	println!("cargo:rerun-if-changed=fedra.iss.in");
-
 	build_docs();
 	configure_installer();
-
 	let target = env::var("TARGET").unwrap_or_default();
 	if target.contains("windows") {
 		let manifest = new_manifest("Fedra")
@@ -37,7 +37,6 @@ fn main() {
 
 fn embed_version_info() {
 	let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());
-	// let description = env::var("CARGO_PKG_DESCRIPTION").unwrap_or_default();
 	let mut res = WindowsResource::new();
 	res.set("ProductName", "Fedra")
 		.set("FileDescription", "Fedra")

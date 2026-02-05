@@ -1,4 +1,4 @@
-use std::{cell::Cell, string::ToString, sync::mpsc, thread};
+use std::{cell::Cell, string::ToString, thread};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -12,9 +12,10 @@ use crate::{
 	streaming,
 	timeline::{TimelineManager, TimelineType},
 	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
+	ui_wake::UiCommandSender,
 };
 
-pub fn start_add_account_flow(frame: &Frame, ui_tx: &mpsc::Sender<UiCommand>, state: &mut AppState) -> bool {
+pub fn start_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: &mut AppState) -> bool {
 	let Some(instance_url) = dialogs::prompt_for_instance(frame) else { return false };
 	let client = match MastodonClient::new(instance_url.clone()) {
 		Ok(client) => client,
@@ -107,7 +108,7 @@ pub fn switch_to_account(
 	};
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
-	state.network_handle = network::start_network(url.clone(), token.clone()).ok();
+	state.network_handle = network::start_network(url.clone(), token.clone(), state.ui_waker.clone()).ok();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
 		if let Ok(info) = client.get_instance_info() {
@@ -214,5 +215,6 @@ pub fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &Timeli
 		None => return,
 	};
 	let Some(timeline) = state.timeline_manager.get_mut(timeline_type) else { return };
-	timeline.stream_handle = streaming::start_streaming(base_url, access_token, timeline_type.clone());
+	timeline.stream_handle =
+		streaming::start_streaming(base_url, access_token, timeline_type.clone(), state.ui_waker.clone());
 }

@@ -1,6 +1,5 @@
 use std::{
 	cell::Cell,
-	sync::mpsc,
 	time::{Duration, Instant},
 };
 
@@ -24,6 +23,7 @@ use crate::{
 			with_suppressed_selection,
 		},
 	},
+	ui_wake::UiCommandSender,
 };
 
 fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
@@ -121,7 +121,7 @@ pub fn handle_ui_command(
 	autoload_mode: &Cell<AutoloadMode>,
 	sort_order_cell: &Cell<SortOrder>,
 	tray_hidden: &Cell<bool>,
-	ui_tx: &mpsc::Sender<UiCommand>,
+	ui_tx: &UiCommandSender,
 ) {
 	match cmd {
 		UiCommand::NewPost => {

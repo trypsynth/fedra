@@ -1,4 +1,4 @@
-use std::{cell::Cell, sync::mpsc};
+use std::cell::Cell;
 
 use wxdragon::prelude::*;
 
@@ -15,6 +15,7 @@ use crate::{
 		menu::update_menu_labels,
 		timeline_view::{sync_timeline_selection_from_list, update_active_timeline_ui},
 	},
+	ui_wake::UiCommandSender,
 };
 
 /// Processes streaming events from WebSocket connections.
@@ -23,7 +24,6 @@ pub fn process_stream_events(
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	frame: &Frame,
-	_ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	let mut active_needs_update = false;
@@ -130,7 +130,7 @@ pub fn process_network_responses(
 	autoload_mode: &Cell<AutoloadMode>,
 	sort_order_cell: &Cell<SortOrder>,
 	tray_hidden: &Cell<bool>,
-	ui_tx: &mpsc::Sender<UiCommand>,
+	ui_tx: &UiCommandSender,
 ) {
 	let handle = match &state.network_handle {
 		Some(h) => h,

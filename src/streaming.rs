@@ -11,6 +11,7 @@ use url::Url;
 use crate::{
 	mastodon::{Conversation, Notification, Status},
 	timeline::TimelineType,
+	ui_wake::UiWaker,
 };
 
 #[derive(Debug, Clone)]
@@ -42,7 +43,12 @@ impl StreamHandle {
 	}
 }
 
-pub fn start_streaming(base_url: Url, access_token: String, timeline_type: TimelineType) -> Option<StreamHandle> {
+pub fn start_streaming(
+	base_url: Url,
+	access_token: String,
+	timeline_type: TimelineType,
+	ui_waker: UiWaker,
+) -> Option<StreamHandle> {
 	let stream_param = timeline_type.stream_params()?;
 	let mut streaming_url = base_url.join("api/v1/streaming").ok()?;
 	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
@@ -50,22 +56,30 @@ pub fn start_streaming(base_url: Url, access_token: String, timeline_type: Timel
 	streaming_url.query_pairs_mut().append_pair("access_token", &access_token).append_pair("stream", stream_param);
 	let (sender, receiver) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		streaming_loop(streaming_url, timeline_type, sender);
+		streaming_loop(streaming_url, timeline_type, sender, ui_waker);
 	});
 	Some(StreamHandle { receiver, _thread: thread })
 }
 
-fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEvent>) {
+fn send_event(sender: &Sender<StreamEvent>, ui_waker: &UiWaker, event: StreamEvent) -> bool {
+	if sender.send(event).is_err() {
+		return false;
+	}
+	ui_waker.wake();
+	true
+}
+
+fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEvent>, ui_waker: UiWaker) {
 	let mut retry_count: u32 = 0;
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
 	loop {
-		if connect_and_stream(&url, &timeline_type, &sender) == Ok(()) {
+		if connect_and_stream(&url, &timeline_type, &sender, &ui_waker) == Ok(()) {
 			// Receiver dropped or intentional shutdown.
 			break;
 		} else {
 			retry_count += 1;
-			if sender.send(StreamEvent::Disconnected(timeline_type.clone())).is_err() {
+			if !send_event(&sender, &ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
 				break;
 			}
 			let exp = retry_count.saturating_sub(1).min(6);
@@ -75,16 +89,21 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 	}
 }
 
-fn connect_and_stream(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>) -> Result<(), String> {
+fn connect_and_stream(
+	url: &Url,
+	timeline_type: &TimelineType,
+	sender: &Sender<StreamEvent>,
+	ui_waker: &UiWaker,
+) -> Result<(), String> {
 	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {e}"))?;
-	if sender.send(StreamEvent::Connected(timeline_type.clone())).is_err() {
+	if !send_event(sender, ui_waker, StreamEvent::Connected(timeline_type.clone())) {
 		return Ok(());
 	}
 	loop {
 		match socket.read() {
 			Ok(Message::Text(text)) => {
 				if let Some(event) = parse_stream_message(&text, timeline_type)
-					&& sender.send(event).is_err()
+					&& !send_event(sender, ui_waker, event)
 				{
 					return Ok(());
 				}

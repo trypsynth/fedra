@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::Cell, rc::Rc};
 
 use wxdragon::prelude::*;
 
@@ -11,6 +11,7 @@ use crate::{
 	config::{AutoloadMode, SortOrder},
 	live_region,
 	ui::menu::build_menu_bar,
+	ui_wake::UiCommandSender,
 };
 
 pub struct WindowParts {
@@ -56,13 +57,12 @@ pub fn build_main_window() -> WindowParts {
 
 pub fn bind_input_handlers(
 	parts: &WindowParts,
-	ui_tx: Sender<UiCommand>,
+	ui_tx: UiCommandSender,
 	is_shutting_down: Rc<Cell<bool>>,
 	suppress_selection: Rc<Cell<bool>>,
 	quick_action_keys_enabled: Rc<Cell<bool>>,
 	autoload_mode: Rc<Cell<AutoloadMode>>,
 	sort_order_cell: Rc<Cell<SortOrder>>,
-	timer: Rc<Timer<Frame>>,
 ) {
 	let ui_tx_selector = ui_tx.clone();
 	let shutdown_selector = is_shutting_down.clone();
@@ -637,12 +637,10 @@ pub fn bind_input_handlers(
 	});
 
 	let shutdown_close = is_shutting_down;
-	let timer_close = timer;
 	let frame_close = parts.frame;
 	frame_close.on_close(move |event| {
 		if !shutdown_close.get() {
 			shutdown_close.set(true);
-			timer_close.stop();
 		}
 		event.skip(true);
 	});
