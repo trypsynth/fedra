@@ -8,7 +8,10 @@ use std::{
 
 use embed_manifest::{
 	embed_manifest,
-	manifest::{ActiveCodePage, DpiAwareness, HeapType, Setting, SupportedOS::*},
+	manifest::{
+		ActiveCodePage, DpiAwareness, HeapType, Setting,
+		SupportedOS::{Windows7, Windows10},
+	},
 	new_manifest,
 };
 use winres::WindowsResource;
@@ -28,7 +31,7 @@ fn main() {
 			.dpi_awareness(DpiAwareness::PerMonitorV2)
 			.long_path_aware(Setting::Enabled);
 		if let Err(e) = embed_manifest(manifest) {
-			println!("cargo:warning=Failed to embed manifest: {}", e);
+			println!("cargo:warning=Failed to embed manifest: {e}");
 			println!("cargo:warning=The application will still work but may lack optimal Windows theming");
 		}
 		embed_version_info();
@@ -46,7 +49,7 @@ fn embed_version_info() {
 		.set("ProductVersion", &version)
 		.set("FileVersion", &version);
 	if let Err(e) = res.compile() {
-		println!("cargo:warning=Failed to embed version info: {}", e);
+		println!("cargo:warning=Failed to embed version info: {e}");
 	}
 }
 
@@ -62,12 +65,11 @@ fn target_profile_dir() -> Option<PathBuf> {
 }
 
 fn build_docs() {
-	let target_dir = match target_profile_dir() {
-		Some(dir) => dir,
-		None => {
-			println!("cargo:warning=Could not determine target directory for docs.");
-			return;
-		}
+	let target_dir = if let Some(dir) = target_profile_dir() {
+		dir
+	} else {
+		println!("cargo:warning=Could not determine target directory for docs.");
+		return;
 	};
 	let doc_dir = PathBuf::from("doc");
 	let readme = doc_dir.join("readme.md");
@@ -104,7 +106,7 @@ fn configure_installer() {
 	let content = match fs::read_to_string(&input_path) {
 		Ok(c) => c,
 		Err(e) => {
-			println!("cargo:warning=Failed to read installer script: {}", e);
+			println!("cargo:warning=Failed to read installer script: {e}");
 			return;
 		}
 	};
@@ -112,6 +114,6 @@ fn configure_installer() {
 	let new_content = content.replace("@PROJECT_VERSION@", &version);
 	let output_path = target_dir.join("fedra.iss");
 	if let Err(e) = fs::write(&output_path, new_content) {
-		println!("cargo:warning=Failed to write installer script: {}", e);
+		println!("cargo:warning=Failed to write installer script: {e}");
 	}
 }

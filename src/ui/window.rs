@@ -132,7 +132,7 @@ pub fn bind_input_handlers(
 		if let Some(key) = event.get_key_code() {
 			if key == 13 {
 				// Enter
-				if event.shift_down() {
+				if event.alt_down() {
 					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
 					event.skip(false);
 					return;
@@ -251,6 +251,12 @@ pub fn bind_input_handlers(
 						event.skip(false);
 						return;
 					}
+					86 => {
+						// v
+						let _ = ui_tx_list_key.send(UiCommand::Vote);
+						event.skip(false);
+						return;
+					}
 					46 => {
 						// .
 						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
@@ -344,6 +350,12 @@ pub fn bind_input_handlers(
 					79 => {
 						// o
 						let _ = ui_tx_list_key.send(UiCommand::ViewInBrowser);
+						event.skip(false);
+						return;
+					}
+					86 => {
+						// v
+						let _ = ui_tx_list_key.send(UiCommand::Vote);
 						event.skip(false);
 						return;
 					}

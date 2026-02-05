@@ -9,7 +9,7 @@ use wxdragon::{ffi, prelude::*};
 use crate::{ID_UI_WAKE, UiCommand};
 
 #[derive(Clone)]
-pub(crate) struct UiWaker {
+pub struct UiWaker {
 	frame_ptr: usize,
 	pending: Arc<AtomicBool>,
 	alive: Arc<AtomicBool>,
@@ -39,13 +39,13 @@ impl UiWaker {
 }
 
 #[derive(Clone)]
-pub(crate) struct UiCommandSender {
+pub struct UiCommandSender {
 	tx: Sender<UiCommand>,
 	waker: UiWaker,
 }
 
 impl UiCommandSender {
-	pub(crate) fn new(tx: Sender<UiCommand>, waker: UiWaker) -> Self {
+	pub(crate) const fn new(tx: Sender<UiCommand>, waker: UiWaker) -> Self {
 		Self { tx, waker }
 	}
 

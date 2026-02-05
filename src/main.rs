@@ -187,8 +187,8 @@ fn main() {
 
 		let shutdown_wake = is_shutting_down.clone();
 		let suppress_wake = suppress_selection.clone();
-		let busy_wake = wake_busy.clone();
-		let reschedule_wake = wake_reschedule.clone();
+		let busy_wake = wake_busy;
+		let reschedule_wake = wake_reschedule;
 		let frame_wake = frame;
 		let timelines_selector_wake = timelines_selector;
 		let timeline_list_wake = timeline_list;
@@ -265,13 +265,13 @@ fn main() {
 		});
 
 		let refresh_timer = Rc::new(Timer::new(&frame));
-		let refresh_waker = ui_waker.clone();
+		let refresh_waker = ui_waker;
 		refresh_timer.on_tick(move |_| {
 			refresh_waker.wake();
 		});
 		refresh_timer.start(60_000, false);
-		let refresh_timer_keepalive = refresh_timer.clone();
-		let ui_alive_destroy = ui_alive.clone();
+		let refresh_timer_keepalive = refresh_timer;
+		let ui_alive_destroy = ui_alive;
 		frame.on_destroy(move |_| {
 			ui_alive_destroy.store(false, std::sync::atomic::Ordering::SeqCst);
 			refresh_timer_keepalive.stop();

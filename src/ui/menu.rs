@@ -44,7 +44,7 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_VIEW_HASHTAGS, "View &Hashtags\tCtrl+H", "View hashtags in selected post", ItemKind::Normal)
 		.expect("Failed to append view hashtags menu item");
 	post_menu
-		.append(ID_OPEN_LINKS, "Open &Links\tShift+Enter", "Open links in selected post", ItemKind::Normal)
+		.append(ID_OPEN_LINKS, "Open &Links\tAlt+Enter", "Open links in selected post", ItemKind::Normal)
 		.expect("Failed to append open links menu item");
 	post_menu
 		.append(
@@ -68,8 +68,14 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_DELETE_POST, "&Delete Post\tCtrl+Delete", "Delete selected post", ItemKind::Normal)
 		.expect("Failed to append delete post menu item");
 	post_menu.append_separator();
+	let vote_shortcut = "Ctrl+V";
 	post_menu
-		.append(crate::ID_VOTE, "&Vote", "Vote on poll in selected post...", ItemKind::Normal)
+		.append(
+			crate::ID_VOTE,
+			&format!("&Vote\t{vote_shortcut}"),
+			"Vote on poll in selected post...",
+			ItemKind::Normal,
+		)
 		.expect("Failed to append vote menu item");
 	post_menu
 		.append(ID_FAVORITE, "&Favorite\tCtrl+Shift+F", "Favorite or unfavorite selected post", ItemKind::Normal)
@@ -307,15 +313,23 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 			if let Some(f_pos) = fav_pos {
 				let vote_exists = post_menu.find_item(crate::ID_VOTE).is_some();
 				if has_poll && !vote_exists {
+					let shortcut = if state.config.quick_action_keys { "V" } else { "Ctrl+V" };
+					let label = format!("&Vote\t{shortcut}");
 					post_menu.insert(
 						f_pos,
 						crate::ID_VOTE,
-						"&Vote",
+						&label,
 						"Vote on poll in selected post...",
 						ItemKind::Normal,
 					);
 				} else if !has_poll && vote_exists {
 					post_menu.delete(crate::ID_VOTE);
+				} else if has_poll
+					&& vote_exists && let Some(vote_item) = post_menu.find_item(crate::ID_VOTE)
+				{
+					let shortcut = if state.config.quick_action_keys { "V" } else { "Ctrl+V" };
+					let label = format!("&Vote\t{shortcut}");
+					vote_item.set_label(&label);
 				}
 			}
 		}
