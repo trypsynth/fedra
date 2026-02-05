@@ -60,20 +60,17 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
 	loop {
-		match connect_and_stream(&url, &timeline_type, &sender) {
-			Ok(()) => {
-				// Receiver dropped or intentional shutdown.
+		if connect_and_stream(&url, &timeline_type, &sender) == Ok(()) {
+			// Receiver dropped or intentional shutdown.
+			break;
+		} else {
+			retry_count += 1;
+			if sender.send(StreamEvent::Disconnected(timeline_type.clone())).is_err() {
 				break;
 			}
-			Err(_) => {
-				retry_count += 1;
-				if sender.send(StreamEvent::Disconnected(timeline_type.clone())).is_err() {
-					break;
-				}
-				let exp = retry_count.saturating_sub(1).min(6);
-				let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
-				thread::sleep(delay);
-			}
+			let exp = retry_count.saturating_sub(1).min(6);
+			let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
+			thread::sleep(delay);
 		}
 	}
 }

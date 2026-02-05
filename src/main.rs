@@ -11,6 +11,7 @@ mod html;
 mod live_region;
 mod mastodon;
 mod network;
+mod notifications;
 mod responses;
 mod streaming;
 mod timeline;
@@ -64,6 +65,7 @@ pub(crate) struct AppState {
 	pub(crate) pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
+	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
 }
 
 impl AppState {
@@ -83,6 +85,7 @@ impl AppState {
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
+			app_shell: None,
 		}
 	}
 
@@ -170,7 +173,10 @@ fn main() {
 			live_region_label,
 			false,
 		);
-		let app_shell = ui::app_shell::install_app_shell(&frame, ui_tx.clone());
+		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
+		app_shell.clone().attach_destroy(&frame);
+		state.app_shell = Some(app_shell);
+
 		let timer = Rc::new(Timer::new(&frame));
 		let shutdown_timer = is_shutting_down.clone();
 		let suppress_timer = suppress_selection.clone();
@@ -209,7 +215,7 @@ fn main() {
 				&tray_hidden_drain,
 				&ui_tx_timer,
 			);
-			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer, &frame_timer);
+			process_stream_events(&mut state, &timeline_list_timer, &suppress_timer, &frame_timer, &ui_tx_timer);
 			process_network_responses(
 				&frame_timer,
 				&mut state,
@@ -254,7 +260,6 @@ fn main() {
 			sort_order_cell,
 			timer,
 		);
-		app_shell.attach_destroy(&frame);
 		frame.show(true);
 		frame.centre();
 	});

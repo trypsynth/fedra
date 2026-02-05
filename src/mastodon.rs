@@ -169,6 +169,27 @@ impl Status {
 		strip_html(&self.content)
 	}
 
+	pub fn simple_display(&self) -> String {
+		let mut out = String::new();
+		let content = self.content_with_cw(ContentWarningDisplay::Inline, true);
+		if !content.is_empty() {
+			out.push_str(&content);
+		}
+		if let Some(media) = self.media_summary() {
+			if !out.is_empty() {
+				out.push(' ');
+			}
+			out.push_str(&media);
+		}
+		if let Some(poll_text) = self.poll_summary() {
+			if !out.is_empty() {
+				out.push(' ');
+			}
+			out.push_str(&poll_text);
+		}
+		out
+	}
+
 	pub fn timeline_display(
 		&self,
 		timestamp_format: TimestampFormat,
@@ -373,6 +394,39 @@ pub struct StatusContext {
 }
 
 impl Notification {
+	pub fn simple_display(&self) -> String {
+		match self.kind.as_str() {
+			"mention" | "status" => {
+				self.status.as_ref().map_or_else(|| "No content".to_string(), |s| s.simple_display())
+			}
+			"reblog" => {
+				if let Some(status) = &self.status {
+					format!("boosted {}: {}", status.account.display_name_or_username(), status.simple_display())
+				} else {
+					"boosted a post".to_string()
+				}
+			}
+			"favourite" => {
+				if let Some(status) = &self.status {
+					format!("favorited {}: {}", status.account.display_name_or_username(), status.simple_display())
+				} else {
+					"favorited a post".to_string()
+				}
+			}
+			"follow" => "followed you".to_string(),
+			"follow_request" => "requested to follow you".to_string(),
+			"poll" => {
+				if let Some(status) = &self.status {
+					format!("Poll ended: {}", status.simple_display())
+				} else {
+					"Poll ended".to_string()
+				}
+			}
+			"update" => "edited a post".to_string(),
+			_ => self.kind.clone(),
+		}
+	}
+
 	pub fn timeline_display(
 		&self,
 		timestamp_format: TimestampFormat,

@@ -10,29 +10,28 @@ use wxdragon::prelude::*;
 use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand};
 
 #[cfg(target_os = "windows")]
-struct HotkeyHandle {
-	thread_id: u32,
-	join_handle: JoinHandle<()>,
+pub struct HotkeyHandle {
+	pub(crate) thread_id: u32,
+	pub(crate) join_handle: JoinHandle<()>,
 }
 
 pub struct AppShell {
-	tray_menu: Menu,
-	taskbar: TaskBarIcon,
+	pub(crate) tray_menu: RefCell<Option<Menu>>,
+	pub(crate) taskbar: TaskBarIcon,
 	#[cfg(target_os = "windows")]
-	hotkey_handle: Rc<RefCell<Option<HotkeyHandle>>>,
+	pub(crate) hotkey_handle: Rc<RefCell<Option<HotkeyHandle>>>,
 }
 
 impl AppShell {
-	pub fn attach_destroy(self, frame: &Frame) {
-		let mut tray_menu_cleanup = self.tray_menu;
-		let taskbar_cleanup = self.taskbar;
-		#[cfg(target_os = "windows")]
-		let hotkey_handle_destroy = self.hotkey_handle;
+	pub fn attach_destroy(self: Rc<Self>, frame: &Frame) {
+		let self_cleanup = self;
 		frame.on_destroy(move |_| {
-			tray_menu_cleanup.destroy_menu();
-			taskbar_cleanup.destroy();
+			if let Some(mut menu) = self_cleanup.tray_menu.borrow_mut().take() {
+				menu.destroy_menu();
+			}
+			self_cleanup.taskbar.destroy();
 			#[cfg(target_os = "windows")]
-			if let Some(handle) = hotkey_handle_destroy.borrow_mut().take() {
+			if let Some(handle) = self_cleanup.hotkey_handle.borrow_mut().take() {
 				use windows::Win32::{
 					Foundation::{LPARAM, WPARAM},
 					UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
@@ -76,7 +75,7 @@ pub fn install_app_shell(frame: &Frame, ui_tx: mpsc::Sender<UiCommand>) -> AppSh
 	#[cfg(target_os = "windows")]
 	let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx)));
 	AppShell {
-		tray_menu,
+		tray_menu: RefCell::new(Some(tray_menu)),
 		taskbar,
 		#[cfg(target_os = "windows")]
 		hotkey_handle,

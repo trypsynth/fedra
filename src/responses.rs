@@ -23,9 +23,12 @@ pub fn process_stream_events(
 	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	frame: &Frame,
+	_ui_tx: &mpsc::Sender<UiCommand>,
 ) {
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	let mut active_needs_update = false;
+	let mut processed_notification_ids = std::collections::HashSet::new();
+
 	for timeline in state.timeline_manager.iter_mut() {
 		let handle = match &timeline.stream_handle {
 			Some(h) => h,
@@ -63,6 +66,12 @@ pub fn process_stream_events(
 				}
 				streaming::StreamEvent::Notification { timeline_type, notification } => {
 					if timeline.timeline_type == timeline_type {
+						if !processed_notification_ids.contains(&notification.id) {
+							if let Some(app_shell) = &state.app_shell {
+								crate::notifications::show_notification(app_shell, &notification);
+							}
+							processed_notification_ids.insert(notification.id.clone());
+						}
 						timeline.entries.insert(0, TimelineEntry::Notification(*notification));
 						if is_active {
 							active_needs_update = true;

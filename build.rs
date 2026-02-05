@@ -40,7 +40,7 @@ fn embed_version_info() {
 	// let description = env::var("CARGO_PKG_DESCRIPTION").unwrap_or_default();
 	let mut res = WindowsResource::new();
 	res.set("ProductName", "Fedra")
-		.set("FileDescription", "Native Mastodon Client")
+		.set("FileDescription", "Fedra")
 		.set("LegalCopyright", "Copyright © 2026 Quin Gillespie")
 		.set("CompanyName", "Quin Gillespie")
 		.set("OriginalFilename", "fedra.exe")
