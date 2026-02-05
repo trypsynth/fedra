@@ -1101,7 +1101,10 @@ fn prompt_for_compose(
 	let timer = Timer::new(&dialog);
 	let title_prefix_timer = title_prefix.clone();
 	timer.on_tick(move |_| {
-		let text = content_text.get_value();
+		let mut text = content_text.get_value();
+		if let Some(pos) = text.find('\0') {
+			text.truncate(pos);
+		}
 		let char_count = text.chars().count();
 		dialog.set_label(&format!("{title_prefix_timer} - {char_count} of {max_chars} characters"));
 	});
@@ -1116,7 +1119,10 @@ fn prompt_for_compose(
 	if result != ID_OK {
 		return None;
 	}
-	let content = content_text.get_value();
+	let mut content = content_text.get_value();
+	if let Some(pos) = content.find('\0') {
+		content.truncate(pos);
+	}
 	let trimmed = content.trim();
 	let char_count = trimmed.chars().count();
 	if char_count > max_chars {
@@ -1130,7 +1136,10 @@ fn prompt_for_compose(
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
 	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
 	let spoiler_text = if cw_checkbox.get_value() {
-		let text = cw_text.get_value();
+		let mut text = cw_text.get_value();
+		if let Some(pos) = text.find('\0') {
+			text.truncate(pos);
+		}
 		let trimmed = text.trim();
 		if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
 	} else {
