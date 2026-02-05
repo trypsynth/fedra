@@ -550,6 +550,7 @@ pub fn handle_ui_command(
 				timestamp_format,
 				preserve_thread_order,
 				default_timelines,
+				notification_preference,
 			)) = dialogs::prompt_for_options(
 				frame,
 				state.config.enter_to_send,
@@ -562,6 +563,7 @@ pub fn handle_ui_command(
 				state.config.timestamp_format,
 				state.config.preserve_thread_order,
 				state.config.default_timelines.clone(),
+				state.config.notification_preference,
 			) {
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
@@ -574,6 +576,7 @@ pub fn handle_ui_command(
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
 				state.config.default_timelines = default_timelines;
+				state.config.notification_preference = notification_preference;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();
 				}

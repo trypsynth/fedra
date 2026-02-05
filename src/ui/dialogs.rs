@@ -708,6 +708,7 @@ pub fn prompt_for_options(
 	timestamp_format: TimestampFormat,
 	preserve_thread_order: bool,
 	default_timelines_val: Vec<DefaultTimeline>,
+	notification_preference: crate::config::NotificationPreference,
 ) -> Option<(
 	bool,
 	bool,
@@ -719,6 +720,7 @@ pub fn prompt_for_options(
 	TimestampFormat,
 	bool,
 	Vec<DefaultTimeline>,
+	crate::config::NotificationPreference,
 )> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 430).build();
 	let panel = Panel::builder(&dialog).build();
@@ -739,9 +741,25 @@ pub fn prompt_for_options(
 		CheckBox::builder(&general_panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
 
+	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
+	let notification_choices = vec!["Classic Windows Notifications".to_string(), "Disabled".to_string()];
+	let notification_choice = ComboBox::builder(&general_panel)
+		.with_choices(notification_choices)
+		.with_style(ComboBoxStyle::ReadOnly)
+		.build();
+	let notification_index = match notification_preference {
+		crate::config::NotificationPreference::Classic => 0,
+		crate::config::NotificationPreference::Disabled => 1,
+	};
+	notification_choice.set_selection(notification_index);
+	let notification_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	notification_sizer.add(&notification_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	notification_sizer.add(&notification_choice, 1, SizerFlag::Expand, 0);
+
 	general_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_stretch_spacer(1);
 	general_panel.set_sizer(general_sizer, true);
 	notebook.add_page(&general_panel, "General", true, None);
@@ -858,6 +876,11 @@ pub fn prompt_for_options(
 		_ => autoload,
 	};
 	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
+	let new_notification_preference = match notification_choice.get_selection() {
+		Some(0) => crate::config::NotificationPreference::Classic,
+		Some(1) => crate::config::NotificationPreference::Disabled,
+		_ => notification_preference,
+	};
 
 	Some((
 		enter_checkbox.get_value(),
@@ -870,6 +893,7 @@ pub fn prompt_for_options(
 		new_timestamp,
 		thread_order_checkbox.get_value(),
 		current_defaults.borrow().clone(),
+		new_notification_preference,
 	))
 }
 

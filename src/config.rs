@@ -36,6 +36,15 @@ pub struct Config {
 	pub preserve_thread_order: bool,
 	#[serde(default = "default_timelines")]
 	pub default_timelines: Vec<DefaultTimeline>,
+	#[serde(default)]
+	pub notification_preference: NotificationPreference,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum NotificationPreference {
+	#[default]
+	Classic,
+	Disabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,6 +160,7 @@ impl Default for Config {
 			content_warning_display: ContentWarningDisplay::default(),
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),
+			notification_preference: NotificationPreference::default(),
 		}
 	}
 }
