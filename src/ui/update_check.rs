@@ -1,4 +1,15 @@
-use std::{env, thread};
+use std::{
+	cell::RefCell,
+	env,
+	os::windows::process::CommandExt,
+	process::Command,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicU64, Ordering},
+	},
+	thread,
+	time::Duration,
+};
 
 use wxdragon::{prelude::*, window::WxWidget};
 use wxdragon_sys as ffi;
@@ -7,6 +18,10 @@ use crate::{
 	ui::dialogs,
 	update::{self, UpdateCheckOutcome, UpdateError},
 };
+
+thread_local! {
+	static ACTIVE_PROGRESS: RefCell<Option<ProgressDialog>> = const { RefCell::new(None) };
+}
 
 pub fn run_update_check(frame: Frame, silent: bool) {
 	let current_version = env!("CARGO_PKG_VERSION").to_string();
@@ -60,10 +75,65 @@ fn present_update_result(
 
 			if dialogs::show_update_dialog(&parent, &latest_version, &release_notes) && !result.download_url.is_empty()
 			{
-				let _ = wxdragon::utils::launch_default_browser(
-					&result.download_url,
-					wxdragon::utils::BrowserLaunchFlags::Default,
-				);
+				let download_url = result.download_url;
+				let progress = ProgressDialog::builder(&parent, "Fedra Update", "Downloading update...", 100)
+					.with_style(
+						ProgressDialogStyle::AutoHide
+							| ProgressDialogStyle::AppModal
+							| ProgressDialogStyle::RemainingTime,
+					)
+					.build();
+
+				ACTIVE_PROGRESS.with(|p| {
+					*p.borrow_mut() = Some(progress);
+				});
+
+				let downloaded = Arc::new(AtomicU64::new(0));
+				let total = Arc::new(AtomicU64::new(0));
+				let is_running = Arc::new(AtomicBool::new(true));
+
+				// Heartbeat thread to keep UI alive
+				let hb_downloaded = downloaded.clone();
+				let hb_total = total.clone();
+				let hb_is_running = is_running.clone();
+				thread::spawn(move || {
+					while hb_is_running.load(Ordering::Relaxed) {
+						let d = hb_downloaded.load(Ordering::Relaxed);
+						let t = hb_total.load(Ordering::Relaxed);
+						wxdragon::call_after(Box::new(move || {
+							ACTIVE_PROGRESS.with(|p| {
+								if let Some(dialog) = p.borrow().as_ref() {
+									if t > 0 {
+										let percent = (d * 100 / t) as i32;
+										dialog.update(percent, None);
+									} else {
+										dialog.pulse(None);
+									}
+								}
+							});
+						}));
+						thread::sleep(Duration::from_millis(200));
+					}
+				});
+
+				// Download thread
+				let d_downloaded = downloaded;
+				let d_total = total;
+				let d_is_running = is_running;
+				thread::spawn(move || {
+					let res = update::download_update_file(&download_url, |d, t| {
+						d_downloaded.store(d, Ordering::Relaxed);
+						d_total.store(t, Ordering::Relaxed);
+					});
+
+					d_is_running.store(false, Ordering::Relaxed);
+					wxdragon::call_after(Box::new(move || {
+						ACTIVE_PROGRESS.with(|p| {
+							*p.borrow_mut() = None;
+						});
+						execute_update(handle_addr, res);
+					}));
+				});
 			}
 		}
 		Ok(UpdateCheckOutcome::UpToDate(ver)) => {
@@ -82,6 +152,78 @@ fn present_update_result(
 					.build();
 				dialog.show_modal();
 			}
+		}
+	}
+}
+
+fn execute_update(handle_addr: usize, result: Result<std::path::PathBuf, UpdateError>) {
+	let handle = handle_addr as *mut ffi::wxd_Window_t;
+	let parent = ParentWindow { handle };
+
+	match result {
+		Ok(path) => {
+			let path_str = path.to_string_lossy();
+			if path_str.ends_with(".exe") {
+				if let Err(e) = Command::new(&path).spawn() {
+					let dlg = MessageDialog::builder(&parent, &format!("Failed to launch installer: {e}"), "Error")
+						.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+						.build();
+					dlg.show_modal();
+					return;
+				}
+				std::process::exit(0);
+			} else if path_str.ends_with(".zip") {
+				let current_exe = match std::env::current_exe() {
+					Ok(p) => p,
+					Err(e) => {
+						let dlg =
+							MessageDialog::builder(&parent, &format!("Failed to get current exe path: {e}"), "Error")
+								.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+								.build();
+						dlg.show_modal();
+						return;
+					}
+				};
+				let exe_dir = current_exe.parent().unwrap_or(&current_exe);
+
+				let pid = std::process::id();
+				let script = format!(
+					"Start-Sleep -Seconds 1; Wait-Process -Id {}; Expand-Archive -Path '{}' -DestinationPath '{}' -Force; Remove-Item -Path '{}' -Force; Start-Process '{}'",
+					pid,
+					path.display(),
+					exe_dir.display(),
+					path.display(),
+					current_exe.display()
+				);
+
+				if let Err(e) = Command::new("powershell.exe")
+					.arg("-NoProfile")
+					.arg("-ExecutionPolicy")
+					.arg("Bypass")
+					.arg("-Command")
+					.arg(&script)
+					.creation_flags(0x08000000) // CREATE_NO_WINDOW
+					.spawn()
+				{
+					let dlg = MessageDialog::builder(&parent, &format!("Failed to launch update script: {e}"), "Error")
+						.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+						.build();
+					dlg.show_modal();
+					return;
+				}
+				std::process::exit(0);
+			} else {
+				let dlg = MessageDialog::builder(&parent, "Unknown update file format.", "Error")
+					.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+					.build();
+				dlg.show_modal();
+			}
+		}
+		Err(e) => {
+			let dlg = MessageDialog::builder(&parent, &format!("Update failed: {e}"), "Error")
+				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+				.build();
+			dlg.show_modal();
 		}
 	}
 }

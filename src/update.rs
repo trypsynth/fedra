@@ -1,6 +1,8 @@
 use std::{
 	error::Error,
 	fmt::{Display, Formatter, Result as FmtResult},
+	fs::File,
+	io::Read,
 };
 
 use serde::Deserialize;
@@ -55,6 +57,57 @@ impl Display for UpdateError {
 }
 
 impl Error for UpdateError {}
+
+pub fn download_update_file(
+	url: &str,
+	mut progress_callback: impl FnMut(u64, u64),
+) -> Result<std::path::PathBuf, UpdateError> {
+	let client = reqwest::blocking::Client::builder()
+		.connect_timeout(std::time::Duration::from_secs(30))
+		.timeout(std::time::Duration::from_secs(600))
+		.build()
+		.map_err(|e| UpdateError::NetworkError(e.to_string()))?;
+
+	let mut response = client.get(url).send().map_err(|e| UpdateError::NetworkError(e.to_string()))?;
+
+	if !response.status().is_success() {
+		return Err(UpdateError::HttpError(response.status()));
+	}
+
+	let total_size = response.content_length().unwrap_or(0);
+	let fname = url.rsplit('/').next().unwrap_or("update.bin");
+	let mut dest_path = if fname.ends_with(".exe") {
+		std::env::temp_dir()
+	} else if fname.ends_with(".zip") {
+		std::env::current_exe()
+			.map_err(|e| UpdateError::NoDownload(format!("Failed to determine exe path: {e}")))?
+			.parent()
+			.ok_or_else(|| UpdateError::NoDownload("Failed to get exe directory".to_string()))?
+			.to_path_buf()
+	} else {
+		std::env::temp_dir()
+	};
+
+	dest_path.push(fname);
+
+	let mut file =
+		File::create(&dest_path).map_err(|e| UpdateError::NoDownload(format!("Failed to create file: {e}")))?;
+
+	let mut downloaded: u64 = 0;
+	let mut buffer = [0; 8192];
+	loop {
+		let n = response.read(&mut buffer).map_err(|e| UpdateError::NetworkError(e.to_string()))?;
+		if n == 0 {
+			break;
+		}
+		std::io::Write::write_all(&mut file, &buffer[..n])
+			.map_err(|e| UpdateError::NoDownload(format!("Failed to write to file: {e}")))?;
+		downloaded += n as u64;
+		progress_callback(downloaded, total_size);
+	}
+
+	Ok(dest_path)
+}
 
 fn parse_semver_value(value: &str) -> Option<(u64, u64, u64)> {
 	let trimmed = value.trim();
