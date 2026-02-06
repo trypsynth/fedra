@@ -6,7 +6,6 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, UiCommand, auth,
 	config::{Account, ConfigStore},
-	live_region,
 	mastodon::MastodonClient,
 	network::{self, NetworkCommand},
 	streaming,

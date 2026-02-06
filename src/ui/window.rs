@@ -9,7 +9,6 @@ use crate::{
 	ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS,
 	ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
-	live_region,
 	ui::menu::build_menu_bar,
 	ui_wake::UiCommandSender,
 };

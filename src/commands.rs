@@ -11,7 +11,7 @@ use crate::{
 	accounts::{start_add_account_flow, start_streaming_for_timeline, switch_to_account, try_oob_oauth},
 	auth,
 	config::{self, Account, AutoloadMode, ContentWarningDisplay, SortOrder},
-	html, live_region,
+	html,
 	mastodon::{MastodonClient, Status},
 	network::{self, NetworkCommand},
 	timeline::{TimelineEntry, TimelineType},

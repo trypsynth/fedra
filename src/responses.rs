@@ -5,7 +5,6 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, UiCommand,
 	config::{AutoloadMode, SortOrder},
-	live_region,
 	mastodon::{Poll, Status},
 	network::{NetworkCommand, NetworkResponse, TimelineData},
 	streaming,

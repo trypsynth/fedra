@@ -8,7 +8,6 @@ mod auth;
 mod commands;
 mod config;
 mod html;
-mod live_region;
 mod mastodon;
 mod network;
 mod notifications;

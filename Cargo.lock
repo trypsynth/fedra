@@ -414,6 +414,7 @@ dependencies = [
  "chrono-humanize",
  "ego-tree",
  "embed-manifest",
+ "live-region",
  "reqwest 0.13.1",
  "scraper",
  "serde",
@@ -982,6 +983,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
+name = "live-region"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "215e1a0260684d4eb81c28abdfd38bdeba4840a68698b81a533893f1b66238c2"
+dependencies = [
+ "windows",
+ "wxdragon",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,9 +1452,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.2"
+version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843bc0191f75f3e22651ae5f1e72939ab2f72a4bc30fa80a066bd66edefc24d4"
+checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1453,9 +1464,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
+checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1464,9 +1475,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
+checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 
 [[package]]
 name = "reqwest"
@@ -2445,9 +2456,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bed680863276c63889429bfd6cab3b99943659923822de1c8a39c49e4d722c"
+checksum = "22cfaf3c063993ff62e73cb4311efde4db1efb31ab78a3e5c457939ad5cc0bed"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -2827,8 +2838,9 @@ checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
 
 [[package]]
 name = "wxdragon"
-version = "0.9.8"
-source = "git+https://github.com/aryanchoudharypro/wxDragon?branch=main#37ee30f4c4ca4395cec8c02c564ec9d26db1ca1e"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb80cd4e57c0a2f23f37b7779e41e5676bda1d9bca9a845a08c397fff832f4bf"
 dependencies = [
  "bitflags",
  "log",
@@ -2839,8 +2851,9 @@ dependencies = [
 
 [[package]]
 name = "wxdragon-macros"
-version = "0.9.8"
-source = "git+https://github.com/aryanchoudharypro/wxDragon?branch=main#37ee30f4c4ca4395cec8c02c564ec9d26db1ca1e"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72aaaccb5bcf85739aa87e1da4ea1c71f64c18dfa67c82d1124a25b54a855ae8"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -2850,8 +2863,9 @@ dependencies = [
 
 [[package]]
 name = "wxdragon-sys"
-version = "0.9.8"
-source = "git+https://github.com/aryanchoudharypro/wxDragon?branch=main#37ee30f4c4ca4395cec8c02c564ec9d26db1ca1e"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97c3ddd385ec6a051862fd57508c67a708f515bc1bd4922c157e009ae71e8aed"
 dependencies = [
  "bindgen",
  "cmake",
