@@ -226,10 +226,36 @@ impl Default for ConfigStore {
 }
 
 fn config_path() -> PathBuf {
-	if let Ok(appdata) = env::var("APPDATA") {
-		return PathBuf::from(appdata).join(APP_NAME).join(CONFIG_FILENAME);
+	let exe_dir = env::current_exe()
+		.ok()
+		.and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+		.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+	if is_installed(&exe_dir) {
+		if let Ok(appdata) = env::var("APPDATA") {
+			return PathBuf::from(appdata).join(APP_NAME).join(CONFIG_FILENAME);
+		}
 	}
-	env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(CONFIG_FILENAME)
+	exe_dir.join(CONFIG_FILENAME)
+}
+
+fn is_installed(exe_dir: &PathBuf) -> bool {
+	let Ok(entries) = fs::read_dir(exe_dir) else {
+		return false;
+	};
+	for entry in entries.flatten() {
+		let path = entry.path();
+		if !path.is_file() {
+			continue;
+		}
+		let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+			continue;
+		};
+		let name = name.to_ascii_lowercase();
+		if name.starts_with("unins") && name.ends_with(".exe") {
+			return true;
+		}
+	}
+	false
 }
 
 fn new_account_id() -> String {
