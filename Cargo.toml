@@ -7,7 +7,7 @@ edition = "2024"
 members = ["xtask"]
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.101"
 chrono = "0.4.43"
 chrono-humanize = "0.2.3"
 ego-tree = "0.10.0"
