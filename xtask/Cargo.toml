@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 walkdir = "2.5.0"
-zip = { version = "7.3.0", default-features = false, features = ["deflate"] }
+zip = { version = "7.4.0", default-features = false, features = ["deflate"] }
