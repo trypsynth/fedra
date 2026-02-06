@@ -656,9 +656,16 @@ pub fn handle_ui_command(
 			if state.config.active_account_id.as_ref() == Some(&id) {
 				return;
 			}
-			state.config.active_account_id = Some(id);
-			let _ = config::ConfigStore::new().save(&state.config);
-			switch_to_account(state, frame, timelines_selector, timeline_list, suppress_selection, live_region, true);
+			switch_to_account(
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+				true,
+				Some(id),
+			);
 		}
 		UiCommand::SwitchNextAccount => {
 			if state.config.accounts.len() <= 1 {
@@ -765,12 +772,12 @@ pub fn handle_ui_command(
 		UiCommand::RemoveAccount(id) => {
 			let is_active = state.config.active_account_id.as_ref() == Some(&id);
 			state.config.accounts.retain(|a| a.id != id);
+			state.account_timelines.remove(&id);
+			state.account_cw_expanded.remove(&id);
+
 			if is_active {
-				state.config.active_account_id = state.config.accounts.first().map(|a| a.id.clone());
-			}
-			let _ = config::ConfigStore::new().save(&state.config);
-			if is_active {
-				if state.config.accounts.is_empty() {
+				let next_id = state.config.accounts.first().map(|a| a.id.clone());
+				if next_id.is_none() {
 					if !start_add_account_flow(frame, ui_tx, state) {
 						frame.close(true);
 						return;
@@ -786,7 +793,10 @@ pub fn handle_ui_command(
 					suppress_selection,
 					live_region,
 					true,
+					next_id,
 				);
+			} else {
+				let _ = config::ConfigStore::new().save(&state.config);
 			}
 		}
 		UiCommand::OAuthResult { result, instance_url } => {

@@ -228,12 +228,12 @@ impl Default for ConfigStore {
 fn config_path() -> PathBuf {
 	let exe_dir = env::current_exe()
 		.ok()
-		.and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+		.and_then(|path| path.parent().map(std::path::Path::to_path_buf))
 		.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-	if is_installed(&exe_dir) {
-		if let Ok(appdata) = env::var("APPDATA") {
-			return PathBuf::from(appdata).join(APP_NAME).join(CONFIG_FILENAME);
-		}
+	if is_installed(&exe_dir)
+		&& let Ok(appdata) = env::var("APPDATA")
+	{
+		return PathBuf::from(appdata).join(APP_NAME).join(CONFIG_FILENAME);
 	}
 	exe_dir.join(CONFIG_FILENAME)
 }

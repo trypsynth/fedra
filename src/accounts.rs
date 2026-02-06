@@ -9,8 +9,12 @@ use crate::{
 	mastodon::MastodonClient,
 	network::{self, NetworkCommand},
 	streaming,
-	timeline::{TimelineManager, TimelineType},
-	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
+	timeline::TimelineType,
+	ui::{
+		dialogs,
+		menu::update_menu_labels,
+		timeline_view::{update_active_timeline_ui, with_suppressed_selection},
+	},
 	ui_wake::UiCommandSender,
 };
 
@@ -91,13 +95,33 @@ pub fn switch_to_account(
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	should_announce: bool,
+	new_account_id: Option<String>,
 ) {
-	for timeline in state.timeline_manager.iter_mut() {
-		timeline.stream_handle = None;
+	if let Some(new_id) = new_account_id {
+		if let Some(old_id) = state.config.active_account_id.clone() {
+			for timeline in state.timeline_manager.iter_mut() {
+				timeline.stream_handle = None;
+			}
+			state.account_timelines.insert(old_id.clone(), std::mem::take(&mut state.timeline_manager));
+			state.account_cw_expanded.insert(old_id, std::mem::take(&mut state.cw_expanded));
+		}
+		state.config.active_account_id = Some(new_id);
+		let _ = ConfigStore::new().save(&state.config);
 	}
+
 	state.network_handle = None;
-	state.timeline_manager = TimelineManager::new();
-	state.cw_expanded.clear();
+	let active_id =
+		state.config.active_account_id.clone().or_else(|| state.config.accounts.first().map(|a| a.id.clone()));
+
+	if let Some(id) = &active_id {
+		if let Some(mgr) = state.account_timelines.remove(id) {
+			state.timeline_manager = mgr;
+		}
+		if let Some(cw) = state.account_cw_expanded.remove(id) {
+			state.cw_expanded = cw;
+		}
+	}
+
 	let Some((url, token)) = state.active_account().and_then(|a| {
 		let url = Url::parse(&a.instance).ok()?;
 		let token = a.access_token.clone()?;
@@ -131,27 +155,11 @@ pub fn switch_to_account(
 			state.current_user_id = active.user_id.clone();
 		}
 	}
-	state.timeline_manager.open(TimelineType::Home);
-	state.timeline_manager.open(TimelineType::Notifications);
-	let default_timelines = state.config.default_timelines.clone();
-	for default in &default_timelines {
-		let timeline_type = match default {
-			crate::config::DefaultTimeline::Local => TimelineType::Local,
-			crate::config::DefaultTimeline::Federated => TimelineType::Federated,
-			crate::config::DefaultTimeline::Direct => TimelineType::Direct,
-			crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
-			crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
-		};
-		state.timeline_manager.open(timeline_type);
-	}
 
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchTimeline { timeline_type: TimelineType::Home, limit: Some(40), max_id: None });
-		handle.send(NetworkCommand::FetchTimeline {
-			timeline_type: TimelineType::Notifications,
-			limit: Some(40),
-			max_id: None,
-		});
+	if state.timeline_manager.len() == 0 {
+		state.timeline_manager.open(TimelineType::Home);
+		state.timeline_manager.open(TimelineType::Notifications);
+		let default_timelines = state.config.default_timelines.clone();
 		for default in &default_timelines {
 			let timeline_type = match default {
 				crate::config::DefaultTimeline::Local => TimelineType::Local,
@@ -160,28 +168,60 @@ pub fn switch_to_account(
 				crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 				crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
 			};
-			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+			state.timeline_manager.open(timeline_type);
+		}
+
+		if let Some(handle) = &state.network_handle {
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type: TimelineType::Home,
+				limit: Some(40),
+				max_id: None,
+			});
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type: TimelineType::Notifications,
+				limit: Some(40),
+				max_id: None,
+			});
+			for default in &default_timelines {
+				let timeline_type = match default {
+					crate::config::DefaultTimeline::Local => TimelineType::Local,
+					crate::config::DefaultTimeline::Federated => TimelineType::Federated,
+					crate::config::DefaultTimeline::Direct => TimelineType::Direct,
+					crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
+					crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+				};
+				handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+			}
 		}
 	}
-	start_streaming_for_timeline(state, &TimelineType::Home);
-	start_streaming_for_timeline(state, &TimelineType::Notifications);
-	for default in &default_timelines {
-		let timeline_type = match default {
-			crate::config::DefaultTimeline::Local => TimelineType::Local,
-			crate::config::DefaultTimeline::Federated => TimelineType::Federated,
-			crate::config::DefaultTimeline::Direct => TimelineType::Direct,
-			crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
-			crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
-		};
-		start_streaming_for_timeline(state, &timeline_type);
+
+	let timeline_types: Vec<TimelineType> =
+		state.timeline_manager.iter_mut().map(|t| t.timeline_type.clone()).collect();
+	for tt in timeline_types {
+		start_streaming_for_timeline(state, &tt);
 	}
+
 	timelines_selector.clear();
 	for name in state.timeline_manager.display_names() {
 		timelines_selector.append(&name);
 	}
-	timelines_selector.set_selection(0_u32, true);
+	let active_index = state.timeline_manager.active_index();
+	timelines_selector.set_selection(active_index as u32, true);
+
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
+		if let Some(active) = state.timeline_manager.active_mut() {
+			update_active_timeline_ui(
+				&timeline_list,
+				active,
+				suppress_selection,
+				state.config.sort_order,
+				state.config.timestamp_format,
+				state.config.content_warning_display,
+				&state.cw_expanded,
+				state.config.preserve_thread_order,
+			);
+		}
 	});
 	let (handle, title) = state.active_account().map_or_else(
 		|| ("Unknown".to_string(), "Fedra".to_string()),

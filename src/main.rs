@@ -19,7 +19,7 @@ mod ui_wake;
 
 use std::{
 	cell::Cell,
-	collections::HashSet,
+	collections::{HashMap, HashSet},
 	rc::Rc,
 	sync::mpsc,
 	time::{Duration, Instant},
@@ -54,6 +54,8 @@ use crate::{
 pub(crate) struct AppState {
 	pub(crate) config: Config,
 	pub(crate) timeline_manager: TimelineManager,
+	pub(crate) account_timelines: HashMap<String, TimelineManager>,
+	pub(crate) account_cw_expanded: HashMap<String, HashSet<String>>,
 	pub(crate) network_handle: Option<NetworkHandle>,
 	pub(crate) streaming_url: Option<url::Url>,
 	pub(crate) access_token: Option<String>,
@@ -75,6 +77,8 @@ impl AppState {
 		Self {
 			config,
 			timeline_manager: TimelineManager::new(),
+			account_timelines: HashMap::new(),
+			account_cw_expanded: HashMap::new(),
 			network_handle: None,
 			streaming_url: None,
 			access_token: None,
@@ -179,6 +183,7 @@ fn main() {
 			&suppress_selection,
 			live_region_label,
 			false,
+			None,
 		);
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
 		app_shell.clone().attach_destroy(&frame);
