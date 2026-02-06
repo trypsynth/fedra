@@ -65,9 +65,7 @@ fn target_profile_dir() -> Option<PathBuf> {
 }
 
 fn build_docs() {
-	let target_dir = if let Some(dir) = target_profile_dir() {
-		dir
-	} else {
+	let Some(target_dir) = target_profile_dir() else {
 		println!("cargo:warning=Could not determine target directory for docs.");
 		return;
 	};
@@ -95,10 +93,7 @@ fn build_docs() {
 }
 
 fn configure_installer() {
-	let target_dir = match target_profile_dir() {
-		Some(dir) => dir,
-		None => return,
-	};
+	let Some(target_dir) = target_profile_dir() else { return };
 	let input_path = PathBuf::from("fedra.iss.in");
 	if !input_path.exists() {
 		return;

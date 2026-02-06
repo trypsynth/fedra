@@ -5,5 +5,5 @@ pub fn show_notification(app_shell: &crate::ui::app_shell::AppShell, notificatio
 	let body = notification.simple_display();
 
 	// wxICON_INFORMATION = 0x00000002
-	app_shell.taskbar.show_balloon(title, &body, 5000, 0x00000002, None);
+	app_shell.taskbar.show_balloon(title, &body, 5000, 0x0000_0002, None);
 }

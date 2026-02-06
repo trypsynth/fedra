@@ -61,7 +61,7 @@ impl DefaultTimeline {
 		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites]
 	}
 
-	pub const fn display_name(&self) -> &'static str {
+	pub const fn display_name(self) -> &'static str {
 		match self {
 			Self::Local => "Local",
 			Self::Federated => "Federated",

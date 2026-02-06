@@ -77,15 +77,14 @@ fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEv
 		if connect_and_stream(&url, &timeline_type, &sender, &ui_waker) == Ok(()) {
 			// Receiver dropped or intentional shutdown.
 			break;
-		} else {
-			retry_count += 1;
-			if !send_event(&sender, &ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
-				break;
-			}
-			let exp = retry_count.saturating_sub(1).min(6);
-			let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
-			thread::sleep(delay);
 		}
+		retry_count += 1;
+		if !send_event(&sender, &ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
+			break;
+		}
+		let exp = retry_count.saturating_sub(1).min(6);
+		let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
+		thread::sleep(delay);
 	}
 }
 
