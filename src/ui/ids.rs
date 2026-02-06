@@ -55,6 +55,7 @@ define_ids! {
 	ID_TRAY_EXIT,
 	// Help
 	ID_VIEW_HELP,
+	ID_CHECK_FOR_UPDATES,
 	ID_SEARCH,
 	// Internal
 	ID_UI_WAKE,

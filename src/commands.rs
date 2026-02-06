@@ -89,6 +89,7 @@ pub enum UiCommand {
 	EditProfile,
 	ViewHelp,
 	Search,
+	CheckForUpdates,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -543,6 +544,7 @@ pub fn handle_ui_command(
 				enter_to_send,
 				always_show_link_dialog,
 				quick_action_keys,
+				check_for_updates,
 				autoload,
 				fetch_limit,
 				content_warning_display,
@@ -556,6 +558,7 @@ pub fn handle_ui_command(
 				state.config.enter_to_send,
 				state.config.always_show_link_dialog,
 				state.config.quick_action_keys,
+				state.config.check_for_updates_on_startup,
 				state.config.autoload,
 				state.config.fetch_limit,
 				state.config.content_warning_display,
@@ -572,6 +575,7 @@ pub fn handle_ui_command(
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
+				state.config.check_for_updates_on_startup = check_for_updates;
 				state.config.autoload = autoload;
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
@@ -1390,6 +1394,9 @@ pub fn handle_ui_command(
 					handle.send(NetworkCommand::Search { query, search_type, limit: Some(40), offset: None });
 				}
 			}
+		}
+		UiCommand::CheckForUpdates => {
+			crate::ui::update_check::run_update_check(*frame, false);
 		}
 	}
 }

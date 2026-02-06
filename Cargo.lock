@@ -415,6 +415,7 @@ dependencies = [
  "ego-tree",
  "embed-manifest",
  "live-region",
+ "pulldown-cmark",
  "reqwest 0.13.1",
  "scraper",
  "serde",
@@ -424,6 +425,7 @@ dependencies = [
  "windows",
  "winres",
  "wxdragon",
+ "wxdragon-sys",
 ]
 
 [[package]]
@@ -1325,6 +1327,24 @@ checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "quick-xml"

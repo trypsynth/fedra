@@ -701,6 +701,7 @@ pub fn prompt_for_options(
 	enter_to_send: bool,
 	always_show_link_dialog: bool,
 	quick_action_keys: bool,
+	check_for_updates: bool,
 	autoload: AutoloadMode,
 	fetch_limit: u8,
 	content_warning_display: ContentWarningDisplay,
@@ -713,6 +714,7 @@ pub fn prompt_for_options(
 	bool,
 	bool,
 	bool,
+	bool,
 	AutoloadMode,
 	u8,
 	ContentWarningDisplay,
@@ -722,7 +724,7 @@ pub fn prompt_for_options(
 	Vec<DefaultTimeline>,
 	crate::config::NotificationPreference,
 )> {
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 430).build();
+	let dialog = Dialog::builder(frame, "Options").with_size(400, 460).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
@@ -740,6 +742,8 @@ pub fn prompt_for_options(
 	let quick_action_checkbox =
 		CheckBox::builder(&general_panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
+	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
+	update_checkbox.set_value(check_for_updates);
 
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
 	let notification_choices = vec!["Classic Windows Notifications".to_string(), "Disabled".to_string()];
@@ -759,6 +763,7 @@ pub fn prompt_for_options(
 	general_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_stretch_spacer(1);
 	general_panel.set_sizer(general_sizer, true);
@@ -886,6 +891,7 @@ pub fn prompt_for_options(
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
 		quick_action_checkbox.get_value(),
+		update_checkbox.get_value(),
 		new_autoload,
 		new_fetch_limit,
 		new_cw_display,
@@ -2490,4 +2496,41 @@ pub fn prompt_for_profile_edit(frame: &Frame, current: &MastodonAccount) -> Opti
 		fields_attributes: Some(fields_attributes),
 		source,
 	})
+}
+
+pub fn show_update_dialog(parent: &dyn WxWidget, new_version: &str, changelog: &str) -> bool {
+	let padding = 10;
+	let dialog_title = format!("Update to {new_version}");
+	let dialog = Dialog::builder(parent, &dialog_title).build();
+	let message =
+		StaticText::builder(&dialog).with_label("A new version of Fedra is available. Here's what's new:").build();
+	let changelog_ctrl = TextCtrl::builder(&dialog)
+		.with_value(changelog)
+		.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly | TextCtrlStyle::Rich2)
+		.with_size(Size::new(500, 300))
+		.build();
+	let yes_button = Button::builder(&dialog).with_id(ID_OK).with_label("Yes").build();
+	let no_button = Button::builder(&dialog).with_id(ID_CANCEL).with_label("No").build();
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.set_affirmative_id(ID_OK);
+
+	let content_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	content_sizer.add(&message, 0, SizerFlag::All, padding);
+	content_sizer.add(
+		&changelog_ctrl,
+		1,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		padding,
+	);
+
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&yes_button, 0, SizerFlag::Right, padding);
+	button_sizer.add(&no_button, 0, SizerFlag::Right, padding);
+
+	content_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 0);
+	dialog.set_sizer_and_fit(content_sizer, true);
+	dialog.centre();
+	changelog_ctrl.set_focus();
+	dialog.show_modal() == ID_OK
 }

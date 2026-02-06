@@ -38,6 +38,8 @@ pub struct Config {
 	pub default_timelines: Vec<DefaultTimeline>,
 	#[serde(default)]
 	pub notification_preference: NotificationPreference,
+	#[serde(default = "default_check_for_updates")]
+	pub check_for_updates_on_startup: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -118,6 +120,10 @@ const fn default_preserve_thread_order() -> bool {
 	true
 }
 
+const fn default_check_for_updates() -> bool {
+	true
+}
+
 fn default_timelines() -> Vec<DefaultTimeline> {
 	vec![DefaultTimeline::Local, DefaultTimeline::Direct]
 }
@@ -161,6 +167,7 @@ impl Default for Config {
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),
+			check_for_updates_on_startup: true,
 		}
 	}
 }

@@ -13,9 +13,11 @@ mod network;
 mod notifications;
 mod responses;
 mod streaming;
+mod text;
 mod timeline;
 mod ui;
 mod ui_wake;
+mod update;
 
 use std::{
 	cell::Cell,
@@ -28,12 +30,12 @@ use std::{
 use wxdragon::prelude::*;
 
 pub(crate) use crate::ui::ids::{
-	ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST, ID_DIRECT_TIMELINE,
-	ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
-	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
-	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TRAY_EXIT, ID_TRAY_TOGGLE, ID_UI_WAKE, ID_VIEW_BOOSTS,
-	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, KEY_DELETE,
+	ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST,
+	ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE,
+	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TRAY_EXIT,
+	ID_TRAY_TOGGLE, ID_UI_WAKE, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
+	ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, KEY_DELETE,
 };
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
@@ -188,6 +190,10 @@ fn main() {
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
 		app_shell.clone().attach_destroy(&frame);
 		state.app_shell = Some(app_shell);
+
+		if state.config.check_for_updates_on_startup {
+			crate::ui::update_check::run_update_check(frame, true);
+		}
 
 		let shutdown_wake = is_shutting_down.clone();
 		let suppress_wake = suppress_selection.clone();
