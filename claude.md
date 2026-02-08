@@ -176,6 +176,7 @@ Configured in `rustfmt.toml`:
 | Ctrl+Shift+R | Reply to author only |
 | Ctrl+Shift+F | Favorite/Unfavorite selected post |
 | Ctrl+Shift+B | Boost/Unboost selected post |
+| Delete | Delete selected post |
 | Ctrl+P | View profile of selected post's author |
 | Ctrl+T | Open timeline of selected post's author |
 | Ctrl+U | Open user by username (profile or timeline) |

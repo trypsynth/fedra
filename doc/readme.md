@@ -44,7 +44,7 @@ Fedra's user interface was designed specifically with keyboard and screen reader
 * Shift + Enter: open links in the selected post.
 * Enter: view the conversation thread for the selected post.
 * Ctrl + E: edit the selected post.
-* Ctrl + Delete: delete the selected post.
+* Delete: delete the selected post.
 * Ctrl + Shift + F: favorite or unfavorite the selected post.
 * Ctrl + Shift + B: boost or unboost the selected post.
 * Ctrl + X: toggle content warning expansion for the selected post.
@@ -65,7 +65,6 @@ When enabled (toggle on with Ctrl + Shift + Q), many multi-key shortcuts are rep
 * Ctrl + R: reply to the author of the selected post only (replaces Ctrl + Shift + R).
 * f: favorite or unfavorite (replaces Ctrl + Shift + F).
 * b: boost or unboost (replaces Ctrl + Shift + B).
-* d: delete post (replaces Ctrl + Delete).
 * e: edit post (replaces Ctrl + E).
 * m: view mentions (replaces Ctrl + M).
 * p: view profile (replaces Ctrl + P).

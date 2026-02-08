@@ -145,6 +145,12 @@ pub fn bind_input_handlers(
 			// Navigation keys (always active)
 			if !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
+					KEY_DELETE => {
+						// Delete
+						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
+						event.skip(false);
+						return;
+					}
 					8 => {
 						// Backspace
 						let _ = ui_tx_list_key.send(UiCommand::GoBack);
@@ -262,12 +268,6 @@ pub fn bind_input_handlers(
 						event.skip(false);
 						return;
 					}
-					KEY_DELETE => {
-						// Delete
-						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
-						event.skip(false);
-						return;
-					}
 					_ => {}
 				}
 			}
@@ -301,12 +301,6 @@ pub fn bind_input_handlers(
 					67 => {
 						// c
 						let _ = ui_tx_list_key.send(UiCommand::NewPost);
-						event.skip(false);
-						return;
-					}
-					68 => {
-						// d
-						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
 						event.skip(false);
 						return;
 					}
