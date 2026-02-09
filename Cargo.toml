@@ -12,7 +12,7 @@ anyhow = "1.0.101"
 chrono = "0.4.43"
 chrono-humanize = "0.2.3"
 ego-tree = "0.10.0"
-live-region = "0.1.2"
+live-region = "0.1.3"
 pulldown-cmark = { version = "0.13.0", default-features = false, features = ["html"] }
 reqwest = { version = "0.13.2", features = ["blocking", "form", "json", "multipart", "rustls"] }
 scraper = "0.25.0"
