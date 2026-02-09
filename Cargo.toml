@@ -20,7 +20,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tungstenite = { version = "0.28.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
-wxdragon = "0.9.9"
+wxdragon = { version = "0.9.9", features = ["media-ctrl"] }
 wxdragon-sys = "0.9.9"
 
 [target.'cfg(windows)'.dependencies]

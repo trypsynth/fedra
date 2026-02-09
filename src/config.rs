@@ -46,6 +46,7 @@ pub struct Config {
 pub enum NotificationPreference {
 	#[default]
 	Classic,
+	SoundOnly,
 	Disabled,
 }
 

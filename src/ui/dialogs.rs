@@ -746,14 +746,16 @@ pub fn prompt_for_options(
 	update_checkbox.set_value(check_for_updates);
 
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
-	let notification_choices = vec!["Classic Windows Notifications".to_string(), "Disabled".to_string()];
+	let notification_choices =
+		vec!["Classic Windows Notifications".to_string(), "Sound only".to_string(), "Disabled".to_string()];
 	let notification_choice = ComboBox::builder(&general_panel)
 		.with_choices(notification_choices)
 		.with_style(ComboBoxStyle::ReadOnly)
 		.build();
 	let notification_index = match notification_preference {
 		crate::config::NotificationPreference::Classic => 0,
-		crate::config::NotificationPreference::Disabled => 1,
+		crate::config::NotificationPreference::SoundOnly => 1,
+		crate::config::NotificationPreference::Disabled => 2,
 	};
 	notification_choice.set_selection(notification_index);
 	let notification_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -883,7 +885,8 @@ pub fn prompt_for_options(
 	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
 	let new_notification_preference = match notification_choice.get_selection() {
 		Some(0) => crate::config::NotificationPreference::Classic,
-		Some(1) => crate::config::NotificationPreference::Disabled,
+		Some(1) => crate::config::NotificationPreference::SoundOnly,
+		Some(2) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
 

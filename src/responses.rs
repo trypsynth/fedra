@@ -66,11 +66,20 @@ pub fn process_stream_events(
 				streaming::StreamEvent::Notification { timeline_type, notification } => {
 					if timeline.timeline_type == timeline_type {
 						if !processed_notification_ids.contains(&notification.id) {
-							if let Some(app_shell) = &state.app_shell
-								&& state.config.notification_preference
-									!= crate::config::NotificationPreference::Disabled
-							{
-								crate::notifications::show_notification(app_shell, &notification);
+							let pref = state.config.notification_preference;
+							match pref {
+								crate::config::NotificationPreference::Classic => {
+									if let Some(app_shell) = &state.app_shell {
+										crate::notifications::show_notification(app_shell, &notification);
+									}
+								}
+								crate::config::NotificationPreference::SoundOnly => {
+									if let Some(mc) = &state.media_ctrl {
+										mc.stop();
+										mc.play();
+									}
+								}
+								crate::config::NotificationPreference::Disabled => {}
 							}
 							processed_notification_ids.insert(notification.id.clone());
 						}

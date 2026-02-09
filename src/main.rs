@@ -71,6 +71,7 @@ pub(crate) struct AppState {
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
+	pub(crate) media_ctrl: Option<MediaCtrl>,
 	pub(crate) ui_waker: UiWaker,
 }
 
@@ -94,6 +95,7 @@ impl AppState {
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
 			app_shell: None,
+			media_ctrl: None,
 			ui_waker,
 		}
 	}
@@ -113,6 +115,13 @@ impl AppState {
 			self.config.accounts.first_mut()
 		}
 	}
+}
+
+pub fn get_sound_path() -> std::path::PathBuf {
+	std::env::current_exe()
+		.ok()
+		.and_then(|path| path.parent().map(|p| p.join("sounds").join("boop.mp3")))
+		.unwrap_or_else(|| std::path::PathBuf::from("sounds/boop.mp3"))
 }
 
 fn drain_ui_commands(
@@ -169,6 +178,13 @@ fn main() {
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let mut state = AppState::new(config, ui_waker.clone());
+
+		let mc = MediaCtrl::builder(&frame).with_size(Size::new(0, 0)).build();
+		let sound_path = get_sound_path();
+		if sound_path.exists() {
+			mc.load(&sound_path.to_string_lossy());
+		}
+		state.media_ctrl = Some(mc);
 
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
