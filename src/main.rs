@@ -101,11 +101,10 @@ impl AppState {
 	}
 
 	pub(crate) fn active_account(&self) -> Option<&config::Account> {
-		if let Some(id) = &self.config.active_account_id {
-			self.config.accounts.iter().find(|a| &a.id == id)
-		} else {
-			self.config.accounts.first()
-		}
+		self.config
+			.active_account_id
+			.as_ref()
+			.map_or_else(|| self.config.accounts.first(), |id| self.config.accounts.iter().find(|a| &a.id == id))
 	}
 
 	pub(crate) fn active_account_mut(&mut self) -> Option<&mut config::Account> {

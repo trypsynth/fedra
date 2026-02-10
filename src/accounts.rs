@@ -206,7 +206,7 @@ pub fn switch_to_account(
 		timelines_selector.append(&name);
 	}
 	let active_index = state.timeline_manager.active_index();
-	timelines_selector.set_selection(active_index as u32, true);
+	timelines_selector.set_selection(u32::try_from(active_index).unwrap(), true);
 
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();

@@ -202,7 +202,7 @@ fn execute_update(handle_addr: usize, result: Result<std::path::PathBuf, UpdateE
 					.arg("Bypass")
 					.arg("-Command")
 					.arg(&script)
-					.creation_flags(0x08000000) // CREATE_NO_WINDOW
+					.creation_flags(0x0800_0000) // CREATE_NO_WINDOW
 					.spawn()
 				{
 					let dlg = MessageDialog::builder(&parent, &format!("Failed to launch update script: {e}"), "Error")

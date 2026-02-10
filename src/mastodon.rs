@@ -399,29 +399,22 @@ impl Notification {
 			"mention" | "status" => {
 				self.status.as_ref().map_or_else(|| "No content".to_string(), |s| s.simple_display())
 			}
-			"reblog" => {
-				if let Some(status) = &self.status {
-					format!("boosted {}: {}", status.account.display_name_or_username(), status.simple_display())
-				} else {
-					"boosted a post".to_string()
-				}
-			}
-			"favourite" => {
-				if let Some(status) = &self.status {
+			"reblog" => self.status.as_ref().map_or_else(
+				|| "boosted a post".to_string(),
+				|status| format!("boosted {}: {}", status.account.display_name_or_username(), status.simple_display()),
+			),
+			"favourite" => self.status.as_ref().map_or_else(
+				|| "favorited a post".to_string(),
+				|status| {
 					format!("favorited {}: {}", status.account.display_name_or_username(), status.simple_display())
-				} else {
-					"favorited a post".to_string()
-				}
-			}
+				},
+			),
 			"follow" => "followed you".to_string(),
 			"follow_request" => "requested to follow you".to_string(),
-			"poll" => {
-				if let Some(status) = &self.status {
-					format!("Poll ended: {}", status.simple_display())
-				} else {
-					"Poll ended".to_string()
-				}
-			}
+			"poll" => self
+				.status
+				.as_ref()
+				.map_or_else(|| "Poll ended".to_string(), |status| format!("Poll ended: {}", status.simple_display())),
 			"update" => "edited a post".to_string(),
 			_ => self.kind.clone(),
 		}

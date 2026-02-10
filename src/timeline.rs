@@ -31,8 +31,7 @@ impl TimelineType {
 			Self::Federated => "Federated".to_string(),
 			Self::Bookmarks => "Bookmarks".to_string(),
 			Self::Favorites => "Favorites".to_string(),
-			Self::User { name, .. } => name.clone(),
-			Self::Thread { name, .. } => name.clone(),
+			Self::User { name, .. } | Self::Thread { name, .. } => name.clone(),
 			Self::Search { query, .. } => format!("Search: {query}"),
 			Self::Hashtag { name } => format!("#{name}"),
 		}
@@ -62,16 +61,16 @@ impl TimelineType {
 
 	pub const fn stream_params(&self) -> Option<&str> {
 		match self {
-			Self::Home => Some("user"),
-			Self::Notifications => Some("user"),
+			Self::Home | Self::Notifications => Some("user"),
 			Self::Direct => Some("direct"),
 			Self::Local => Some("public:local"),
 			Self::Federated => Some("public"),
-			Self::Bookmarks | Self::Favorites => None,
-			Self::User { .. } => None,
-			Self::Thread { .. } => None,
-			Self::Search { .. } => None,
-			Self::Hashtag { .. } => None,
+			Self::Bookmarks
+			| Self::Favorites
+			| Self::User { .. }
+			| Self::Thread { .. }
+			| Self::Search { .. }
+			| Self::Hashtag { .. } => None,
 		}
 	}
 

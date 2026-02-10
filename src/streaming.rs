@@ -116,9 +116,7 @@ fn connect_and_stream(
 			Ok(_) => {
 				// Ignore other message types (Binary, Pong, Frame)
 			}
-			Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
-				continue;
-			}
+			Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
 			Err(e) => {
 				return Err(format!("WebSocket error: {e}"));
 			}

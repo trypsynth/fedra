@@ -1,6 +1,6 @@
 use std::{
 	env, fs, io,
-	path::PathBuf,
+	path::{Path, PathBuf},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -259,7 +259,8 @@ fn is_installed(exe_dir: &PathBuf) -> bool {
 			continue;
 		};
 		let name = name.to_ascii_lowercase();
-		if name.starts_with("unins") && name.ends_with(".exe") {
+		if name.starts_with("unins") && Path::new(&name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+		{
 			return true;
 		}
 	}

@@ -29,10 +29,7 @@ pub fn process_stream_events(
 	let mut processed_notification_ids = std::collections::HashSet::new();
 
 	for timeline in state.timeline_manager.iter_mut() {
-		let handle = match &timeline.stream_handle {
-			Some(h) => h,
-			None => continue,
-		};
+		let Some(handle) = &timeline.stream_handle else { continue };
 		let events = handle.drain();
 		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
 		if is_active {
@@ -99,10 +96,8 @@ pub fn process_stream_events(
 						}
 					}
 				}
-				streaming::StreamEvent::Connected(timeline_type) => {
-					let _ = timeline_type;
-				}
-				streaming::StreamEvent::Disconnected(timeline_type) => {
+				streaming::StreamEvent::Connected(timeline_type)
+				| streaming::StreamEvent::Disconnected(timeline_type) => {
 					let _ = timeline_type;
 				}
 			}
@@ -140,10 +135,7 @@ pub fn process_network_responses(
 	tray_hidden: &Cell<bool>,
 	ui_tx: &UiCommandSender,
 ) {
-	let handle = match &state.network_handle {
-		Some(h) => h,
-		None => return,
-	};
+	let Some(handle) = &state.network_handle else { return };
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	for response in handle.drain() {
 		match response {

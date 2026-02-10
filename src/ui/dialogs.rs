@@ -67,7 +67,7 @@ pub enum PostVisibility {
 }
 
 impl PostVisibility {
-	pub const fn as_api_str(&self) -> &'static str {
+	pub const fn as_api_str(self) -> &'static str {
 		match self {
 			Self::Public => "public",
 			Self::Unlisted => "unlisted",
@@ -76,7 +76,7 @@ impl PostVisibility {
 		}
 	}
 
-	const fn display_name(&self) -> &'static str {
+	const fn display_name(self) -> &'static str {
 		match self {
 			Self::Public => "Public",
 			Self::Unlisted => "Unlisted",
@@ -138,7 +138,7 @@ fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	media_list.clear();
 	for item in items {
 		let label = if item.is_existing {
-			if let Some(desc) = &item.description { format!("Existing: {desc}") } else { "Existing Media".to_string() }
+			item.description.as_ref().map_or_else(|| "Existing Media".to_string(), |desc| format!("Existing: {desc}"))
 		} else {
 			Path::new(&item.path).file_name().and_then(|name| name.to_str()).unwrap_or(&item.path).to_string()
 		};
@@ -2474,7 +2474,6 @@ pub fn prompt_for_profile_edit(frame: &Frame, current: &MastodonAccount) -> Opti
 		(privacy_choice_opt, sensitive_cb_opt, lang_text_opt)
 	{
 		let privacy = match privacy_choice.get_selection() {
-			Some(0) => "public",
 			Some(1) => "unlisted",
 			Some(2) => "private",
 			_ => "public",
