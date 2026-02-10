@@ -61,10 +61,7 @@ impl Display for UpdateError {
 
 impl Error for UpdateError {}
 
-pub fn download_update_file(
-	url: &str,
-	mut progress_callback: impl FnMut(u64, u64),
-) -> Result<PathBuf, UpdateError> {
+pub fn download_update_file(url: &str, mut progress_callback: impl FnMut(u64, u64)) -> Result<PathBuf, UpdateError> {
 	let client = reqwest::blocking::Client::builder()
 		.connect_timeout(Duration::from_secs(30))
 		.timeout(Duration::from_secs(600))

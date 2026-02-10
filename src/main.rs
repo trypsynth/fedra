@@ -73,10 +73,11 @@ pub(crate) struct AppState {
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
 	pub(crate) media_ctrl: Option<MediaCtrl>,
 	pub(crate) ui_waker: UiWaker,
+	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 }
 
 impl AppState {
-	fn new(config: Config, ui_waker: UiWaker) -> Self {
+	fn new(config: Config, ui_waker: UiWaker, instance_checker: Option<SingleInstanceChecker>) -> Self {
 		Self {
 			config,
 			timeline_manager: TimelineManager::new(),
@@ -97,6 +98,7 @@ impl AppState {
 			app_shell: None,
 			media_ctrl: None,
 			ui_waker,
+			_instance_checker: instance_checker,
 		}
 	}
 
@@ -158,6 +160,18 @@ fn drain_ui_commands(
 
 fn main() {
 	let _ = wxdragon::main(|_| {
+		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
+		if let Some(checker) = instance_checker.as_ref() {
+			if checker.is_another_running() {
+				let frame = Frame::builder().with_title("Fedra").with_size(Size::new(1, 1)).build();
+				let dialog = MessageDialog::builder(&frame, "Fedra is already running.", "Error")
+					.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+					.build();
+				dialog.show_modal();
+				frame.close(true);
+				return;
+			}
+		}
 		let window_parts = build_main_window();
 		let frame = window_parts.frame;
 		let timelines_selector = window_parts.timelines_selector;
@@ -177,15 +191,13 @@ fn main() {
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
-		let mut state = AppState::new(config, ui_waker.clone());
-
+		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
 		let mc = MediaCtrl::builder(&frame).with_size(Size::new(0, 0)).build();
 		let sound_path = get_sound_path();
 		if sound_path.exists() {
 			mc.load(&sound_path.to_string_lossy());
 		}
 		state.media_ctrl = Some(mc);
-
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
 			return;
