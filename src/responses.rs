@@ -17,6 +17,35 @@ use crate::{
 	ui_wake::UiCommandSender,
 };
 
+fn merge_status_snapshot_by_id(state: &mut AppState, status_id: &str, snapshot: &Status) -> bool {
+	let mut updated = false;
+	for timeline in state.timeline_manager.iter_mut() {
+		for entry in &mut timeline.entries {
+			if let Some(status) = entry.as_status_mut() {
+				if status.id == status_id {
+					*status = snapshot.clone();
+					updated = true;
+				}
+				if let Some(ref mut reblog) = status.reblog
+					&& reblog.id == status_id
+				{
+					**reblog = snapshot.clone();
+					updated = true;
+				}
+			}
+		}
+	}
+	updated
+}
+
+fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
+	let mut updated = merge_status_snapshot_by_id(state, &snapshot.id, snapshot);
+	if let Some(reblog) = &snapshot.reblog {
+		updated |= merge_status_snapshot_by_id(state, &reblog.id, reblog);
+	}
+	updated
+}
+
 /// Processes streaming events from WebSocket connections.
 pub fn process_stream_events(
 	state: &mut AppState,
@@ -27,6 +56,7 @@ pub fn process_stream_events(
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	let mut active_needs_update = false;
 	let mut processed_notification_ids = std::collections::HashSet::new();
+	let mut status_snapshots: Vec<Status> = Vec::new();
 
 	for timeline in state.timeline_manager.iter_mut() {
 		let Some(handle) = &timeline.stream_handle else { continue };
@@ -45,6 +75,7 @@ pub fn process_stream_events(
 		for event in events {
 			match event {
 				streaming::StreamEvent::Update { timeline_type, status } => {
+					status_snapshots.push((*status).clone());
 					if timeline.timeline_type == timeline_type {
 						timeline.entries.insert(0, TimelineEntry::Status(*status));
 						if is_active {
@@ -61,6 +92,9 @@ pub fn process_stream_events(
 					}
 				}
 				streaming::StreamEvent::Notification { timeline_type, notification } => {
+					if let Some(status) = notification.status.as_deref() {
+						status_snapshots.push(status.clone());
+					}
 					if timeline.timeline_type == timeline_type {
 						if !processed_notification_ids.contains(&notification.id) {
 							let pref = state.config.notification_preference;
@@ -90,6 +124,7 @@ pub fn process_stream_events(
 					if timeline.timeline_type == timeline_type
 						&& let Some(status) = conversation.last_status
 					{
+						status_snapshots.push(status.clone());
 						timeline.entries.insert(0, TimelineEntry::Status(status));
 						if is_active {
 							active_needs_update = true;
@@ -102,6 +137,15 @@ pub fn process_stream_events(
 				}
 			}
 		}
+	}
+	let mut merged_any = false;
+	for snapshot in &status_snapshots {
+		if merge_status_snapshot(state, snapshot) {
+			merged_any = true;
+		}
+	}
+	if merged_any {
+		active_needs_update = true;
 	}
 	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
 		update_active_timeline_ui(
@@ -141,6 +185,7 @@ pub fn process_network_responses(
 		match response {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
+				let mut status_snapshots: Vec<Status> = Vec::new();
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -167,6 +212,11 @@ pub fn process_network_responses(
 							next,
 						),
 					};
+					for entry in &new_entries {
+						if let Some(status) = entry.as_status() {
+							status_snapshots.push(status.clone());
+						}
+					}
 
 					if max_id.is_some() {
 						let existing_ids: std::collections::HashSet<&str> =
@@ -220,6 +270,28 @@ pub fn process_network_responses(
 					}
 					timeline.next_max_id = next_max_id;
 					timeline.loading_more = false;
+				}
+				if !status_snapshots.is_empty() {
+					let mut merged_any = false;
+					for snapshot in &status_snapshots {
+						if merge_status_snapshot(state, snapshot) {
+							merged_any = true;
+						}
+					}
+					if merged_any {
+						if let Some(active) = state.timeline_manager.active_mut() {
+							update_active_timeline_ui(
+								timeline_list,
+								active,
+								suppress_selection,
+								state.config.sort_order,
+								state.config.timestamp_format,
+								state.config.content_warning_display,
+								&state.cw_expanded,
+								state.config.preserve_thread_order,
+							);
+						}
+					}
 				}
 			}
 			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), .. } => {
@@ -705,6 +777,7 @@ pub fn process_network_responses(
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				let is_active = active_type.as_ref() == Some(&timeline_type);
+				let mut status_snapshots: Vec<Status> = Vec::new();
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -725,6 +798,11 @@ pub fn process_network_responses(
 					}
 					for status in results.statuses {
 						new_entries.push(TimelineEntry::Status(status));
+					}
+					for entry in &new_entries {
+						if let Some(status) = entry.as_status() {
+							status_snapshots.push(status.clone());
+						}
 					}
 					let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
 					if is_load_more {
@@ -759,6 +837,28 @@ pub fn process_network_responses(
 						}
 					}
 					timeline.loading_more = false;
+				}
+				if !status_snapshots.is_empty() {
+					let mut merged_any = false;
+					for snapshot in &status_snapshots {
+						if merge_status_snapshot(state, snapshot) {
+							merged_any = true;
+						}
+					}
+					if merged_any {
+						if let Some(active) = state.timeline_manager.active_mut() {
+							update_active_timeline_ui(
+								timeline_list,
+								active,
+								suppress_selection,
+								state.config.sort_order,
+								state.config.timestamp_format,
+								state.config.content_warning_display,
+								&state.cw_expanded,
+								state.config.preserve_thread_order,
+							);
+						}
+					}
 				}
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Err(ref err), .. } => {
