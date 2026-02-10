@@ -215,10 +215,7 @@ impl TimelineManager {
 			}
 
 			if closing_active {
-				let mut handled = false;
-				if use_history {
-					handled = self.go_back();
-				}
+				let mut handled = if use_history { self.go_back() } else { false };
 
 				if !handled {
 					handled = self.focus_last_focused();

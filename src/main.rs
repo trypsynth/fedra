@@ -252,14 +252,14 @@ fn main() {
 				&tray_hidden_drain,
 				&ui_tx_timer,
 			);
-			process_stream_events(&mut state, &timeline_list_wake, &suppress_wake, &frame_wake);
+			process_stream_events(&mut state, timeline_list_wake, &suppress_wake, &frame_wake);
 			process_network_responses(
 				&frame_wake,
 				&mut state,
-				&timelines_selector_wake,
-				&timeline_list_wake,
+				timelines_selector_wake,
+				timeline_list_wake,
 				&suppress_wake,
-				&live_region_wake,
+				live_region_wake,
 				&quick_action_keys_drain,
 				&autoload_drain,
 				&sort_order_drain,
@@ -271,7 +271,7 @@ fn main() {
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
 					update_active_timeline_ui(
-						&timeline_list_wake,
+						timeline_list_wake,
 						active,
 						&suppress_wake,
 						state.config.sort_order,

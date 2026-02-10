@@ -439,7 +439,7 @@ pub fn handle_ui_command(
 				} else {
 					state.config.sort_order
 				};
-				sync_timeline_selection_from_list(active, &timeline_list, effective_sort_order);
+				sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 			}
 			if state.timeline_manager.go_back() {
 				let index = state.timeline_manager.active_index();
@@ -449,7 +449,7 @@ pub fn handle_ui_command(
 
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
-						&timeline_list,
+						timeline_list,
 						active,
 						suppress_selection,
 						state.config.sort_order,
@@ -496,7 +496,7 @@ pub fn handle_ui_command(
 					} else {
 						state.config.sort_order
 					};
-					sync_timeline_selection_from_list(active, &timeline_list, effective_sort_order);
+					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 				}
 				state.timeline_manager.set_active(index);
 				let current_selection = timelines_selector.get_selection().map(|s| s as usize);
@@ -507,7 +507,7 @@ pub fn handle_ui_command(
 				}
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
-						&timeline_list,
+						timeline_list,
 						active,
 						suppress_selection,
 						state.config.sort_order,
@@ -599,7 +599,7 @@ pub fn handle_ui_command(
 				}
 				if needs_refresh && let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
-						&timeline_list,
+						timeline_list,
 						active,
 						suppress_selection,
 						state.config.sort_order,
@@ -1327,7 +1327,7 @@ pub fn handle_ui_command(
 						live_region::announce(live_region, "Network not available");
 						return;
 					};
-					handle.send(NetworkCommand::FetchThread { timeline_type, focus: target.clone() });
+					handle.send(NetworkCommand::FetchThread { timeline_type, focus: Box::new(target.clone()) });
 				}
 			}
 		}
@@ -1507,7 +1507,7 @@ fn open_timeline(
 			});
 			if let Some(active) = state.timeline_manager.active_mut() {
 				update_active_timeline_ui(
-					&timeline_list,
+					timeline_list,
 					active,
 					suppress_selection,
 					state.config.sort_order,
@@ -1578,7 +1578,7 @@ fn close_timeline(
 	});
 	if let Some(active) = state.timeline_manager.active_mut() {
 		update_active_timeline_ui(
-			&timeline_list,
+			timeline_list,
 			active,
 			suppress_selection,
 			state.config.sort_order,

@@ -75,9 +75,9 @@ pub fn bind_input_handlers(
 			return;
 		}
 		if let Some(index) = event.get_selection()
-			&& index >= 0
+			&& let Ok(index) = usize::try_from(index)
 		{
-			let _ = ui_tx_selector.send(UiCommand::TimelineSelectionChanged(index as usize));
+			let _ = ui_tx_selector.send(UiCommand::TimelineSelectionChanged(index));
 		}
 	});
 
@@ -222,7 +222,9 @@ pub fn bind_input_handlers(
 					}
 					k if (49..=57).contains(&k) => {
 						// 1-9
-						let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex((k - 49) as usize));
+						if let Ok(index) = usize::try_from(k - 49) {
+							let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
+						}
 						event.skip(false);
 						return;
 					}
@@ -372,7 +374,9 @@ pub fn bind_input_handlers(
 					}
 					k if (49..=57).contains(&k) => {
 						// 1-9
-						let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex((k - 49) as usize));
+						if let Ok(index) = usize::try_from(k - 49) {
+							let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
+						}
 						event.skip(false);
 						return;
 					}
@@ -393,12 +397,12 @@ pub fn bind_input_handlers(
 			return;
 		}
 		if let Some(selection) = event.get_selection()
-			&& selection >= 0
+			&& let Ok(selection) = usize::try_from(selection)
 		{
-			let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection as usize));
+			let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection));
 			if autoload_mode_selection.get() == AutoloadMode::AtEnd {
 				let count = timeline_list_state.get_count() as usize;
-				let index = selection as usize;
+				let index = selection;
 				let sort_order = sort_order_selection.get();
 				let at_load_position = match sort_order {
 					SortOrder::NewestToOldest => index + 1 == count,

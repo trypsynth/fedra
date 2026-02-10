@@ -44,8 +44,8 @@ impl StreamHandle {
 }
 
 pub fn start_streaming(
-	base_url: Url,
-	access_token: String,
+	base_url: &Url,
+	access_token: &str,
 	timeline_type: TimelineType,
 	ui_waker: UiWaker,
 ) -> Option<StreamHandle> {
@@ -53,10 +53,10 @@ pub fn start_streaming(
 	let mut streaming_url = base_url.join("api/v1/streaming").ok()?;
 	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
 	streaming_url.set_scheme(scheme).ok()?;
-	streaming_url.query_pairs_mut().append_pair("access_token", &access_token).append_pair("stream", stream_param);
+	streaming_url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", stream_param);
 	let (sender, receiver) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		streaming_loop(streaming_url, timeline_type, sender, ui_waker);
+		streaming_loop(&streaming_url, &timeline_type, &sender, &ui_waker);
 	});
 	Some(StreamHandle { receiver, _thread: thread })
 }
@@ -69,17 +69,17 @@ fn send_event(sender: &Sender<StreamEvent>, ui_waker: &UiWaker, event: StreamEve
 	true
 }
 
-fn streaming_loop(url: Url, timeline_type: TimelineType, sender: Sender<StreamEvent>, ui_waker: UiWaker) {
+fn streaming_loop(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>, ui_waker: &UiWaker) {
 	let mut retry_count: u32 = 0;
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
 	loop {
-		if connect_and_stream(&url, &timeline_type, &sender, &ui_waker) == Ok(()) {
+		if connect_and_stream(url, timeline_type, sender, ui_waker) == Ok(()) {
 			// Receiver dropped or intentional shutdown.
 			break;
 		}
 		retry_count += 1;
-		if !send_event(&sender, &ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
+		if !send_event(sender, ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
 			break;
 		}
 		let exp = retry_count.saturating_sub(1).min(6);

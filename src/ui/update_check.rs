@@ -104,7 +104,7 @@ fn present_update_result(
 							ACTIVE_PROGRESS.with(|p| {
 								if let Some(dialog) = p.borrow().as_ref() {
 									if t > 0 {
-										let percent = (d * 100 / t) as i32;
+										let percent = i32::try_from(d * 100 / t).unwrap_or(i32::MAX);
 										dialog.update(percent, None);
 									} else {
 										dialog.pulse(None);

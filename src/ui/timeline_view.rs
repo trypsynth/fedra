@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub fn update_timeline_ui(
-	timeline_list: &ListBox,
+	timeline_list: ListBox,
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
@@ -25,12 +25,13 @@ pub fn update_timeline_ui(
 		for (i, entry) in iter.enumerate() {
 			let is_expanded = cw_expanded.contains(entry.id());
 			let text = entry.display_text(timestamp_format, cw_display, is_expanded);
-			if let Some(current) = timeline_list.get_string(i as u32) {
+			let Ok(index) = u32::try_from(i) else { continue };
+			if let Some(current) = timeline_list.get_string(index) {
 				if current != text {
-					timeline_list.set_string(i as u32, &text);
+					timeline_list.set_string(index, &text);
 				}
 			} else {
-				timeline_list.set_string(i as u32, &text);
+				timeline_list.set_string(index, &text);
 			}
 		}
 	} else {
@@ -69,7 +70,7 @@ pub const fn entry_index_to_list_index(entry_index: usize, entries_len: usize, s
 	}
 }
 
-pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: &ListBox, sort_order: SortOrder) {
+pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: ListBox, sort_order: SortOrder) {
 	let selection = timeline_list.get_selection().map(|sel| sel as usize);
 	timeline.selected_index = selection;
 	timeline.selected_id = selection
@@ -77,7 +78,7 @@ pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list:
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 }
 
-pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline, sort_order: SortOrder) {
+pub fn apply_timeline_selection(timeline_list: ListBox, timeline: &mut Timeline, sort_order: SortOrder) {
 	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
 		timeline.selected_id = None;
@@ -115,13 +116,15 @@ pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 
 	let current_ui_sel = timeline_list.get_selection().map(|s| s as usize);
-	if current_ui_sel != Some(selection) {
-		timeline_list.set_selection(selection as u32, true);
+	if current_ui_sel != Some(selection)
+		&& let Ok(sel) = u32::try_from(selection)
+	{
+		timeline_list.set_selection(sel, true);
 	}
 }
 
 pub fn update_active_timeline_ui(
-	timeline_list: &ListBox,
+	timeline_list: ListBox,
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
 	sort_order: SortOrder,

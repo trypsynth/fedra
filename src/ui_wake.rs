@@ -49,8 +49,8 @@ impl UiCommandSender {
 		Self { tx, waker }
 	}
 
-	pub(crate) fn send(&self, cmd: UiCommand) -> Result<(), mpsc::SendError<UiCommand>> {
-		let result = self.tx.send(cmd);
+	pub(crate) fn send(&self, cmd: UiCommand) -> Result<(), Box<mpsc::SendError<UiCommand>>> {
+		let result = self.tx.send(cmd).map_err(Box::new);
 		self.waker.wake();
 		result
 	}

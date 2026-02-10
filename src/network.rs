@@ -36,7 +36,7 @@ pub enum NetworkCommand {
 	},
 	FetchThread {
 		timeline_type: TimelineType,
-		focus: Status,
+		focus: Box<Status>,
 	},
 	LookupAccount {
 		handle: String,
@@ -462,7 +462,7 @@ fn network_loop(
 			Ok(NetworkCommand::FetchThread { timeline_type, focus }) => {
 				let result = client
 					.get_status_context(access_token, &focus.id)
-					.map(|context| prepare_thread_timeline(focus, context));
+					.map(|context| prepare_thread_timeline(*focus, context));
 				send_response(
 					responses,
 					ui_waker,

@@ -76,9 +76,9 @@ pub fn download_update_file(
 
 	let total_size = response.content_length().unwrap_or(0);
 	let fname = url.rsplit('/').next().unwrap_or("update.bin");
-	let mut dest_path = if fname.ends_with(".exe") {
+	let mut dest_path = if std::path::Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
 		std::env::temp_dir()
-	} else if fname.ends_with(".zip") {
+	} else if std::path::Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
 		std::env::current_exe()
 			.map_err(|e| UpdateError::NoDownload(format!("Failed to determine exe path: {e}")))?
 			.parent()

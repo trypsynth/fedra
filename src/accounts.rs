@@ -212,7 +212,7 @@ pub fn switch_to_account(
 		timeline_list.clear();
 		if let Some(active) = state.timeline_manager.active_mut() {
 			update_active_timeline_ui(
-				&timeline_list,
+				timeline_list,
 				active,
 				suppress_selection,
 				state.config.sort_order,
@@ -255,5 +255,5 @@ pub fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &Timeli
 	};
 	let Some(timeline) = state.timeline_manager.get_mut(timeline_type) else { return };
 	timeline.stream_handle =
-		streaming::start_streaming(base_url, access_token, timeline_type.clone(), state.ui_waker.clone());
+		streaming::start_streaming(&base_url, &access_token, timeline_type.clone(), state.ui_waker.clone());
 }

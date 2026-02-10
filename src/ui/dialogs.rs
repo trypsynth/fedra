@@ -1,4 +1,4 @@
-use std::{cell::RefCell, path::Path, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -115,6 +115,17 @@ pub struct PostPoll {
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
 const KEY_RETURN: i32 = 13;
+const ID_ACTION_FOLLOW: i32 = 6001;
+const ID_ACTION_UNFOLLOW: i32 = 6002;
+const ID_ACTION_BLOCK: i32 = 6003;
+const ID_ACTION_UNBLOCK: i32 = 6004;
+const ID_ACTION_MUTE: i32 = 6005;
+const ID_ACTION_UNMUTE: i32 = 6006;
+const ID_ACTION_OPEN_BROWSER: i32 = 6007;
+const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
+const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
+const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
+const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 
 struct ComposeDialogConfig {
 	title_prefix: String,
@@ -134,7 +145,7 @@ const fn visibility_index(visibility: PostVisibility) -> usize {
 	}
 }
 
-fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
+fn refresh_media_list(media_list: ListBox, items: &[PostMedia]) {
 	media_list.clear();
 	for item in items {
 		let label = if item.is_existing {
@@ -146,7 +157,7 @@ fn refresh_media_list(media_list: &ListBox, items: &[PostMedia]) {
 	}
 }
 
-fn refresh_poll_list(poll_list: &ListBox, items: &[String]) {
+fn refresh_poll_list(poll_list: ListBox, items: &[String]) {
 	poll_list.clear();
 	for item in items {
 		let label = if item.is_empty() { "(empty option)" } else { item.as_str() };
@@ -159,7 +170,13 @@ enum PollDialogResult {
 	Removed,
 }
 
-fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &PollLimits) -> Option<PollDialogResult> {
+fn prompt_for_poll(
+	parent: &dyn WxWidget,
+	existing: Option<&PostPoll>,
+	limits: &PollLimits,
+) -> Option<PollDialogResult> {
+	const ID_REMOVE_POLL: i32 = 20_001;
+
 	let dialog = Dialog::builder(parent, "Manage Poll").with_size(520, 420).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -177,8 +194,10 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			limits.max_expiration / 60
 		))
 		.build();
-	let min_minutes = (limits.min_expiration / 60).max(1) as i32;
-	let max_minutes = (limits.max_expiration / 60).max(min_minutes as u32) as i32;
+	let min_minutes_u32 = (limits.min_expiration / 60).max(1);
+	let max_minutes_u32 = (limits.max_expiration / 60).max(min_minutes_u32);
+	let min_minutes = i32::try_from(min_minutes_u32).unwrap_or(i32::MAX);
+	let max_minutes = i32::try_from(max_minutes_u32).unwrap_or(i32::MAX);
 	let duration_spin = SpinCtrl::builder(&panel).with_range(min_minutes, max_minutes).build();
 	let multiple_checkbox = CheckBox::builder(&panel).with_label("Allow multiple selections").build();
 	let remove_poll_button = Button::builder(&panel).with_label("Remove Poll").build();
@@ -212,7 +231,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	dialog.set_escape_id(ID_CANCEL);
 	let options: Rc<RefCell<Vec<String>>> =
 		Rc::new(RefCell::new(existing.as_ref().map(|poll| poll.options.clone()).unwrap_or_default()));
-	refresh_poll_list(&poll_list, &options.borrow());
+	refresh_poll_list(poll_list, &options.borrow());
 	if options.borrow().is_empty() {
 		remove_button.enable(false);
 		option_label.enable(false);
@@ -227,7 +246,8 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			option_text.set_value(&first);
 		}
 	}
-	let default_minutes = existing.as_ref().map_or(min_minutes as u32, |poll| poll.expires_in / 60) as i32;
+	let default_minutes_u32 = existing.as_ref().map_or(min_minutes_u32, |poll| poll.expires_in / 60);
+	let default_minutes = i32::try_from(default_minutes_u32).unwrap_or(min_minutes);
 	duration_spin.set_value(default_minutes.clamp(min_minutes, max_minutes));
 	if let Some(existing) = existing.as_ref() {
 		multiple_checkbox.set_value(existing.multiple);
@@ -249,8 +269,10 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			(items.len(), items.len() < limits.max_options)
 		};
 		let items_snapshot = options_add.borrow().clone();
-		refresh_poll_list(&poll_list_add, &items_snapshot);
-		poll_list_add.set_selection((new_len - 1) as u32, true);
+		refresh_poll_list(poll_list_add, &items_snapshot);
+		if let Ok(selection) = u32::try_from(new_len - 1) {
+			poll_list_add.set_selection(selection, true);
+		}
 		remove_button_add.enable(true);
 		option_label_add.enable(true);
 		option_text_add.set_value("");
@@ -278,7 +300,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 				}
 				items.clone()
 			};
-			refresh_poll_list(&poll_list_remove, &items_snapshot);
+			refresh_poll_list(poll_list_remove, &items_snapshot);
 			if items_snapshot.is_empty() {
 				remove_button_remove.enable(false);
 				option_text_remove.set_value("");
@@ -286,7 +308,9 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 				option_label_remove.enable(false);
 			} else {
 				let next = index.min(items_snapshot.len() - 1);
-				poll_list_remove.set_selection(next as u32, true);
+				if let Ok(selection) = u32::try_from(next) {
+					poll_list_remove.set_selection(selection, true);
+				}
 				remove_button_remove.enable(true);
 				option_label_remove.enable(true);
 				option_text_remove.enable(true);
@@ -302,10 +326,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 	poll_list_select.on_selection_changed(move |_| {
 		let selection = poll_list_select.get_selection().map(|sel| sel as usize);
 		let item_value = {
-			let items = match options_select.try_borrow() {
-				Ok(items) => items,
-				Err(_) => return,
-			};
+			let Ok(items) = options_select.try_borrow() else { return };
 			if let Some(index) = selection
 				&& index < items.len()
 			{
@@ -328,10 +349,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			if trimmed.chars().count() > limits.max_option_chars {
 				return;
 			}
-			let mut items = match options_edit.try_borrow_mut() {
-				Ok(items) => items,
-				Err(_) => return,
-			};
+			let Ok(mut items) = options_edit.try_borrow_mut() else { return };
 			if index < items.len() {
 				items[index] = trimmed;
 				Some((items.clone(), index))
@@ -342,11 +360,12 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 			None
 		};
 		if let Some((items_snapshot, index)) = updated {
-			refresh_poll_list(&poll_list_edit, &items_snapshot);
-			poll_list_edit.set_selection(index as u32, true);
+			refresh_poll_list(poll_list_edit, &items_snapshot);
+			if let Ok(selection) = u32::try_from(index) {
+				poll_list_edit.set_selection(selection, true);
+			}
 		}
 	});
-	const ID_REMOVE_POLL: i32 = 20_001;
 	remove_poll_button.on_click(move |_| {
 		dialog.end_modal(ID_REMOVE_POLL);
 	});
@@ -368,7 +387,7 @@ fn prompt_for_poll(parent: &dyn WxWidget, existing: Option<PostPoll>, limits: &P
 		show_warning_widget(parent, "Too many poll options for this instance.", "Poll");
 		return None;
 	}
-	let minutes = duration_spin.value().max(min_minutes) as u32;
+	let minutes = u32::try_from(duration_spin.value().max(min_minutes)).unwrap_or(0);
 	let expires_in = minutes.saturating_mul(60);
 	if expires_in < limits.min_expiration || expires_in > limits.max_expiration {
 		show_warning_widget(parent, "Poll duration is outside this instance's limits.", "Poll");
@@ -412,7 +431,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	let items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial));
-	refresh_media_list(&media_list, &items.borrow());
+	refresh_media_list(media_list, &items.borrow());
 	if !items.borrow().is_empty() {
 		media_list.set_selection(0, true);
 		remove_button.enable(true);
@@ -448,11 +467,13 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 					for path in paths {
 						items.push(PostMedia { path, description: None, is_existing: false });
 					}
-					refresh_media_list(&media_list_add, &items);
+					refresh_media_list(media_list_add, &items);
 					items.len()
 				};
 				if new_len > 0 {
-					media_list_add.set_selection((new_len - 1) as u32, true);
+					if let Ok(selection) = u32::try_from(new_len - 1) {
+						media_list_add.set_selection(selection, true);
+					}
 					remove_button_add.enable(true);
 				}
 			}
@@ -472,11 +493,13 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 				if index < items.len() {
 					items.remove(index);
 				}
-				refresh_media_list(&media_list_remove, &items);
+				refresh_media_list(media_list_remove, &items);
 				(items.len(), index.min(items.len().saturating_sub(1)))
 			};
 			if items_len > 0 {
-				media_list_remove.set_selection(next_index as u32, true);
+				if let Ok(selection) = u32::try_from(next_index) {
+					media_list_remove.set_selection(selection, true);
+				}
 				remove_button_remove.enable(true);
 			} else {
 				remove_button_remove.enable(false);
@@ -588,11 +611,12 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	main_sizer.add_sizer(&options_sizer, 1, SizerFlag::Expand | SizerFlag::All, 8);
 
 	if poll.expired || poll.voted.unwrap_or(false) {
-		let total_votes = poll.votes_count.max(1) as f32;
+		let total_votes = poll.votes_count.max(1);
 		let results_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		for option in &poll.options {
 			let votes = option.votes_count.unwrap_or(0);
-			let percent = (votes as f32 / total_votes * 100.0) as i32;
+			let percent = votes.saturating_mul(100).saturating_div(total_votes).min(i32::MAX as u64);
+			let percent = i32::try_from(percent).unwrap_or(i32::MAX);
 			let label = format!("{}: {} votes ({}%)", option.title, votes, percent);
 			let text = StaticText::builder(&panel).with_label(&label).build();
 			results_sizer.add(&text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 4);
@@ -648,7 +672,7 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	Some(selected_indices)
 }
 
-pub fn prompt_for_default_timelines(frame: &Frame, initial: Vec<DefaultTimeline>) -> Option<Vec<DefaultTimeline>> {
+pub fn prompt_for_default_timelines(frame: &Frame, initial: &[DefaultTimeline]) -> Option<Vec<DefaultTimeline>> {
 	let dialog = Dialog::builder(frame, "Default Timelines").with_size(350, 300).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -832,7 +856,7 @@ pub fn prompt_for_options(
 	let parent_frame = *frame;
 	customize_button.on_click(move |_| {
 		let initial = defaults_clone.borrow().clone();
-		if let Some(updated) = prompt_for_default_timelines(&parent_frame, initial) {
+		if let Some(updated) = prompt_for_default_timelines(&parent_frame, &initial) {
 			*defaults_clone.borrow_mut() = updated;
 		}
 	});
@@ -882,7 +906,7 @@ pub fn prompt_for_options(
 		Some(2) => AutoloadMode::AtBoundary,
 		_ => autoload,
 	};
-	let new_fetch_limit = (fetch_limit_spin.value() as u8).clamp(1, 40);
+	let new_fetch_limit = u8::try_from(fetch_limit_spin.value()).unwrap_or(1).clamp(1, 40);
 	let new_notification_preference = match notification_choice.get_selection() {
 		Some(0) => crate::config::NotificationPreference::Classic,
 		Some(1) => crate::config::NotificationPreference::SoundOnly,
@@ -945,7 +969,9 @@ fn prompt_for_compose(
 	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
-	visibility_choice.set_selection(visibility_index(default_visibility) as u32);
+	if let Ok(selection) = u32::try_from(visibility_index(default_visibility)) {
+		visibility_choice.set_selection(selection);
+	}
 	if !config.can_change_visibility {
 		visibility_label.enable(false);
 		visibility_choice.enable(false);
@@ -1040,8 +1066,11 @@ fn prompt_for_compose(
 	let poll_parent = dialog;
 	let poll_limits = poll_limits.clone();
 	poll_button_update.on_click(move |_| {
-		let current = poll_state_manage.borrow().clone();
-		match prompt_for_poll(&poll_parent, current, &poll_limits) {
+		let result = {
+			let current = poll_state_manage.borrow();
+			prompt_for_poll(&poll_parent, current.as_ref(), &poll_limits)
+		};
+		match result {
 			Some(PollDialogResult::Updated(poll)) => {
 				let option_count = poll.options.len();
 				*poll_state_manage.borrow_mut() = Some(poll);
@@ -1215,7 +1244,6 @@ pub fn prompt_for_reply(
 		format!("@{} ", replying_to.account.acct)
 	};
 	let default_visibility = match replying_to.visibility.as_str() {
-		"public" => PostVisibility::Public,
 		"unlisted" => PostVisibility::Unlisted,
 		"private" => PostVisibility::Private,
 		"direct" => PostVisibility::Direct,
@@ -1249,7 +1277,6 @@ pub fn prompt_for_edit(
 	enter_to_send: bool,
 ) -> Option<PostResult> {
 	let default_visibility = match status.visibility.as_str() {
-		"public" => PostVisibility::Public,
 		"unlisted" => PostVisibility::Unlisted,
 		"private" => PostVisibility::Private,
 		"direct" => PostVisibility::Direct,
@@ -1445,7 +1472,6 @@ pub fn prompt_for_search(frame: &Frame) -> Option<(String, SearchType)> {
 		return None;
 	}
 	let search_type = match type_choice.get_selection() {
-		Some(0) => SearchType::All,
 		Some(1) => SearchType::Accounts,
 		Some(2) => SearchType::Hashtags,
 		Some(3) => SearchType::Statuses,
@@ -1483,8 +1509,10 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 		let status = if Some(i) == active_index { "active" } else { "inactive" };
 		accounts_list.append(&format!("{name}, {handle}, {status}"));
 	}
-	if let Some(index) = active_index {
-		accounts_list.set_selection(index as u32, true);
+	if let Some(index) = active_index
+		&& let Ok(selection) = u32::try_from(index)
+	{
+		accounts_list.set_selection(selection, true);
 	}
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let add_button = Button::builder(&panel).with_label("Add...").build();
@@ -1533,7 +1561,9 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 		}
 	});
 	if let Some(idx) = active_index {
-		accounts_list.set_selection(idx as u32, true);
+		if let Ok(selection) = u32::try_from(idx) {
+			accounts_list.set_selection(selection, true);
+		}
 		remove_button.enable(true);
 		switch_button.enable(false);
 		switch_button.set_label("Switch To");
@@ -1637,18 +1667,6 @@ impl ProfileDialog {
 		let account_rc = Rc::new(RefCell::new(account));
 		let relationship_action = relationship.clone();
 		let actions_btn = actions_button;
-
-		const ID_ACTION_FOLLOW: i32 = 6001;
-		const ID_ACTION_UNFOLLOW: i32 = 6002;
-		const ID_ACTION_BLOCK: i32 = 6003;
-		const ID_ACTION_UNBLOCK: i32 = 6004;
-		const ID_ACTION_MUTE: i32 = 6005;
-		const ID_ACTION_UNMUTE: i32 = 6006;
-		const ID_ACTION_OPEN_BROWSER: i32 = 6007;
-		const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
-		const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
-		const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
-		const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 
 		actions_btn.on_click(move |_| {
 			let mut menu = Menu::builder().build();
@@ -1774,7 +1792,7 @@ impl ProfileDialog {
 		self.dialog.show(true);
 	}
 
-	pub fn update_account(&self, account: MastodonAccount) {
+	pub fn update_account(&self, account: &MastodonAccount) {
 		self.account.replace(account.clone());
 		self.dialog.set_label(&format!("Profile for {}", account.display_name_or_username()));
 
@@ -1788,7 +1806,7 @@ impl ProfileDialog {
 				(false, true) => "This person follows you.",
 				(false, false) => "You do not follow each other.",
 			};
-			text.push_str(&format!("{follow_status}\r\n"));
+			let _ = writeln!(text, "{follow_status}");
 
 			if rel.requested {
 				text.push_str("You have requested to follow this person.\r\n");
@@ -1815,7 +1833,7 @@ impl ProfileDialog {
 		self.profile_text.set_value(&text);
 	}
 
-	pub fn update_relationship(&self, relationship: crate::mastodon::Relationship) {
+	pub fn update_relationship(&self, relationship: &crate::mastodon::Relationship) {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
 		let account = self.account.borrow();
 		let mut text = account.profile_display();
@@ -1827,7 +1845,7 @@ impl ProfileDialog {
 			(false, true) => "This person follows you.",
 			(false, false) => "You do not follow each other.",
 		};
-		text.push_str(&format!("{follow_status}\r\n"));
+		let _ = writeln!(text, "{follow_status}");
 
 		if relationship.requested {
 			text.push_str("You have requested to follow this person.\r\n");
@@ -2291,7 +2309,9 @@ impl HashtagDialog {
 			if let Some(s) = sel {
 				self.list.set_selection(s, true);
 			}
-			if sel == Some(i as u32) {
+			if let Ok(i_u32) = u32::try_from(i)
+				&& sel == Some(i_u32)
+			{
 				if following {
 					self.action_button.set_label("Unfollow");
 				} else {
@@ -2379,37 +2399,33 @@ pub fn prompt_for_profile_edit(frame: &Frame, current: &MastodonAccount) -> Opti
 		content_sizer.add_sizer(&row_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
 		field_controls.push((name_ctrl, val_ctrl));
 	}
-	let mut privacy_choice_opt: Option<Choice> = None;
-	let mut sensitive_cb_opt: Option<CheckBox> = None;
-	let mut lang_text_opt: Option<TextCtrl> = None;
-	if let Some(source) = &current.source {
-		let privacy_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-		let privacy_label = StaticText::builder(&scroll_win).with_label("Default post visibility").build();
-		let privacy_choices: Vec<String> =
-			vec!["Public".to_string(), "Unlisted".to_string(), "Followers only".to_string()];
-		let privacy_choice = Choice::builder(&scroll_win).with_choices(privacy_choices).build();
-		let sel = match source.privacy.as_deref() {
-			Some("unlisted") => 1,
-			Some("private") => 2,
-			_ => 0,
-		};
-		privacy_choice.set_selection(sel);
-		privacy_sizer.add(&privacy_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
-		privacy_sizer.add(&privacy_choice, 1, SizerFlag::Expand, 0);
-		content_sizer.add_sizer(&privacy_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
-		let sensitive_cb = CheckBox::builder(&scroll_win).with_label("&Mark media as sensitive by default").build();
-		sensitive_cb.set_value(source.sensitive.unwrap_or(false));
-		content_sizer.add(&sensitive_cb, 0, SizerFlag::All, 5);
-		let lang_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-		let lang_label = StaticText::builder(&scroll_win).with_label("Language (ISO code):").build();
-		let lang_text = TextCtrl::builder(&scroll_win).with_value(source.language.as_deref().unwrap_or("")).build();
-		lang_sizer.add(&lang_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
-		lang_sizer.add(&lang_text, 1, SizerFlag::Expand, 0);
-		content_sizer.add_sizer(&lang_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
-		privacy_choice_opt = Some(privacy_choice);
-		sensitive_cb_opt = Some(sensitive_cb);
-		lang_text_opt = Some(lang_text);
-	}
+	let (privacy_choice_opt, sensitive_cb_opt, lang_text_opt) =
+		current.source.as_ref().map_or((None, None, None), |source| {
+			let privacy_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+			let privacy_label = StaticText::builder(&scroll_win).with_label("Default post visibility").build();
+			let privacy_choices: Vec<String> =
+				vec!["Public".to_string(), "Unlisted".to_string(), "Followers only".to_string()];
+			let privacy_choice = Choice::builder(&scroll_win).with_choices(privacy_choices).build();
+			let sel = match source.privacy.as_deref() {
+				Some("unlisted") => 1,
+				Some("private") => 2,
+				_ => 0,
+			};
+			privacy_choice.set_selection(sel);
+			privacy_sizer.add(&privacy_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
+			privacy_sizer.add(&privacy_choice, 1, SizerFlag::Expand, 0);
+			content_sizer.add_sizer(&privacy_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+			let sensitive_cb = CheckBox::builder(&scroll_win).with_label("&Mark media as sensitive by default").build();
+			sensitive_cb.set_value(source.sensitive.unwrap_or(false));
+			content_sizer.add(&sensitive_cb, 0, SizerFlag::All, 5);
+			let lang_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+			let lang_label = StaticText::builder(&scroll_win).with_label("Language (ISO code):").build();
+			let lang_text = TextCtrl::builder(&scroll_win).with_value(source.language.as_deref().unwrap_or("")).build();
+			lang_sizer.add(&lang_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
+			lang_sizer.add(&lang_text, 1, SizerFlag::Expand, 0);
+			content_sizer.add_sizer(&lang_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+			(Some(privacy_choice), Some(sensitive_cb), Some(lang_text))
+		});
 	scroll_win.set_sizer(content_sizer, true);
 	main_sizer.add(&scroll_win, 1, SizerFlag::Expand, 0);
 	let btn_sizer = BoxSizer::builder(Orientation::Horizontal).build();
