@@ -291,7 +291,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 
 			let delete_exists = post_menu.find_item(ID_DELETE_POST).is_some();
 			if is_own && !delete_exists {
-				let label = format!("&Delete Post\tDelete");
+				let label = "&Delete Post\tDelete".to_string();
 				post_menu.insert(pos + 3, ID_DELETE_POST, &label, "Delete selected post", ItemKind::Normal);
 			} else if !is_own && delete_exists {
 				post_menu.delete(ID_DELETE_POST);
@@ -299,7 +299,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				&& delete_exists
 				&& let Some(item) = post_menu.find_item(ID_DELETE_POST)
 			{
-				let label = format!("&Delete Post\tDelete");
+				let label = "&Delete Post\tDelete".to_string();
 				item.set_label(&label);
 			}
 			let mut fav_pos = None;

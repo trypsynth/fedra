@@ -117,6 +117,7 @@ impl AppState {
 	}
 }
 
+#[must_use]
 pub fn get_sound_path() -> std::path::PathBuf {
 	std::env::current_exe()
 		.ok()

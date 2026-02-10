@@ -1,8 +1,10 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+
 use std::{
 	env,
 	error::Error,
 	fs::File,
-	io::{self, Read, Write},
+	io,
 	path::{Path, PathBuf},
 	process::Command,
 };
@@ -50,7 +52,12 @@ fn project_root() -> PathBuf {
 	Path::new(&env!("CARGO_MANIFEST_DIR")).ancestors().nth(1).unwrap().to_path_buf()
 }
 
-fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path, sounds_dir: &Path) -> Result<(), Box<dyn Error>> {
+fn build_zip_package(
+	target_dir: &Path,
+	exe_path: &Path,
+	readme_path: &Path,
+	sounds_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
 	let package_name = if cfg!(target_os = "macos") { "fedra_mac.zip" } else { "fedra.zip" };
 	let package_path = target_dir.join(package_name);
 	let file = File::create(&package_path)?;
