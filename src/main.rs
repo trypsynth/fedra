@@ -160,6 +160,7 @@ fn drain_ui_commands(
 
 fn main() {
 	let _ = wxdragon::main(|_| {
+		let _ = set_appearance(Appearance::System);
 		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
 		if let Some(checker) = instance_checker.as_ref() {
 			if checker.is_another_running() {
