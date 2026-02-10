@@ -1,8 +1,11 @@
 use std::{
+	env,
 	error::Error,
 	fmt::{Display, Formatter, Result as FmtResult},
 	fs::File,
-	io::Read,
+	io::{Read, Write},
+	path::{Path, PathBuf},
+	time::Duration,
 };
 
 use serde::Deserialize;
@@ -61,10 +64,10 @@ impl Error for UpdateError {}
 pub fn download_update_file(
 	url: &str,
 	mut progress_callback: impl FnMut(u64, u64),
-) -> Result<std::path::PathBuf, UpdateError> {
+) -> Result<PathBuf, UpdateError> {
 	let client = reqwest::blocking::Client::builder()
-		.connect_timeout(std::time::Duration::from_secs(30))
-		.timeout(std::time::Duration::from_secs(600))
+		.connect_timeout(Duration::from_secs(30))
+		.timeout(Duration::from_secs(600))
 		.build()
 		.map_err(|e| UpdateError::NetworkError(e.to_string()))?;
 
@@ -76,16 +79,16 @@ pub fn download_update_file(
 
 	let total_size = response.content_length().unwrap_or(0);
 	let fname = url.rsplit('/').next().unwrap_or("update.bin");
-	let mut dest_path = if std::path::Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
-		std::env::temp_dir()
-	} else if std::path::Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
-		std::env::current_exe()
+	let mut dest_path = if Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
+		env::temp_dir()
+	} else if Path::new(fname).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
+		env::current_exe()
 			.map_err(|e| UpdateError::NoDownload(format!("Failed to determine exe path: {e}")))?
 			.parent()
 			.ok_or_else(|| UpdateError::NoDownload("Failed to get exe directory".to_string()))?
 			.to_path_buf()
 	} else {
-		std::env::temp_dir()
+		env::temp_dir()
 	};
 
 	dest_path.push(fname);
@@ -100,7 +103,7 @@ pub fn download_update_file(
 		if n == 0 {
 			break;
 		}
-		std::io::Write::write_all(&mut file, &buffer[..n])
+		Write::write_all(&mut file, &buffer[..n])
 			.map_err(|e| UpdateError::NoDownload(format!("Failed to write to file: {e}")))?;
 		downloaded += n as u64;
 		progress_callback(downloaded, total_size);
@@ -135,7 +138,7 @@ fn pick_download_url(is_installer: bool, assets: &[ReleaseAsset]) -> Option<Stri
 fn fetch_latest_release() -> Result<GithubRelease, UpdateError> {
 	let user_agent = format!("fedra/{}", env!("CARGO_PKG_VERSION"));
 	let client = reqwest::blocking::Client::builder()
-		.timeout(std::time::Duration::from_secs(15))
+		.timeout(Duration::from_secs(15))
 		.user_agent(user_agent)
 		.build()
 		.map_err(|e| UpdateError::NetworkError(e.to_string()))?;
