@@ -23,6 +23,7 @@
 [Files]
 	Source: "fedra.exe"; DestDir: "{app}"; Flags: ignoreversion
 	Source: "readme.html"; DestDir: "{app}"; Flags: ignoreversion
+	Source: "..\..\sounds\*"; DestDir: "{app}\sounds"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 	Name: "desktopicon"; Description: "Desktop Shortcut"

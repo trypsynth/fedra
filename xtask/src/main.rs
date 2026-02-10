@@ -2,11 +2,12 @@ use std::{
 	env,
 	error::Error,
 	fs::File,
-	io,
+	io::{self, Read, Write},
 	path::{Path, PathBuf},
 	process::Command,
 };
 
+use walkdir::WalkDir;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -33,11 +34,12 @@ fn release() -> Result<(), Box<dyn Error>> {
 	let exe_name = if cfg!(windows) { "fedra.exe" } else { "fedra" };
 	let exe_path = target_dir.join(exe_name);
 	let readme_path = target_dir.join("readme.html");
+	let sounds_dir = project_root().join("sounds");
 	if !exe_path.exists() {
 		return Err("Executable not found".into());
 	}
 	println!("Packaging binaries and docs...");
-	build_zip_package(&target_dir, &exe_path, &readme_path)?;
+	build_zip_package(&target_dir, &exe_path, &readme_path, &sounds_dir)?;
 	if cfg!(windows) {
 		build_windows_installer(&target_dir)?;
 	}
@@ -48,7 +50,7 @@ fn project_root() -> PathBuf {
 	Path::new(&env!("CARGO_MANIFEST_DIR")).ancestors().nth(1).unwrap().to_path_buf()
 }
 
-fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path) -> Result<(), Box<dyn Error>> {
+fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path, sounds_dir: &Path) -> Result<(), Box<dyn Error>> {
 	let package_name = if cfg!(target_os = "macos") { "fedra_mac.zip" } else { "fedra.zip" };
 	let package_path = target_dir.join(package_name);
 	let file = File::create(&package_path)?;
@@ -65,6 +67,25 @@ fn build_zip_package(target_dir: &Path, exe_path: &Path, readme_path: &Path) -> 
 	} else {
 		println!("Warning: readme.html not found, skipping.");
 	}
+
+	if sounds_dir.exists() {
+		for entry in WalkDir::new(sounds_dir) {
+			let entry = entry?;
+			let path = entry.path();
+			let name = path.strip_prefix(sounds_dir.parent().unwrap())?;
+			let name_str = name.to_string_lossy().replace("\\", "/");
+			if path.is_file() {
+				zip.start_file(name_str, options)?;
+				let mut f = File::open(path)?;
+				io::copy(&mut f, &mut zip)?;
+			} else if !name.as_os_str().is_empty() {
+				zip.add_directory(name_str, options)?;
+			}
+		}
+	} else {
+		println!("Warning: sounds directory not found, skipping.");
+	}
+
 	println!("Created zip: {}", package_path.display());
 	Ok(())
 }

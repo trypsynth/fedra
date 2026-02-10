@@ -20,6 +20,7 @@ fn main() {
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-changed=Cargo.toml");
 	println!("cargo:rerun-if-changed=fedra.iss.in");
+	println!("cargo:rerun-if-changed=sounds");
 	build_docs();
 	configure_installer();
 	let target = env::var("TARGET").unwrap_or_default();
