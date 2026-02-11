@@ -553,6 +553,7 @@ pub fn handle_ui_command(
 				preserve_thread_order,
 				default_timelines,
 				notification_preference,
+				hotkey,
 			)) = dialogs::prompt_for_options(
 				frame,
 				state.config.enter_to_send,
@@ -567,11 +568,13 @@ pub fn handle_ui_command(
 				state.config.preserve_thread_order,
 				state.config.default_timelines.clone(),
 				state.config.notification_preference,
+				state.config.hotkey.clone(),
 			) {
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
 					|| state.config.content_warning_display != content_warning_display
 					|| state.config.preserve_thread_order != preserve_thread_order;
+				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
 				state.config.quick_action_keys = quick_action_keys;
@@ -581,6 +584,7 @@ pub fn handle_ui_command(
 				state.config.content_warning_display = content_warning_display;
 				state.config.default_timelines = default_timelines;
 				state.config.notification_preference = notification_preference;
+				state.config.hotkey = hotkey;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();
 				}
@@ -593,6 +597,10 @@ pub fn handle_ui_command(
 				state.config.sort_order = sort_order;
 				state.config.timestamp_format = timestamp_format;
 				state.config.preserve_thread_order = preserve_thread_order;
+				#[cfg(target_os = "windows")]
+				if hotkey_changed && let Some(shell) = &state.app_shell {
+					shell.re_register_hotkey(ui_tx.clone(), &state.config.hotkey);
+				}
 				let store = config::ConfigStore::new();
 				if let Err(err) = store.save(&state.config) {
 					dialogs::show_error(frame, &err);

@@ -11,6 +11,7 @@ const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_VERSION: u32 = 1;
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub version: u32,
@@ -40,6 +41,8 @@ pub struct Config {
 	pub notification_preference: NotificationPreference,
 	#[serde(default = "default_check_for_updates")]
 	pub check_for_updates_on_startup: bool,
+	#[serde(default)]
+	pub hotkey: HotkeyConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -48,6 +51,22 @@ pub enum NotificationPreference {
 	Classic,
 	SoundOnly,
 	Disabled,
+}
+
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HotkeyConfig {
+	pub ctrl: bool,
+	pub alt: bool,
+	pub shift: bool,
+	pub win: bool,
+	pub key: char,
+}
+
+impl Default for HotkeyConfig {
+	fn default() -> Self {
+		Self { ctrl: true, alt: true, shift: false, win: false, key: 'F' }
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +188,7 @@ impl Default for Config {
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),
 			check_for_updates_on_startup: true,
+			hotkey: HotkeyConfig::default(),
 		}
 	}
 }

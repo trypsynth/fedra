@@ -278,19 +278,17 @@ pub fn process_network_responses(
 							merged_any = true;
 						}
 					}
-					if merged_any {
-						if let Some(active) = state.timeline_manager.active_mut() {
-							update_active_timeline_ui(
-								timeline_list,
-								active,
-								suppress_selection,
-								state.config.sort_order,
-								state.config.timestamp_format,
-								state.config.content_warning_display,
-								&state.cw_expanded,
-								state.config.preserve_thread_order,
-							);
-						}
+					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							state.config.sort_order,
+							state.config.timestamp_format,
+							state.config.content_warning_display,
+							&state.cw_expanded,
+							state.config.preserve_thread_order,
+						);
 					}
 				}
 			}
@@ -845,19 +843,17 @@ pub fn process_network_responses(
 							merged_any = true;
 						}
 					}
-					if merged_any {
-						if let Some(active) = state.timeline_manager.active_mut() {
-							update_active_timeline_ui(
-								timeline_list,
-								active,
-								suppress_selection,
-								state.config.sort_order,
-								state.config.timestamp_format,
-								state.config.content_warning_display,
-								&state.cw_expanded,
-								state.config.preserve_thread_order,
-							);
-						}
+					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							state.config.sort_order,
+							state.config.timestamp_format,
+							state.config.content_warning_display,
+							&state.cw_expanded,
+							state.config.preserve_thread_order,
+						);
 					}
 				}
 			}

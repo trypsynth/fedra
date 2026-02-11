@@ -7,7 +7,7 @@ use std::{
 
 use wxdragon::prelude::*;
 
-use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand, ui_wake::UiCommandSender};
+use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand, config::HotkeyConfig, ui_wake::UiCommandSender};
 
 #[cfg(target_os = "windows")]
 pub struct HotkeyHandle {
@@ -23,6 +23,23 @@ pub struct AppShell {
 }
 
 impl AppShell {
+	#[cfg(target_os = "windows")]
+	pub fn re_register_hotkey(&self, ui_tx: UiCommandSender, hotkey: &HotkeyConfig) {
+		use windows::Win32::{
+			Foundation::{LPARAM, WPARAM},
+			UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
+		};
+		if let Some(handle) = self.hotkey_handle.borrow_mut().take() {
+			if handle.thread_id != 0 {
+				unsafe {
+					let _ = PostThreadMessageW(handle.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+				}
+			}
+			let _ = handle.join_handle.join();
+		}
+		*self.hotkey_handle.borrow_mut() = start_hotkey_listener(ui_tx, hotkey);
+	}
+
 	pub fn attach_destroy(self: Rc<Self>, frame: &Frame) {
 		let self_cleanup = self;
 		frame.on_destroy(move |_| {
@@ -47,7 +64,7 @@ impl AppShell {
 	}
 }
 
-pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
+pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender, hotkey: &HotkeyConfig) -> AppShell {
 	let mut tray_menu = Menu::builder()
 		.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
 		.append_separator()
@@ -73,7 +90,7 @@ pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
 		_ => {}
 	});
 	#[cfg(target_os = "windows")]
-	let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx)));
+	let hotkey_handle = Rc::new(RefCell::new(start_hotkey_listener(ui_tx, hotkey)));
 	AppShell {
 		tray_menu: RefCell::new(Some(tray_menu)),
 		taskbar,
@@ -122,22 +139,36 @@ fn is_window_active(frame: &Frame) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn start_hotkey_listener(ui_tx: UiCommandSender) -> Option<HotkeyHandle> {
+pub fn start_hotkey_listener(ui_tx: UiCommandSender, hotkey: &HotkeyConfig) -> Option<HotkeyHandle> {
 	use windows::Win32::{
 		System::Threading::GetCurrentThreadId,
 		UI::{
-			Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, RegisterHotKey, UnregisterHotKey},
+			Input::KeyboardAndMouse::{
+				HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,
+			},
 			WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY},
 		},
 	};
 	const HOTKEY_ID: i32 = 1;
-	const HOTKEY_VK: u32 = 0x46; // 'F'
+	let mut modifiers = HOT_KEY_MODIFIERS(0);
+	if hotkey.ctrl {
+		modifiers |= MOD_CONTROL;
+	}
+	if hotkey.alt {
+		modifiers |= MOD_ALT;
+	}
+	if hotkey.shift {
+		modifiers |= MOD_SHIFT;
+	}
+	if hotkey.win {
+		modifiers |= MOD_WIN;
+	}
+	let vk = char_to_vk(hotkey.key)?;
 	let (thread_id_tx, thread_id_rx) = mpsc::channel();
 	let join_handle = thread::spawn(move || {
 		let thread_id = unsafe { GetCurrentThreadId() };
 		let _ = thread_id_tx.send(thread_id);
-		let modifiers = MOD_CONTROL | MOD_ALT;
-		let registered = unsafe { RegisterHotKey(None, HOTKEY_ID, modifiers, HOTKEY_VK).is_ok() };
+		let registered = unsafe { RegisterHotKey(None, HOTKEY_ID, modifiers, vk).is_ok() };
 		if !registered {
 			return;
 		}
@@ -157,4 +188,14 @@ fn start_hotkey_listener(ui_tx: UiCommandSender) -> Option<HotkeyHandle> {
 	});
 	let thread_id = thread_id_rx.recv().ok()?;
 	Some(HotkeyHandle { thread_id, join_handle })
+}
+
+#[cfg(target_os = "windows")]
+fn char_to_vk(ch: char) -> Option<u32> {
+	use windows::Win32::UI::Input::KeyboardAndMouse::VkKeyScanW;
+	let code = u16::try_from(u32::from(ch)).ok()?;
+	let result = unsafe { VkKeyScanW(code) };
+	// VkKeyScanW returns -1 in the low byte on failure
+	let low_byte = u8::try_from(result & 0xFF).ok()?;
+	if low_byte == 0xFF { None } else { Some(u32::from(low_byte)) }
 }

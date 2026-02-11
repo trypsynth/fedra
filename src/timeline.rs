@@ -144,6 +144,7 @@ impl TimelineEntry {
 	}
 }
 
+#[allow(clippy::struct_field_names)]
 pub struct Timeline {
 	pub timeline_type: TimelineType,
 	pub entries: Vec<TimelineEntry>,

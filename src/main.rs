@@ -162,16 +162,16 @@ fn main() {
 	let _ = wxdragon::main(|_| {
 		let _ = set_appearance(Appearance::System);
 		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
-		if let Some(checker) = instance_checker.as_ref() {
-			if checker.is_another_running() {
-				let frame = Frame::builder().with_title("Fedra").with_size(Size::new(1, 1)).build();
-				let dialog = MessageDialog::builder(&frame, "Fedra is already running.", "Error")
-					.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-					.build();
-				dialog.show_modal();
-				frame.close(true);
-				return;
-			}
+		if let Some(checker) = instance_checker.as_ref()
+			&& checker.is_another_running()
+		{
+			let frame = Frame::builder().with_title("Fedra").with_size(Size::new(1, 1)).build();
+			let dialog = MessageDialog::builder(&frame, "Fedra is already running.", "Error")
+				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+				.build();
+			dialog.show_modal();
+			frame.close(true);
+			return;
 		}
 		let window_parts = build_main_window();
 		let frame = window_parts.frame;
@@ -216,7 +216,7 @@ fn main() {
 			false,
 			None,
 		);
-		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
+		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone(), &state.config.hotkey));
 		app_shell.clone().attach_destroy(&frame);
 		state.app_shell = Some(app_shell);
 
