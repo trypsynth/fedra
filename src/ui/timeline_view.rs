@@ -3,17 +3,32 @@ use std::{cell::Cell, collections::HashSet};
 use wxdragon::{WxWidget, prelude::ListBox};
 
 use crate::{
-	config::{ContentWarningDisplay, DisplayNameEmojiMode, SortOrder, TimestampFormat},
-	timeline::{Timeline, TimelineEntry, TimelineType},
+	config::{Config, SortOrder},
+	timeline::{Timeline, TimelineEntry, TimelineTextOptions, TimelineType},
 };
+
+#[derive(Debug, Clone, Copy)]
+pub struct TimelineViewOptions {
+	pub sort_order: SortOrder,
+	pub preserve_thread_order: bool,
+	pub text_options: TimelineTextOptions,
+}
+
+impl TimelineViewOptions {
+	pub fn from_config(config: &Config) -> Self {
+		Self {
+			sort_order: config.sort_order,
+			preserve_thread_order: config.preserve_thread_order,
+			text_options: TimelineTextOptions::from_config(config),
+		}
+	}
+}
 
 pub fn update_timeline_ui(
 	timeline_list: ListBox,
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
-	timestamp_format: TimestampFormat,
-	cw_display: ContentWarningDisplay,
-	display_name_emoji_mode: DisplayNameEmojiMode,
+	text_options: TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
@@ -25,7 +40,7 @@ pub fn update_timeline_ui(
 	if count == entries.len() {
 		for (i, entry) in iter.enumerate() {
 			let is_expanded = cw_expanded.contains(entry.id());
-			let text = entry.display_text(timestamp_format, cw_display, is_expanded, display_name_emoji_mode);
+			let text = entry.display_text(text_options, is_expanded);
 			let Ok(index) = u32::try_from(i) else { continue };
 			if let Some(current) = timeline_list.get_string(index) {
 				if current != text {
@@ -39,12 +54,7 @@ pub fn update_timeline_ui(
 		timeline_list.clear();
 		for entry in iter {
 			let is_expanded = cw_expanded.contains(entry.id());
-			timeline_list.append(&entry.display_text(
-				timestamp_format,
-				cw_display,
-				is_expanded,
-				display_name_emoji_mode,
-			));
+			timeline_list.append(&entry.display_text(text_options, is_expanded));
 		}
 	}
 }
@@ -147,28 +157,22 @@ pub fn update_active_timeline_ui(
 	timeline_list: ListBox,
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
-	sort_order: SortOrder,
-	timestamp_format: TimestampFormat,
-	cw_display: ContentWarningDisplay,
-	display_name_emoji_mode: DisplayNameEmojiMode,
+	options: TimelineViewOptions,
 	cw_expanded: &HashSet<String>,
-	preserve_thread_order: bool,
 ) {
-	let effective_sort_order = if preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. })
-	{
-		SortOrder::OldestToNewest
-	} else {
-		sort_order
-	};
+	let effective_sort_order =
+		if options.preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. }) {
+			SortOrder::OldestToNewest
+		} else {
+			options.sort_order
+		};
 	with_frozen_listbox(timeline_list, || {
 		with_suppressed_selection(suppress_selection, || {
 			update_timeline_ui(
 				timeline_list,
 				&timeline.entries,
 				effective_sort_order,
-				timestamp_format,
-				cw_display,
-				display_name_emoji_mode,
+				options.text_options,
 				cw_expanded,
 			);
 			apply_timeline_selection(timeline_list, timeline, effective_sort_order);

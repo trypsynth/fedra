@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::{
-	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
+	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
 	mastodon::{Account, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
 };
@@ -91,6 +91,27 @@ pub enum TimelineEntry {
 	Hashtag(Tag),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TimelineTextOptions {
+	pub timestamp_format: TimestampFormat,
+	pub cw_display: ContentWarningDisplay,
+	pub display_name_emoji_mode: DisplayNameEmojiMode,
+}
+
+impl TimelineTextOptions {
+	pub const fn new(
+		timestamp_format: TimestampFormat,
+		cw_display: ContentWarningDisplay,
+		display_name_emoji_mode: DisplayNameEmojiMode,
+	) -> Self {
+		Self { timestamp_format, cw_display, display_name_emoji_mode }
+	}
+
+	pub fn from_config(config: &Config) -> Self {
+		Self::new(config.timestamp_format, config.content_warning_display, config.display_name_emoji_mode)
+	}
+}
+
 impl TimelineEntry {
 	pub const fn id(&self) -> &str {
 		match self {
@@ -101,22 +122,12 @@ impl TimelineEntry {
 		}
 	}
 
-	pub fn display_text(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> String {
+	pub fn display_text(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
 		match self {
-			Self::Status(status) => {
-				status.timeline_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			}
-			Self::Notification(notification) => {
-				notification.timeline_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			}
+			Self::Status(status) => status.timeline_display(options, cw_expanded),
+			Self::Notification(notification) => notification.timeline_display(options, cw_expanded),
 			Self::Account(account) => {
-				let name = account.timeline_display_name(display_name_emoji_mode);
+				let name = account.timeline_display_name(options.display_name_emoji_mode);
 				format!("[Account] {} (@{}) - {} followers", name, account.acct, account.followers_count)
 			}
 			Self::Hashtag(tag) => {

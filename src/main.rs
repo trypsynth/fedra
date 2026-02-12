@@ -47,7 +47,7 @@ use crate::{
 	timeline::TimelineManager,
 	ui::{
 		menu::update_menu_labels,
-		timeline_view::update_active_timeline_ui,
+		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
 		window::{bind_input_handlers, build_main_window},
 	},
 	ui_wake::{UiCommandSender, UiWaker},
@@ -115,6 +115,10 @@ impl AppState {
 		} else {
 			self.config.accounts.first_mut()
 		}
+	}
+
+	pub(crate) fn timeline_view_options(&self) -> TimelineViewOptions {
+		TimelineViewOptions::from_config(&self.config)
 	}
 }
 
@@ -280,6 +284,7 @@ fn main() {
 				&ui_tx_timer,
 			);
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
+				let view_options = state.timeline_view_options();
 				if state.config.timestamp_format == TimestampFormat::Relative
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
@@ -287,12 +292,8 @@ fn main() {
 						timeline_list_wake,
 						active,
 						&suppress_wake,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 				last_ui_refresh = Instant::now();

@@ -147,18 +147,9 @@ pub fn process_stream_events(
 	if merged_any {
 		active_needs_update = true;
 	}
+	let view_options = state.timeline_view_options();
 	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(
-			timeline_list,
-			active,
-			suppress_selection,
-			state.config.sort_order,
-			state.config.timestamp_format,
-			state.config.content_warning_display,
-			state.config.display_name_emoji_mode,
-			&state.cw_expanded,
-			state.config.preserve_thread_order,
-		);
+		update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
@@ -187,6 +178,8 @@ pub fn process_network_responses(
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
+				let view_options = state.timeline_view_options();
+				let text_options = view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -235,24 +228,15 @@ pub fn process_network_responses(
 								let entries_to_append = if filtered.is_empty() { &[][..] } else { &filtered };
 								for entry in entries_to_append {
 									let is_expanded = state.cw_expanded.contains(entry.id());
-									timeline_list.append(&entry.display_text(
-										state.config.timestamp_format,
-										state.config.content_warning_display,
-										is_expanded,
-										state.config.display_name_emoji_mode,
-									));
+									timeline_list.append(&entry.display_text(text_options, is_expanded));
 								}
 							} else {
 								update_active_timeline_ui(
 									timeline_list,
 									timeline,
 									suppress_selection,
-									state.config.sort_order,
-									state.config.timestamp_format,
-									state.config.content_warning_display,
-									state.config.display_name_emoji_mode,
+									view_options,
 									&state.cw_expanded,
-									state.config.preserve_thread_order,
 								);
 							}
 						}
@@ -263,12 +247,8 @@ pub fn process_network_responses(
 								timeline_list,
 								timeline,
 								suppress_selection,
-								state.config.sort_order,
-								state.config.timestamp_format,
-								state.config.content_warning_display,
-								state.config.display_name_emoji_mode,
+								view_options,
 								&state.cw_expanded,
-								state.config.preserve_thread_order,
 							);
 						}
 					}
@@ -282,17 +262,14 @@ pub fn process_network_responses(
 							merged_any = true;
 						}
 					}
+					let view_options = state.timeline_view_options();
 					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
 						update_active_timeline_ui(
 							timeline_list,
 							active,
 							suppress_selection,
-							state.config.sort_order,
-							state.config.timestamp_format,
-							state.config.content_warning_display,
-							state.config.display_name_emoji_mode,
+							view_options,
 							&state.cw_expanded,
-							state.config.preserve_thread_order,
 						);
 					}
 				}
@@ -453,17 +430,14 @@ pub fn process_network_responses(
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
+				let view_options = state.timeline_view_options();
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
 						active,
 						suppress_selection,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 				live_region::announce(live_region, "Deleted");
@@ -474,17 +448,14 @@ pub fn process_network_responses(
 			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
 				let status_clone = status.clone();
 				update_status_in_timelines(state, &status.id, move |s| *s = status_clone.clone());
+				let view_options = state.timeline_view_options();
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
 						active,
 						suppress_selection,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 				live_region::announce(live_region, "Edited");
@@ -744,17 +715,14 @@ pub fn process_network_responses(
 			NetworkResponse::PollVoted { result } => match result {
 				Ok(poll) => {
 					update_poll_in_timelines(state, &poll);
+					let view_options = state.timeline_view_options();
 					if let Some(active) = state.timeline_manager.active_mut() {
 						update_active_timeline_ui(
 							timeline_list,
 							active,
 							suppress_selection,
-							state.config.sort_order,
-							state.config.timestamp_format,
-							state.config.content_warning_display,
-							state.config.display_name_emoji_mode,
+							view_options,
 							&state.cw_expanded,
-							state.config.preserve_thread_order,
 						);
 					}
 					live_region::announce(live_region, "Vote submitted");
@@ -784,6 +752,8 @@ pub fn process_network_responses(
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
+				let view_options = state.timeline_view_options();
+				let text_options = view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -819,12 +789,7 @@ pub fn process_network_responses(
 							if is_active {
 								for entry in &new_entries {
 									let is_expanded = state.cw_expanded.contains(entry.id());
-									timeline_list.append(&entry.display_text(
-										state.config.timestamp_format,
-										state.config.content_warning_display,
-										is_expanded,
-										state.config.display_name_emoji_mode,
-									));
+									timeline_list.append(&entry.display_text(text_options, is_expanded));
 								}
 							}
 						}
@@ -835,12 +800,8 @@ pub fn process_network_responses(
 								timeline_list,
 								timeline,
 								suppress_selection,
-								state.config.sort_order,
-								state.config.timestamp_format,
-								state.config.content_warning_display,
-								state.config.display_name_emoji_mode,
+								view_options,
 								&state.cw_expanded,
-								state.config.preserve_thread_order,
 							);
 						}
 					}
@@ -853,17 +814,14 @@ pub fn process_network_responses(
 							merged_any = true;
 						}
 					}
+					let view_options = state.timeline_view_options();
 					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
 						update_active_timeline_ui(
 							timeline_list,
 							active,
 							suppress_selection,
-							state.config.sort_order,
-							state.config.timestamp_format,
-							state.config.content_warning_display,
-							state.config.display_name_emoji_mode,
+							view_options,
 							&state.cw_expanded,
-							state.config.preserve_thread_order,
 						);
 					}
 				}

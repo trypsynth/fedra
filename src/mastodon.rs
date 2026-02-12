@@ -13,7 +13,7 @@ use crate::{
 	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
 	html::strip_html,
 	text::strip_display_name_emojis,
-	timeline::TimelineType,
+	timeline::{TimelineTextOptions, TimelineType},
 };
 
 pub const DEFAULT_SCOPES: &str = "read write follow";
@@ -191,38 +191,22 @@ impl Status {
 		out
 	}
 
-	pub fn timeline_display(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> String {
+	pub fn timeline_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
 		self.reblog.as_ref().map_or_else(
-			|| self.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode),
+			|| self.base_display(options, cw_expanded),
 			|boosted| {
-				let post_booster = self.account.timeline_display_name(display_name_emoji_mode);
-				format!(
-					"{} boosted {}",
-					post_booster,
-					boosted.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-				)
+				let post_booster = self.account.timeline_display_name(options.display_name_emoji_mode);
+				format!("{} boosted {}", post_booster, boosted.base_display(options, cw_expanded))
 			},
 		)
 	}
 
-	fn base_display(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> String {
+	fn base_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
 		let mut out = String::new();
-		let author = self.account.timeline_display_name(display_name_emoji_mode);
+		let author = self.account.timeline_display_name(options.display_name_emoji_mode);
 		out.push_str(&author);
 		out.push_str(": ");
-		let content = self.content_with_cw(cw_display, cw_expanded);
+		let content = self.content_with_cw(options.cw_display, cw_expanded);
 		if !content.is_empty() {
 			out.push_str(&content);
 		}
@@ -233,7 +217,7 @@ impl Status {
 			let _ = write!(out, " {poll_text}");
 		}
 		let mut meta = Vec::new();
-		if let Some(when) = friendly_time(&self.created_at, timestamp_format) {
+		if let Some(when) = friendly_time(&self.created_at, options.timestamp_format) {
 			meta.push(when);
 		}
 		meta.push(self.visibility_display());
@@ -418,53 +402,26 @@ impl Notification {
 		}
 	}
 
-	pub fn timeline_display(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> String {
-		let actor = self.account.timeline_display_name(display_name_emoji_mode);
+	pub fn timeline_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+		let actor = self.account.timeline_display_name(options.display_name_emoji_mode);
 		match self.kind.as_str() {
-			"mention" | "status" => {
-				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			}
-			"reblog" => format!(
-				"{} boosted {}",
-				actor,
-				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			),
+			"mention" | "status" => self.status_text(options, cw_expanded),
+			"reblog" => format!("{} boosted {}", actor, self.status_text(options, cw_expanded)),
 			"favourite" => {
-				format!(
-					"{} favorited {}",
-					actor,
-					self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-				)
+				format!("{} favorited {}", actor, self.status_text(options, cw_expanded))
 			}
 			"follow" => format!("{actor} followed you"),
 			"follow_request" => format!("{actor} requested to follow you"),
-			"poll" => format!(
-				"Poll ended: {}",
-				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			),
-			"update" => {
-				format!(
-					"{} edited {}",
-					actor,
-					self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-				)
-			}
+			"poll" => format!("Poll ended: {}", self.status_text(options, cw_expanded)),
+			"update" => format!("{} edited {}", actor, self.status_text(options, cw_expanded)),
 			"admin.sign_up" => format!("{actor} signed up"),
-			"admin.report" => self.format_admin_report(actor, display_name_emoji_mode),
+			"admin.report" => self.format_admin_report(actor, options.display_name_emoji_mode),
 			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
 			"moderation_warning" => "You have received a moderation warning".to_string(),
-			_ => {
-				self.status_text_if_any(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode).map_or_else(
-					|| format!("{} {}", actor, self.kind),
-					|text| format!("{} {}: {}", actor, self.kind, text),
-				)
-			}
+			_ => self.status_text_if_any(options, cw_expanded).map_or_else(
+				|| format!("{} {}", actor, self.kind),
+				|text| format!("{} {}: {}", actor, self.kind, text),
+			),
 		}
 	}
 
@@ -492,27 +449,12 @@ impl Notification {
 		)
 	}
 
-	fn status_text(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> String {
-		self.status_text_if_any(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
-			.unwrap_or_else(|| "No status content".to_string())
+	fn status_text(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+		self.status_text_if_any(options, cw_expanded).unwrap_or_else(|| "No status content".to_string())
 	}
 
-	fn status_text_if_any(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> Option<String> {
-		self.status
-			.as_ref()
-			.map(|status| status.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode))
+	fn status_text_if_any(&self, options: TimelineTextOptions, cw_expanded: bool) -> Option<String> {
+		self.status.as_ref().map(|status| status.base_display(options, cw_expanded))
 	}
 }
 

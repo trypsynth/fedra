@@ -383,6 +383,7 @@ pub fn handle_ui_command(
 			if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 				return;
 			}
+			let text_options = state.timeline_view_options().text_options;
 			let Some(active) = state.timeline_manager.active_mut() else { return };
 			let Some(list_index) = active.selected_index else {
 				live_region::announce(live_region, "No post selected");
@@ -416,12 +417,7 @@ pub fn handle_ui_command(
 				state.cw_expanded.insert(entry_id.to_string());
 			}
 			let is_expanded = state.cw_expanded.contains(entry_id);
-			let text = entry.display_text(
-				state.config.timestamp_format,
-				state.config.content_warning_display,
-				is_expanded,
-				state.config.display_name_emoji_mode,
-			);
+			let text = entry.display_text(text_options, is_expanded);
 			timeline_list.set_string(u32::try_from(list_index).unwrap(), &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
@@ -451,17 +447,14 @@ pub fn handle_ui_command(
 					timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 				});
 
+				let view_options = state.timeline_view_options();
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
 						active,
 						suppress_selection,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 				if let Some(mb) = frame.get_menu_bar() {
@@ -510,17 +503,14 @@ pub fn handle_ui_command(
 						timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 					});
 				}
+				let view_options = state.timeline_view_options();
 				if let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
 						active,
 						suppress_selection,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 				if let Some(mb) = frame.get_menu_bar() {
@@ -615,17 +605,14 @@ pub fn handle_ui_command(
 				if let Err(err) = store.save(&state.config) {
 					dialogs::show_error(frame, &err);
 				}
+				let view_options = state.timeline_view_options();
 				if needs_refresh && let Some(active) = state.timeline_manager.active_mut() {
 					update_active_timeline_ui(
 						timeline_list,
 						active,
 						suppress_selection,
-						state.config.sort_order,
-						state.config.timestamp_format,
-						state.config.content_warning_display,
-						state.config.display_name_emoji_mode,
+						view_options,
 						&state.cw_expanded,
-						state.config.preserve_thread_order,
 					);
 				}
 			}
@@ -1524,18 +1511,9 @@ fn open_timeline(
 			with_suppressed_selection(suppress_selection, || {
 				selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
+			let view_options = state.timeline_view_options();
 			if let Some(active) = state.timeline_manager.active_mut() {
-				update_active_timeline_ui(
-					timeline_list,
-					active,
-					suppress_selection,
-					state.config.sort_order,
-					state.config.timestamp_format,
-					state.config.content_warning_display,
-					state.config.display_name_emoji_mode,
-					&state.cw_expanded,
-					state.config.preserve_thread_order,
-				);
+				update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
 			}
 		}
 		if let Some(mb) = frame.get_menu_bar() {
@@ -1596,17 +1574,8 @@ fn close_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
+	let view_options = state.timeline_view_options();
 	if let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(
-			timeline_list,
-			active,
-			suppress_selection,
-			state.config.sort_order,
-			state.config.timestamp_format,
-			state.config.content_warning_display,
-			state.config.display_name_emoji_mode,
-			&state.cw_expanded,
-			state.config.preserve_thread_order,
-		);
+		update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
 	}
 }

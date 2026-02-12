@@ -210,18 +210,9 @@ pub fn switch_to_account(
 
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
+		let view_options = state.timeline_view_options();
 		if let Some(active) = state.timeline_manager.active_mut() {
-			update_active_timeline_ui(
-				timeline_list,
-				active,
-				suppress_selection,
-				state.config.sort_order,
-				state.config.timestamp_format,
-				state.config.content_warning_display,
-				state.config.display_name_emoji_mode,
-				&state.cw_expanded,
-				state.config.preserve_thread_order,
-			);
+			update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
 		}
 	});
 	let (handle, title) = state.active_account().map_or_else(
