@@ -155,6 +155,7 @@ pub fn process_stream_events(
 			state.config.sort_order,
 			state.config.timestamp_format,
 			state.config.content_warning_display,
+			state.config.display_name_emoji_mode,
 			&state.cw_expanded,
 			state.config.preserve_thread_order,
 		);
@@ -238,6 +239,7 @@ pub fn process_network_responses(
 										state.config.timestamp_format,
 										state.config.content_warning_display,
 										is_expanded,
+										state.config.display_name_emoji_mode,
 									));
 								}
 							} else {
@@ -248,6 +250,7 @@ pub fn process_network_responses(
 									state.config.sort_order,
 									state.config.timestamp_format,
 									state.config.content_warning_display,
+									state.config.display_name_emoji_mode,
 									&state.cw_expanded,
 									state.config.preserve_thread_order,
 								);
@@ -263,6 +266,7 @@ pub fn process_network_responses(
 								state.config.sort_order,
 								state.config.timestamp_format,
 								state.config.content_warning_display,
+								state.config.display_name_emoji_mode,
 								&state.cw_expanded,
 								state.config.preserve_thread_order,
 							);
@@ -286,6 +290,7 @@ pub fn process_network_responses(
 							state.config.sort_order,
 							state.config.timestamp_format,
 							state.config.content_warning_display,
+							state.config.display_name_emoji_mode,
 							&state.cw_expanded,
 							state.config.preserve_thread_order,
 						);
@@ -456,6 +461,7 @@ pub fn process_network_responses(
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
+						state.config.display_name_emoji_mode,
 						&state.cw_expanded,
 						state.config.preserve_thread_order,
 					);
@@ -476,6 +482,7 @@ pub fn process_network_responses(
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
+						state.config.display_name_emoji_mode,
 						&state.cw_expanded,
 						state.config.preserve_thread_order,
 					);
@@ -745,6 +752,7 @@ pub fn process_network_responses(
 							state.config.sort_order,
 							state.config.timestamp_format,
 							state.config.content_warning_display,
+							state.config.display_name_emoji_mode,
 							&state.cw_expanded,
 							state.config.preserve_thread_order,
 						);
@@ -815,6 +823,7 @@ pub fn process_network_responses(
 										state.config.timestamp_format,
 										state.config.content_warning_display,
 										is_expanded,
+										state.config.display_name_emoji_mode,
 									));
 								}
 							}
@@ -829,6 +838,7 @@ pub fn process_network_responses(
 								state.config.sort_order,
 								state.config.timestamp_format,
 								state.config.content_warning_display,
+								state.config.display_name_emoji_mode,
 								&state.cw_expanded,
 								state.config.preserve_thread_order,
 							);
@@ -851,6 +861,7 @@ pub fn process_network_responses(
 							state.config.sort_order,
 							state.config.timestamp_format,
 							state.config.content_warning_display,
+							state.config.display_name_emoji_mode,
 							&state.cw_expanded,
 							state.config.preserve_thread_order,
 						);

@@ -33,6 +33,8 @@ pub struct Config {
 	pub timestamp_format: TimestampFormat,
 	#[serde(default)]
 	pub content_warning_display: ContentWarningDisplay,
+	#[serde(default)]
+	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	#[serde(default = "default_preserve_thread_order")]
 	pub preserve_thread_order: bool,
 	#[serde(default = "default_timelines")]
@@ -117,6 +119,15 @@ pub enum ContentWarningDisplay {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DisplayNameEmojiMode {
+	#[default]
+	None,
+	UnicodeOnly,
+	InstanceOnly,
+	All,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AutoloadMode {
 	Never,
 	#[default]
@@ -184,6 +195,7 @@ impl Default for Config {
 			sort_order: SortOrder::default(),
 			timestamp_format: TimestampFormat::default(),
 			content_warning_display: ContentWarningDisplay::default(),
+			display_name_emoji_mode: DisplayNameEmojiMode::default(),
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),

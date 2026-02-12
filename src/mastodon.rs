@@ -10,8 +10,9 @@ use reqwest::{
 use serde::Deserialize;
 
 use crate::{
-	config::{ContentWarningDisplay, TimestampFormat},
+	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
 	html::strip_html,
+	text::strip_display_name_emojis,
 	timeline::TimelineType,
 };
 
@@ -195,23 +196,19 @@ impl Status {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> String {
 		self.reblog.as_ref().map_or_else(
-			|| self.base_display(timestamp_format, cw_display, cw_expanded),
+			|| self.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode),
 			|boosted| {
-				let post_booster = self.account.display_name_or_username();
-				format!("{} boosted {}", post_booster, boosted.base_display(timestamp_format, cw_display, cw_expanded))
+				let post_booster = self.account.timeline_display_name(display_name_emoji_mode);
+				format!(
+					"{} boosted {}",
+					post_booster,
+					boosted.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+				)
 			},
 		)
-	}
-
-	pub fn details_display(
-		&self,
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		cw_expanded: bool,
-	) -> String {
-		self.base_display(timestamp_format, cw_display, cw_expanded)
 	}
 
 	fn base_display(
@@ -219,10 +216,11 @@ impl Status {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> String {
 		let mut out = String::new();
-		let author = self.account.display_name_or_username();
-		out.push_str(author);
+		let author = self.account.timeline_display_name(display_name_emoji_mode);
+		out.push_str(&author);
 		out.push_str(": ");
 		let content = self.content_with_cw(cw_display, cw_expanded);
 		if !content.is_empty() {
@@ -425,36 +423,58 @@ impl Notification {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> String {
-		let actor = self.account.display_name_or_username();
+		let actor = self.account.timeline_display_name(display_name_emoji_mode);
 		match self.kind.as_str() {
-			"mention" | "status" => self.status_text(timestamp_format, cw_display, cw_expanded),
-			"reblog" => format!("{} boosted {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded)),
+			"mention" | "status" => {
+				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+			}
+			"reblog" => format!(
+				"{} boosted {}",
+				actor,
+				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+			),
 			"favourite" => {
-				format!("{} favorited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
+				format!(
+					"{} favorited {}",
+					actor,
+					self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+				)
 			}
 			"follow" => format!("{actor} followed you"),
 			"follow_request" => format!("{actor} requested to follow you"),
-			"poll" => format!("Poll ended: {}", self.status_text(timestamp_format, cw_display, cw_expanded)),
+			"poll" => format!(
+				"Poll ended: {}",
+				self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+			),
 			"update" => {
-				format!("{} edited {}", actor, self.status_text(timestamp_format, cw_display, cw_expanded))
+				format!(
+					"{} edited {}",
+					actor,
+					self.status_text(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+				)
 			}
 			"admin.sign_up" => format!("{actor} signed up"),
-			"admin.report" => self.format_admin_report(actor),
+			"admin.report" => self.format_admin_report(actor, display_name_emoji_mode),
 			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
 			"moderation_warning" => "You have received a moderation warning".to_string(),
-			_ => self.status_text_if_any(timestamp_format, cw_display, cw_expanded).map_or_else(
-				|| format!("{} {}", actor, self.kind),
-				|text| format!("{} {}: {}", actor, self.kind, text),
-			),
+			_ => {
+				self.status_text_if_any(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode).map_or_else(
+					|| format!("{} {}", actor, self.kind),
+					|text| format!("{} {}: {}", actor, self.kind, text),
+				)
+			}
 		}
 	}
 
-	fn format_admin_report(&self, reporter: &str) -> String {
+	fn format_admin_report(&self, reporter: String, display_name_emoji_mode: DisplayNameEmojiMode) -> String {
 		self.report.as_ref().map_or_else(
 			|| format!("{reporter} filed a report"),
 			|report| {
-				let target = report.target_account.as_ref().map_or("unknown user", Account::display_name_or_username);
+				let target = report.target_account.as_ref().map_or("unknown user".to_string(), |account| {
+					account.timeline_display_name(display_name_emoji_mode).to_string()
+				});
 				let category = match report.category.as_str() {
 					"spam" => "spam",
 					"legal" => "legal issue",
@@ -477,8 +497,9 @@ impl Notification {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> String {
-		self.status_text_if_any(timestamp_format, cw_display, cw_expanded)
+		self.status_text_if_any(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
 			.unwrap_or_else(|| "No status content".to_string())
 	}
 
@@ -487,8 +508,11 @@ impl Notification {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> Option<String> {
-		self.status.as_ref().map(|status| status.details_display(timestamp_format, cw_display, cw_expanded))
+		self.status
+			.as_ref()
+			.map(|status| status.base_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode))
 	}
 }
 
@@ -538,6 +562,21 @@ pub struct AccountField {
 impl Account {
 	pub fn display_name_or_username(&self) -> &str {
 		if self.display_name.is_empty() { &self.username } else { &self.display_name }
+	}
+
+	pub fn timeline_display_name(&self, mode: DisplayNameEmojiMode) -> String {
+		if mode == DisplayNameEmojiMode::None {
+			return self.display_name_or_username().to_string();
+		}
+		let filtered_display = strip_display_name_emojis(&self.display_name, mode);
+		if !filtered_display.is_empty() {
+			return filtered_display;
+		}
+		let filtered_username = strip_display_name_emojis(&self.username, mode);
+		if !filtered_username.is_empty() {
+			return filtered_username;
+		}
+		self.display_name_or_username().to_string()
 	}
 
 	pub fn profile_display(&self) -> String {

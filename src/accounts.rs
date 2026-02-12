@@ -218,6 +218,7 @@ pub fn switch_to_account(
 				state.config.sort_order,
 				state.config.timestamp_format,
 				state.config.content_warning_display,
+				state.config.display_name_emoji_mode,
 				&state.cw_expanded,
 				state.config.preserve_thread_order,
 			);

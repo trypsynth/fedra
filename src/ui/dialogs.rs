@@ -4,7 +4,10 @@ use url::Url;
 use wxdragon::prelude::*;
 
 use crate::{
-	config::{Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, HotkeyConfig, SortOrder, TimestampFormat},
+	config::{
+		Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig, SortOrder,
+		TimestampFormat,
+	},
 	html::{self, Link},
 	mastodon::{Account as MastodonAccount, Mention, PollLimits, SearchType, Status, Tag},
 	network::{NetworkCommand, ProfileUpdate},
@@ -811,6 +814,7 @@ pub fn prompt_for_options(
 	autoload: AutoloadMode,
 	fetch_limit: u8,
 	content_warning_display: ContentWarningDisplay,
+	display_name_emoji_mode: DisplayNameEmojiMode,
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 	preserve_thread_order: bool,
@@ -825,6 +829,7 @@ pub fn prompt_for_options(
 	AutoloadMode,
 	u8,
 	ContentWarningDisplay,
+	DisplayNameEmojiMode,
 	SortOrder,
 	TimestampFormat,
 	bool,
@@ -932,6 +937,21 @@ pub fn prompt_for_options(
 	let cw_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	cw_sizer.add(&cw_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	cw_sizer.add(&cw_choice, 1, SizerFlag::Expand, 0);
+	let emoji_mode_label = StaticText::builder(&timeline_panel).with_label("Display name &emoji filtering:").build();
+	let emoji_mode_choices =
+		vec!["None".to_string(), "Unicode emojis".to_string(), "Instance emojis".to_string(), "All".to_string()];
+	let emoji_mode_choice =
+		ComboBox::builder(&timeline_panel).with_choices(emoji_mode_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let emoji_mode_index = match display_name_emoji_mode {
+		DisplayNameEmojiMode::None => 0,
+		DisplayNameEmojiMode::UnicodeOnly => 1,
+		DisplayNameEmojiMode::InstanceOnly => 2,
+		DisplayNameEmojiMode::All => 3,
+	};
+	emoji_mode_choice.set_selection(emoji_mode_index);
+	let emoji_mode_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	emoji_mode_sizer.add(&emoji_mode_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	emoji_mode_sizer.add(&emoji_mode_choice, 1, SizerFlag::Expand, 0);
 
 	let timestamp_checkbox = CheckBox::builder(&timeline_panel).with_label("Show relative &timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
@@ -943,6 +963,7 @@ pub fn prompt_for_options(
 	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add_sizer(&emoji_mode_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -997,6 +1018,13 @@ pub fn prompt_for_options(
 		Some(2) => ContentWarningDisplay::WarningOnly,
 		_ => content_warning_display,
 	};
+	let new_display_name_emoji_mode = match emoji_mode_choice.get_selection() {
+		Some(0) => DisplayNameEmojiMode::None,
+		Some(1) => DisplayNameEmojiMode::UnicodeOnly,
+		Some(2) => DisplayNameEmojiMode::InstanceOnly,
+		Some(3) => DisplayNameEmojiMode::All,
+		_ => display_name_emoji_mode,
+	};
 	let new_autoload = match autoload_choice.get_selection() {
 		Some(0) => AutoloadMode::Never,
 		Some(1) => AutoloadMode::AtEnd,
@@ -1019,6 +1047,7 @@ pub fn prompt_for_options(
 		new_autoload,
 		new_fetch_limit,
 		new_cw_display,
+		new_display_name_emoji_mode,
 		new_sort,
 		new_timestamp,
 		thread_order_checkbox.get_value(),

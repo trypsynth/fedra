@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::{
-	config::{ContentWarningDisplay, TimestampFormat},
+	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
 	mastodon::{Account, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
 };
@@ -106,19 +106,18 @@ impl TimelineEntry {
 		timestamp_format: TimestampFormat,
 		cw_display: ContentWarningDisplay,
 		cw_expanded: bool,
+		display_name_emoji_mode: DisplayNameEmojiMode,
 	) -> String {
 		match self {
-			Self::Status(status) => status.timeline_display(timestamp_format, cw_display, cw_expanded),
+			Self::Status(status) => {
+				status.timeline_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
+			}
 			Self::Notification(notification) => {
-				notification.timeline_display(timestamp_format, cw_display, cw_expanded)
+				notification.timeline_display(timestamp_format, cw_display, cw_expanded, display_name_emoji_mode)
 			}
 			Self::Account(account) => {
-				format!(
-					"[Account] {} (@{}) - {} followers",
-					account.display_name_or_username(),
-					account.acct,
-					account.followers_count
-				)
+				let name = account.timeline_display_name(display_name_emoji_mode);
+				format!("[Account] {} (@{}) - {} followers", name, account.acct, account.followers_count)
 			}
 			Self::Hashtag(tag) => {
 				let following_str = if tag.following { "following" } else { "not following" };

@@ -416,8 +416,12 @@ pub fn handle_ui_command(
 				state.cw_expanded.insert(entry_id.to_string());
 			}
 			let is_expanded = state.cw_expanded.contains(entry_id);
-			let text =
-				entry.display_text(state.config.timestamp_format, state.config.content_warning_display, is_expanded);
+			let text = entry.display_text(
+				state.config.timestamp_format,
+				state.config.content_warning_display,
+				is_expanded,
+				state.config.display_name_emoji_mode,
+			);
 			timeline_list.set_string(u32::try_from(list_index).unwrap(), &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
@@ -455,6 +459,7 @@ pub fn handle_ui_command(
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
+						state.config.display_name_emoji_mode,
 						&state.cw_expanded,
 						state.config.preserve_thread_order,
 					);
@@ -513,6 +518,7 @@ pub fn handle_ui_command(
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
+						state.config.display_name_emoji_mode,
 						&state.cw_expanded,
 						state.config.preserve_thread_order,
 					);
@@ -548,6 +554,7 @@ pub fn handle_ui_command(
 				autoload,
 				fetch_limit,
 				content_warning_display,
+				display_name_emoji_mode,
 				sort_order,
 				timestamp_format,
 				preserve_thread_order,
@@ -563,6 +570,7 @@ pub fn handle_ui_command(
 				state.config.autoload,
 				state.config.fetch_limit,
 				state.config.content_warning_display,
+				state.config.display_name_emoji_mode,
 				state.config.sort_order,
 				state.config.timestamp_format,
 				state.config.preserve_thread_order,
@@ -573,6 +581,7 @@ pub fn handle_ui_command(
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
 					|| state.config.content_warning_display != content_warning_display
+					|| state.config.display_name_emoji_mode != display_name_emoji_mode
 					|| state.config.preserve_thread_order != preserve_thread_order;
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
@@ -582,6 +591,7 @@ pub fn handle_ui_command(
 				state.config.autoload = autoload;
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
+				state.config.display_name_emoji_mode = display_name_emoji_mode;
 				state.config.default_timelines = default_timelines;
 				state.config.notification_preference = notification_preference;
 				state.config.hotkey = hotkey;
@@ -613,6 +623,7 @@ pub fn handle_ui_command(
 						state.config.sort_order,
 						state.config.timestamp_format,
 						state.config.content_warning_display,
+						state.config.display_name_emoji_mode,
 						&state.cw_expanded,
 						state.config.preserve_thread_order,
 					);
@@ -1521,6 +1532,7 @@ fn open_timeline(
 					state.config.sort_order,
 					state.config.timestamp_format,
 					state.config.content_warning_display,
+					state.config.display_name_emoji_mode,
 					&state.cw_expanded,
 					state.config.preserve_thread_order,
 				);
@@ -1592,6 +1604,7 @@ fn close_timeline(
 			state.config.sort_order,
 			state.config.timestamp_format,
 			state.config.content_warning_display,
+			state.config.display_name_emoji_mode,
 			&state.cw_expanded,
 			state.config.preserve_thread_order,
 		);

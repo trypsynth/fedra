@@ -3,7 +3,7 @@ use std::{cell::Cell, collections::HashSet};
 use wxdragon::{WxWidget, prelude::ListBox};
 
 use crate::{
-	config::{ContentWarningDisplay, SortOrder, TimestampFormat},
+	config::{ContentWarningDisplay, DisplayNameEmojiMode, SortOrder, TimestampFormat},
 	timeline::{Timeline, TimelineEntry, TimelineType},
 };
 
@@ -13,6 +13,7 @@ pub fn update_timeline_ui(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 	cw_display: ContentWarningDisplay,
+	display_name_emoji_mode: DisplayNameEmojiMode,
 	cw_expanded: &HashSet<String>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
@@ -24,7 +25,7 @@ pub fn update_timeline_ui(
 	if count == entries.len() {
 		for (i, entry) in iter.enumerate() {
 			let is_expanded = cw_expanded.contains(entry.id());
-			let text = entry.display_text(timestamp_format, cw_display, is_expanded);
+			let text = entry.display_text(timestamp_format, cw_display, is_expanded, display_name_emoji_mode);
 			let Ok(index) = u32::try_from(i) else { continue };
 			if let Some(current) = timeline_list.get_string(index) {
 				if current != text {
@@ -38,7 +39,12 @@ pub fn update_timeline_ui(
 		timeline_list.clear();
 		for entry in iter {
 			let is_expanded = cw_expanded.contains(entry.id());
-			timeline_list.append(&entry.display_text(timestamp_format, cw_display, is_expanded));
+			timeline_list.append(&entry.display_text(
+				timestamp_format,
+				cw_display,
+				is_expanded,
+				display_name_emoji_mode,
+			));
 		}
 	}
 }
@@ -144,6 +150,7 @@ pub fn update_active_timeline_ui(
 	sort_order: SortOrder,
 	timestamp_format: TimestampFormat,
 	cw_display: ContentWarningDisplay,
+	display_name_emoji_mode: DisplayNameEmojiMode,
 	cw_expanded: &HashSet<String>,
 	preserve_thread_order: bool,
 ) {
@@ -161,6 +168,7 @@ pub fn update_active_timeline_ui(
 				effective_sort_order,
 				timestamp_format,
 				cw_display,
+				display_name_emoji_mode,
 				cw_expanded,
 			);
 			apply_timeline_selection(timeline_list, timeline, effective_sort_order);
