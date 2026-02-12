@@ -1,6 +1,6 @@
 use std::{cell::Cell, collections::HashSet};
 
-use wxdragon::prelude::ListBox;
+use wxdragon::{WxWidget, prelude::ListBox};
 
 use crate::{
 	config::{ContentWarningDisplay, SortOrder, TimestampFormat},
@@ -47,6 +47,20 @@ pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnO
 	suppress_selection.set(true);
 	let result = f();
 	suppress_selection.set(false);
+	result
+}
+
+pub fn with_frozen_listbox<T>(listbox: ListBox, f: impl FnOnce() -> T) -> T {
+	listbox.freeze();
+	struct ThawOnDrop(ListBox);
+	impl Drop for ThawOnDrop {
+		fn drop(&mut self) {
+			self.0.thaw();
+		}
+	}
+	let thaw_guard = ThawOnDrop(listbox);
+	let result = f();
+	drop(thaw_guard);
 	result
 }
 
@@ -139,15 +153,17 @@ pub fn update_active_timeline_ui(
 	} else {
 		sort_order
 	};
-	with_suppressed_selection(suppress_selection, || {
-		update_timeline_ui(
-			timeline_list,
-			&timeline.entries,
-			effective_sort_order,
-			timestamp_format,
-			cw_display,
-			cw_expanded,
-		);
-		apply_timeline_selection(timeline_list, timeline, effective_sort_order);
+	with_frozen_listbox(timeline_list, || {
+		with_suppressed_selection(suppress_selection, || {
+			update_timeline_ui(
+				timeline_list,
+				&timeline.entries,
+				effective_sort_order,
+				timestamp_format,
+				cw_display,
+				cw_expanded,
+			);
+			apply_timeline_selection(timeline_list, timeline, effective_sort_order);
+		});
 	});
 }
