@@ -443,6 +443,9 @@ pub fn handle_ui_command(
 			}
 			if state.timeline_manager.go_back() {
 				let index = state.timeline_manager.active_index();
+				if let Some(name) = state.timeline_manager.display_names().get(index) {
+					live_region::announce(live_region, name);
+				}
 				with_suppressed_selection(suppress_selection, || {
 					timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 				});
@@ -466,6 +469,9 @@ pub fn handle_ui_command(
 		}
 		UiCommand::SwitchTimelineByIndex(index) => {
 			if index < state.timeline_manager.len() {
+				if let Some(name) = state.timeline_manager.display_names().get(index) {
+					live_region::announce(live_region, name);
+				}
 				handle_ui_command(
 					UiCommand::TimelineSelectionChanged(index),
 					state,
