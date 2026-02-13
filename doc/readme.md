@@ -33,7 +33,7 @@ Fedra's user interface was designed specifically with keyboard and screen reader
 
 ### Options menu
 * Ctrl + P: view the profile of the selected post's author.
-* Ctrl + Comma: configure application settings.
+* Ctrl + ,: configure application settings.
 
 ### Post menu
 * Ctrl + N: create a new post.
@@ -72,3 +72,8 @@ When enabled (toggle on with Ctrl + Shift + Q), many multi-key shortcuts are rep
 * x: toggle content warning (replaces Ctrl + X).
 * . (Period): load more posts (replaces Ctrl + .).
 * 1-9: switch to timeline 1-9 (works alongside Ctrl + 1-9).
+
+## Changelog
+
+### Version 0.1.0
+* Initial release of the Fedra desktop Mastodon client, currently for Windows only.
