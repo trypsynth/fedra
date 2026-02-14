@@ -173,6 +173,24 @@ pub fn process_network_responses(
 ) {
 	let Some(handle) = &state.network_handle else { return };
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
+	macro_rules! dispatch_ui_command {
+		($cmd:expr) => {{
+			let mut ctx = crate::commands::UiCommandContext {
+				state,
+				frame,
+				timelines_selector,
+				timeline_list,
+				suppress_selection,
+				live_region,
+				quick_action_keys_enabled,
+				autoload_mode,
+				sort_order_cell,
+				tray_hidden,
+				ui_tx,
+			};
+			crate::commands::handle_ui_command($cmd, &mut ctx);
+		}};
+	}
 	for response in handle.drain() {
 		match response {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
@@ -316,20 +334,7 @@ pub fn process_network_responses(
 							id: account.id.clone(),
 							name: account.display_name_or_username().to_string(),
 						};
-						crate::commands::handle_ui_command(
-							UiCommand::OpenTimeline(timeline_type),
-							state,
-							frame,
-							timelines_selector,
-							timeline_list,
-							suppress_selection,
-							live_region,
-							quick_action_keys_enabled,
-							autoload_mode,
-							sort_order_cell,
-							tray_hidden,
-							ui_tx,
-						);
+						dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 					}
 				}
 			}
@@ -534,20 +539,7 @@ pub fn process_network_responses(
 								id: account.id.clone(),
 								name: account.display_name_or_username().to_string(),
 							};
-							crate::commands::handle_ui_command(
-								UiCommand::OpenTimeline(timeline_type),
-								state,
-								frame,
-								timelines_selector,
-								timeline_list,
-								suppress_selection,
-								live_region,
-								quick_action_keys_enabled,
-								autoload_mode,
-								sort_order_cell,
-								tray_hidden,
-								ui_tx,
-							);
+							dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 						}
 					}
 				}
@@ -592,20 +584,7 @@ pub fn process_network_responses(
 								id: account.id.clone(),
 								name: account.display_name_or_username().to_string(),
 							};
-							crate::commands::handle_ui_command(
-								UiCommand::OpenTimeline(timeline_type),
-								state,
-								frame,
-								timelines_selector,
-								timeline_list,
-								suppress_selection,
-								live_region,
-								quick_action_keys_enabled,
-								autoload_mode,
-								sort_order_cell,
-								tray_hidden,
-								ui_tx,
-							);
+							dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 						}
 					}
 				}
@@ -625,20 +604,7 @@ pub fn process_network_responses(
 						id: account.id.clone(),
 						name: account.display_name_or_username().to_string(),
 					};
-					crate::commands::handle_ui_command(
-						UiCommand::OpenTimeline(timeline_type),
-						state,
-						frame,
-						timelines_selector,
-						timeline_list,
-						suppress_selection,
-						live_region,
-						quick_action_keys_enabled,
-						autoload_mode,
-						sort_order_cell,
-						tray_hidden,
-						ui_tx,
-					);
+					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
@@ -656,20 +622,7 @@ pub fn process_network_responses(
 						id: account.id.clone(),
 						name: account.display_name_or_username().to_string(),
 					};
-					crate::commands::handle_ui_command(
-						UiCommand::OpenTimeline(timeline_type),
-						state,
-						frame,
-						timelines_selector,
-						timeline_list,
-						suppress_selection,
-						live_region,
-						quick_action_keys_enabled,
-						autoload_mode,
-						sort_order_cell,
-						tray_hidden,
-						ui_tx,
-					);
+					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {

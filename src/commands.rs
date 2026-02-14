@@ -107,21 +107,34 @@ pub fn refresh_timeline(state: &AppState, live_region: StaticText) {
 }
 
 /// Handles a UI command, updating state and UI as needed.
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-pub fn handle_ui_command(
-	cmd: UiCommand,
-	state: &mut AppState,
-	frame: &Frame,
-	timelines_selector: ListBox,
-	timeline_list: ListBox,
-	suppress_selection: &Cell<bool>,
-	live_region: StaticText,
-	quick_action_keys_enabled: &Cell<bool>,
-	autoload_mode: &Cell<AutoloadMode>,
-	sort_order_cell: &Cell<SortOrder>,
-	tray_hidden: &Cell<bool>,
-	ui_tx: &UiCommandSender,
-) {
+pub struct UiCommandContext<'a> {
+	pub state: &'a mut AppState,
+	pub frame: &'a Frame,
+	pub timelines_selector: ListBox,
+	pub timeline_list: ListBox,
+	pub suppress_selection: &'a Cell<bool>,
+	pub live_region: StaticText,
+	pub quick_action_keys_enabled: &'a Cell<bool>,
+	pub autoload_mode: &'a Cell<AutoloadMode>,
+	pub sort_order_cell: &'a Cell<SortOrder>,
+	pub tray_hidden: &'a Cell<bool>,
+	pub ui_tx: &'a UiCommandSender,
+}
+
+/// Handles a UI command, updating state and UI as needed.
+#[allow(clippy::too_many_lines)]
+pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
+	let state = &mut *ctx.state;
+	let frame = ctx.frame;
+	let timelines_selector = ctx.timelines_selector;
+	let timeline_list = ctx.timeline_list;
+	let suppress_selection = ctx.suppress_selection;
+	let live_region = ctx.live_region;
+	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
+	let autoload_mode = ctx.autoload_mode;
+	let sort_order_cell = ctx.sort_order_cell;
+	let tray_hidden = ctx.tray_hidden;
+	let ui_tx = ctx.ui_tx;
 	match cmd {
 		UiCommand::NewPost => {
 			let (has_account, max_post_chars, poll_limits, enter_to_send) = (
@@ -433,20 +446,7 @@ pub fn handle_ui_command(
 				if let Some(name) = state.timeline_manager.display_names().get(index) {
 					live_region::announce(live_region, name);
 				}
-				handle_ui_command(
-					UiCommand::TimelineSelectionChanged(index),
-					state,
-					frame,
-					timelines_selector,
-					timeline_list,
-					suppress_selection,
-					live_region,
-					quick_action_keys_enabled,
-					autoload_mode,
-					sort_order_cell,
-					tray_hidden,
-					ui_tx,
-				);
+				handle_ui_command(UiCommand::TimelineSelectionChanged(index), ctx);
 			} else {
 				live_region::announce(live_region, "No timeline at this position");
 			}
@@ -598,36 +598,10 @@ pub fn handle_ui_command(
 					let _ = start_add_account_flow(frame, ui_tx, state);
 				}
 				dialogs::ManageAccountsResult::Remove(id) => {
-					handle_ui_command(
-						UiCommand::RemoveAccount(id),
-						state,
-						frame,
-						timelines_selector,
-						timeline_list,
-						suppress_selection,
-						live_region,
-						quick_action_keys_enabled,
-						autoload_mode,
-						sort_order_cell,
-						tray_hidden,
-						ui_tx,
-					);
+					handle_ui_command(UiCommand::RemoveAccount(id), ctx);
 				}
 				dialogs::ManageAccountsResult::Switch(id) => {
-					handle_ui_command(
-						UiCommand::SwitchAccount(id),
-						state,
-						frame,
-						timelines_selector,
-						timeline_list,
-						suppress_selection,
-						live_region,
-						quick_action_keys_enabled,
-						autoload_mode,
-						sort_order_cell,
-						tray_hidden,
-						ui_tx,
-					);
+					handle_ui_command(UiCommand::SwitchAccount(id), ctx);
 				}
 				dialogs::ManageAccountsResult::None => {}
 			}
@@ -659,20 +633,7 @@ pub fn handle_ui_command(
 				.unwrap_or(0);
 			let next_index = (current_index + 1) % state.config.accounts.len();
 			let next_id = state.config.accounts[next_index].id.clone();
-			handle_ui_command(
-				UiCommand::SwitchAccount(next_id),
-				state,
-				frame,
-				timelines_selector,
-				timeline_list,
-				suppress_selection,
-				live_region,
-				quick_action_keys_enabled,
-				autoload_mode,
-				sort_order_cell,
-				tray_hidden,
-				ui_tx,
-			);
+			handle_ui_command(UiCommand::SwitchAccount(next_id), ctx);
 		}
 		UiCommand::SwitchPrevAccount => {
 			if state.config.accounts.len() <= 1 {
@@ -686,20 +647,7 @@ pub fn handle_ui_command(
 				.unwrap_or(0);
 			let prev_index = (current_index + state.config.accounts.len() - 1) % state.config.accounts.len();
 			let prev_id = state.config.accounts[prev_index].id.clone();
-			handle_ui_command(
-				UiCommand::SwitchAccount(prev_id),
-				state,
-				frame,
-				timelines_selector,
-				timeline_list,
-				suppress_selection,
-				live_region,
-				quick_action_keys_enabled,
-				autoload_mode,
-				sort_order_cell,
-				tray_hidden,
-				ui_tx,
-			);
+			handle_ui_command(UiCommand::SwitchAccount(prev_id), ctx);
 		}
 		UiCommand::SwitchNextTimeline => {
 			if state.timeline_manager.len() <= 1 {
@@ -710,20 +658,7 @@ pub fn handle_ui_command(
 			if let Some(name) = state.timeline_manager.display_names().get(next) {
 				live_region::announce(live_region, name);
 			}
-			handle_ui_command(
-				UiCommand::TimelineSelectionChanged(next),
-				state,
-				frame,
-				timelines_selector,
-				timeline_list,
-				suppress_selection,
-				live_region,
-				quick_action_keys_enabled,
-				autoload_mode,
-				sort_order_cell,
-				tray_hidden,
-				ui_tx,
-			);
+			handle_ui_command(UiCommand::TimelineSelectionChanged(next), ctx);
 		}
 		UiCommand::SwitchPrevTimeline => {
 			if state.timeline_manager.len() <= 1 {
@@ -734,20 +669,7 @@ pub fn handle_ui_command(
 			if let Some(name) = state.timeline_manager.display_names().get(prev) {
 				live_region::announce(live_region, name);
 			}
-			handle_ui_command(
-				UiCommand::TimelineSelectionChanged(prev),
-				state,
-				frame,
-				timelines_selector,
-				timeline_list,
-				suppress_selection,
-				live_region,
-				quick_action_keys_enabled,
-				autoload_mode,
-				sort_order_cell,
-				tray_hidden,
-				ui_tx,
-			);
+			handle_ui_command(UiCommand::TimelineSelectionChanged(prev), ctx);
 		}
 		UiCommand::RemoveAccount(id) => {
 			let is_active = state.config.active_account_id.as_ref() == Some(&id);
@@ -826,20 +748,7 @@ pub fn handle_ui_command(
 				let id = account.id.clone();
 				state.config.accounts.push(account);
 				let _ = config::ConfigStore::new().save(&state.config);
-				handle_ui_command(
-					UiCommand::SwitchAccount(id),
-					state,
-					frame,
-					timelines_selector,
-					timeline_list,
-					suppress_selection,
-					live_region,
-					quick_action_keys_enabled,
-					autoload_mode,
-					sort_order_cell,
-					tray_hidden,
-					ui_tx,
-				);
+				handle_ui_command(UiCommand::SwitchAccount(id), ctx);
 			} else if state.config.accounts.is_empty() {
 				frame.close(true);
 			}
@@ -1127,20 +1036,7 @@ pub fn handle_ui_command(
 							id: account.id.clone(),
 							name: account.display_name_or_username().to_string(),
 						};
-						handle_ui_command(
-							UiCommand::OpenTimeline(timeline_type),
-							state,
-							frame,
-							timelines_selector,
-							timeline_list,
-							suppress_selection,
-							live_region,
-							quick_action_keys_enabled,
-							autoload_mode,
-							sort_order_cell,
-							tray_hidden,
-							ui_tx,
-						);
+						handle_ui_command(UiCommand::OpenTimeline(timeline_type), ctx);
 					}
 				}
 			}

@@ -39,7 +39,7 @@ pub(crate) use crate::ui::ids::{
 };
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
-	commands::{UiCommand, handle_ui_command},
+	commands::{UiCommand, UiCommandContext, handle_ui_command},
 	config::{Config, TimestampFormat},
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
@@ -130,35 +130,9 @@ pub fn get_sound_path() -> std::path::PathBuf {
 		.unwrap_or_else(|| std::path::PathBuf::from("sounds/boop.mp3"))
 }
 
-fn drain_ui_commands(
-	ui_rx: &mpsc::Receiver<UiCommand>,
-	state: &mut AppState,
-	frame: &Frame,
-	timelines_selector: ListBox,
-	timeline_list: ListBox,
-	suppress_selection: &Cell<bool>,
-	live_region: StaticText,
-	quick_action_keys_enabled: &Cell<bool>,
-	autoload_mode: &Cell<config::AutoloadMode>,
-	sort_order_cell: &Cell<config::SortOrder>,
-	tray_hidden: &Cell<bool>,
-	ui_tx: &UiCommandSender,
-) {
+fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandContext<'_>) {
 	while let Ok(cmd) = ui_rx.try_recv() {
-		handle_ui_command(
-			cmd,
-			state,
-			frame,
-			timelines_selector,
-			timeline_list,
-			suppress_selection,
-			live_region,
-			quick_action_keys_enabled,
-			autoload_mode,
-			sort_order_cell,
-			tray_hidden,
-			ui_tx,
-		);
+		handle_ui_command(cmd, ctx);
 	}
 }
 
@@ -255,20 +229,22 @@ fn main() {
 			}
 			busy_wake.set(true);
 			ui_waker_handler.reset();
-			drain_ui_commands(
-				&ui_rx,
-				&mut state,
-				&frame_wake,
-				timelines_selector_wake,
-				timeline_list_wake,
-				&suppress_wake,
-				live_region_wake,
-				&quick_action_keys_drain,
-				&autoload_drain,
-				&sort_order_drain,
-				&tray_hidden_drain,
-				&ui_tx_timer,
-			);
+			{
+				let mut ui_ctx = UiCommandContext {
+					state: &mut state,
+					frame: &frame_wake,
+					timelines_selector: timelines_selector_wake,
+					timeline_list: timeline_list_wake,
+					suppress_selection: &suppress_wake,
+					live_region: live_region_wake,
+					quick_action_keys_enabled: &quick_action_keys_drain,
+					autoload_mode: &autoload_drain,
+					sort_order_cell: &sort_order_drain,
+					tray_hidden: &tray_hidden_drain,
+					ui_tx: &ui_tx_timer,
+				};
+				drain_ui_commands(&ui_rx, &mut ui_ctx);
+			}
 			process_stream_events(&mut state, timeline_list_wake, &suppress_wake, &frame_wake);
 			process_network_responses(
 				&frame_wake,
