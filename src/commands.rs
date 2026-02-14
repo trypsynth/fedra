@@ -1538,11 +1538,15 @@ fn close_timeline(
 		selector.append(&name);
 	}
 	let active_index = state.timeline_manager.active_index();
+	let active_name = state.timeline_manager.display_names().get(active_index).cloned();
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
 	let view_options = state.timeline_view_options();
 	if let Some(active) = state.timeline_manager.active_mut() {
 		update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
+	}
+	if let Some(name) = active_name {
+		live_region::announce(live_region, &name);
 	}
 }
