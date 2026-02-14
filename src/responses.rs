@@ -17,6 +17,26 @@ use crate::{
 	ui_wake::UiCommandSender,
 };
 
+fn summarize_api_error(err: &anyhow::Error) -> String {
+	for cause in err.chain().skip(1) {
+		let mut message = cause.to_string();
+		if message.trim().is_empty() {
+			continue;
+		}
+		if message.starts_with("HTTP status")
+			&& let Some((head, _)) = message.split_once(" for url")
+		{
+			message = head.to_string();
+		}
+		return message;
+	}
+	err.to_string()
+}
+
+fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
+	format!("{prefix}: {}", summarize_api_error(err))
+}
+
 fn merge_status_snapshot_by_id(state: &mut AppState, status_id: &str, snapshot: &Status) -> bool {
 	let mut updated = false;
 	for timeline in state.timeline_manager.iter_mut() {
@@ -306,11 +326,15 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					}
 				}
 			}
-			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), .. } => {
+			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), max_id } => {
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(live_region, &format!("Failed to load timeline: {err}"));
+				if max_id.is_some() {
+					live_region::announce(live_region, "Failed to load more posts");
+				} else {
+					live_region::announce(live_region, &spoken_failure("Failed to load timeline", err));
+				}
 			}
 			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
 				let action = state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);
@@ -354,13 +378,16 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
 				state.pending_user_lookup_action = None;
-				live_region::announce(live_region, &format!("Failed to find user {handle}: {err}"));
+				live_region::announce(
+					live_region,
+					&format!("Failed to find user {handle}: {}", summarize_api_error(&err)),
+				);
 			}
 			NetworkResponse::PostComplete(Ok(())) => {
 				live_region::announce(live_region, "Posted");
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to post: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to post", err));
 			}
 			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -373,7 +400,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Favorited");
 			}
 			NetworkResponse::Favorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to favorite: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to favorite", err));
 			}
 			NetworkResponse::Bookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -385,7 +412,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Bookmarked");
 			}
 			NetworkResponse::Bookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to bookmark: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to bookmark", err));
 			}
 			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -398,7 +425,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Unfavorited");
 			}
 			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unfavorite: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to unfavorite", err));
 			}
 			NetworkResponse::Unbookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -410,7 +437,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Unbookmarked");
 			}
 			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unbookmark: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to unbookmark", err));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -426,7 +453,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to boost: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to boost", err));
 			}
 			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -439,13 +466,13 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to unboost: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to unboost", err));
 			}
 			NetworkResponse::Replied(Ok(())) => {
 				live_region::announce(live_region, "Reply sent");
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
-				live_region::announce(live_region, &format!("Failed to reply: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to reply", err));
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
@@ -462,7 +489,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Deleted");
 			}
 			NetworkResponse::StatusDeleted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to delete: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to delete", err));
 			}
 			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
 				let status_clone = status.clone();
@@ -480,7 +507,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Edited");
 			}
 			NetworkResponse::StatusEdited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &format!("Failed to edit: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to edit", err));
 			}
 			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, true);
@@ -490,7 +517,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, &format!("Followed #{name}"));
 			}
 			NetworkResponse::TagFollowed { name, result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to follow #{name}: {err}"));
+				live_region::announce(live_region, &format!("Failed to follow #{name}: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, false);
@@ -500,7 +527,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, &format!("Unfollowed #{name}"));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to unfollow #{name}: {err}"));
+				live_region::announce(
+					live_region,
+					&format!("Failed to unfollow #{name}: {}", summarize_api_error(&err)),
+				);
 			}
 			NetworkResponse::TagsInfoFetched { result: Ok(tags) } => {
 				if let Some(handle) = &state.network_handle {
@@ -514,7 +544,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to load hashtags: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to load hashtags", &err));
 			}
 			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -559,7 +589,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::RebloggedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load boosts: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to load boosts", &err));
 			}
 			NetworkResponse::FavoritedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -604,7 +634,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load favorites: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to load favorites", &err));
 			}
 			NetworkResponse::FollowersLoaded { result: Ok(accounts), .. } => {
 				if accounts.is_empty() {
@@ -622,7 +652,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load followers: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to load followers", &err));
 			}
 			NetworkResponse::FollowingLoaded { result: Ok(accounts), .. } => {
 				if accounts.is_empty() {
@@ -640,7 +670,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &format!("Failed to load following: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to load following", &err));
 			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {
@@ -662,7 +692,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, &msg);
 				}
 				Err(err) => {
-					live_region::announce(live_region, &format!("Failed to update relationship: {err}"));
+					live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
 				}
 			},
 			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
@@ -695,7 +725,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, "Vote submitted");
 				}
 				Err(err) => {
-					live_region::announce(live_region, &format!("Failed to vote: {err}"));
+					live_region::announce(live_region, &spoken_failure("Failed to vote", &err));
 				}
 			},
 			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
@@ -706,14 +736,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::CredentialsFetched { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to fetch profile: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to fetch profile", &err));
 			}
 			NetworkResponse::ProfileUpdated { result: Ok(_) } => {
 				live_region::announce(live_region, "Profile updated");
 				let _ = ui_tx.send(UiCommand::Refresh);
 			}
 			NetworkResponse::ProfileUpdated { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to update profile: {err}"));
+				live_region::announce(live_region, &spoken_failure("Failed to update profile", &err));
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
@@ -798,7 +828,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(live_region, &format!("Search for '{query}' failed: {err}"));
+				live_region::announce(
+					live_region,
+					&format!("Search for '{query}' failed: {}", summarize_api_error(err)),
+				);
 			}
 		}
 	}
