@@ -158,14 +158,16 @@ Open options with `Ctrl+,`.
 
 ### Version 0.1.1
 * Added the ability for you to set the language of your posts! [#17](https://github.com/trypsynth/fedra/issues/17).
-* Fixed the delete key not working to close timelines when the list has keyboard focus.
-* The defaults for fresh Fedra configs should be a bit more sane.
-* The name of the focused timeline will now be spoken when using ctrl+1-9, similar to how left/right arrows already work.
-* The title of the reply dialog will now be spoken with the proper character count upon you first entering it.
-* Unified the close timeline behavior: there is now only one key to back out of a timeline and close it, Ctrl+W normally or backspace in quick keys mode.
-* Updated the readme a lot and cleaned up the code internally.
-* When closing a timeline, the newly focused one will now be spoken.
-* You will no longer hear unnecessary text spoken to your screen reader when entering the compose post dialog.
+* API errors are now included in error output in a brief form.
+* Fixed Delete not closing timelines when the list had keyboard focus.
+* Improved default configuration values for new Fedra installs.
+* Reduced unnecessary screen reader output when entering the compose dialog.
+* The compose dialog now enforces the instance's character limit.
+* The focused timeline name is now spoken when using Ctrl+1-9, matching left/right arrow behavior.
+* The reply dialog title is now announced with the correct character count on first focus.
+* There is now only one key to back out of a timeline and close it, Ctrl+W normally or backspace in quick keys mode.
+* Updated the README and performed internal code cleanup.
+* When a timeline is closed, the newly focused timeline is now announced.
 
 ### Version 0.1.0
 * Initial release of the Fedra desktop Mastodon client, currently for Windows only.
