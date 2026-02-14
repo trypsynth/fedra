@@ -151,6 +151,7 @@ pub fn handle_ui_command(
 					visibility: post.visibility.as_api_str().to_string(),
 					spoiler_text: post.spoiler_text,
 					content_type: post.content_type,
+					language: post.language,
 					media: post
 						.media
 						.into_iter()
@@ -193,6 +194,7 @@ pub fn handle_ui_command(
 					visibility: reply.visibility.as_api_str().to_string(),
 					spoiler_text: reply.spoiler_text,
 					content_type: reply.content_type,
+					language: reply.language,
 					media: reply
 						.media
 						.into_iter()
@@ -276,6 +278,7 @@ pub fn handle_ui_command(
 					status_id: target.id.clone(),
 					content: edit.content,
 					spoiler_text: edit.spoiler_text,
+					language: edit.language,
 					media,
 					poll: edit.poll.map(|poll| network::PollData {
 						options: poll.options,

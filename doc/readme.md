@@ -14,6 +14,7 @@
   - Visibility (Public, Unlisted, Followers only, Direct)
   - Content warnings
   - Content type (Default, plain text, markdown, HTML)
+  - Optional post language (ISO code)
   - Media attachments with descriptions
   - Poll creation and voting
 - Relationship and discovery tools:
@@ -66,6 +67,8 @@ Open options with `Ctrl+,`.
 - `Customize Default Timelines...`
   - Home and Notifications are always opened
   - Additional startup timelines are configurable
+- Post language:
+  - Per-post ISO language code can be set in compose dialogs
 
 ## Keyboard Shortcuts
 

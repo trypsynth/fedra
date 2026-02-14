@@ -46,6 +46,7 @@ pub enum NetworkCommand {
 		visibility: String,
 		spoiler_text: Option<String>,
 		content_type: Option<String>,
+		language: Option<String>,
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
 	},
@@ -73,6 +74,7 @@ pub enum NetworkCommand {
 		visibility: String,
 		spoiler_text: Option<String>,
 		content_type: Option<String>,
+		language: Option<String>,
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
 	},
@@ -140,6 +142,7 @@ pub enum NetworkCommand {
 		status_id: String,
 		content: String,
 		spoiler_text: Option<String>,
+		language: Option<String>,
 		media: Vec<EditMedia>,
 		poll: Option<PollData>,
 	},
@@ -300,6 +303,7 @@ fn post_with_media(
 	visibility: &str,
 	spoiler_text: Option<&str>,
 	content_type: Option<&str>,
+	language: Option<&str>,
 	media: Vec<MediaUpload>,
 	poll: Option<&PollData>,
 	in_reply_to_id: Option<&str>,
@@ -325,6 +329,7 @@ fn post_with_media(
 		spoiler_text,
 		&media_ids,
 		content_type,
+		language,
 		poll,
 		in_reply_to_id,
 	)
@@ -336,6 +341,7 @@ fn edit_with_media(
 	status_id: &str,
 	content: &str,
 	spoiler_text: Option<&str>,
+	language: Option<&str>,
 	media: Vec<EditMedia>,
 	poll: Option<&PollData>,
 ) -> Result<Status> {
@@ -358,7 +364,7 @@ fn edit_with_media(
 	if let Some(err) = upload_failed {
 		return Err(err);
 	}
-	client.edit_status(access_token, status_id, content, spoiler_text, &media_ids, poll)
+	client.edit_status(access_token, status_id, content, spoiler_text, language, &media_ids, poll)
 }
 
 pub struct NetworkHandle {
@@ -473,7 +479,15 @@ fn network_loop(
 				let result = client.lookup_account(access_token, &handle);
 				send_response(responses, ui_waker, NetworkResponse::AccountLookupResult { handle, result });
 			}
-			Ok(NetworkCommand::PostStatus { content, visibility, spoiler_text, content_type, media, poll }) => {
+			Ok(NetworkCommand::PostStatus {
+				content,
+				visibility,
+				spoiler_text,
+				content_type,
+				language,
+				media,
+				poll,
+			}) => {
 				let result = post_with_media(
 					client,
 					access_token,
@@ -481,19 +495,21 @@ fn network_loop(
 					&visibility,
 					spoiler_text.as_deref(),
 					content_type.as_deref(),
+					language.as_deref(),
 					media,
 					poll.as_ref(),
 					None,
 				);
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
 			}
-			Ok(NetworkCommand::EditStatus { status_id, content, spoiler_text, media, poll }) => {
+			Ok(NetworkCommand::EditStatus { status_id, content, spoiler_text, language, media, poll }) => {
 				let result = edit_with_media(
 					client,
 					access_token,
 					&status_id,
 					&content,
 					spoiler_text.as_deref(),
+					language.as_deref(),
 					media,
 					poll.as_ref(),
 				);
@@ -533,6 +549,7 @@ fn network_loop(
 				visibility,
 				spoiler_text,
 				content_type,
+				language,
 				media,
 				poll,
 			}) => {
@@ -543,6 +560,7 @@ fn network_loop(
 					&visibility,
 					spoiler_text.as_deref(),
 					content_type.as_deref(),
+					language.as_deref(),
 					media,
 					poll.as_ref(),
 					Some(&in_reply_to_id),

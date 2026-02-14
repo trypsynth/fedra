@@ -98,6 +98,7 @@ pub struct PostResult {
 	pub visibility: PostVisibility,
 	pub spoiler_text: Option<String>,
 	pub content_type: Option<String>,
+	pub language: Option<String>,
 	pub media: Vec<PostMedia>,
 	pub poll: Option<PostPoll>,
 }
@@ -135,6 +136,7 @@ struct ComposeDialogConfig {
 	ok_label: String,
 	initial_content: String,
 	initial_cw: Option<String>,
+	initial_language: Option<String>,
 	default_visibility: PostVisibility,
 	can_change_visibility: bool,
 }
@@ -804,6 +806,14 @@ fn parse_hotkey_key(input: &str) -> Option<char> {
 	}
 }
 
+fn normalize_language_code(input: &str) -> Option<String> {
+	let trimmed = input.trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+	Some(trimmed.to_ascii_lowercase())
+}
+
 pub struct OptionsDialogInput {
 	pub enter_to_send: bool,
 	pub always_show_link_dialog: bool,
@@ -1102,6 +1112,26 @@ fn prompt_for_compose(
 	let content_type_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
+	let language_choices = vec![
+		"".to_string(),
+		"en".to_string(),
+		"es".to_string(),
+		"fr".to_string(),
+		"de".to_string(),
+		"it".to_string(),
+		"pt".to_string(),
+		"ja".to_string(),
+		"ko".to_string(),
+		"zh".to_string(),
+	];
+	let language_label = StaticText::builder(&panel).with_label("Post language (ISO code):").build();
+	let language_combo = ComboBox::builder(&panel).with_choices(language_choices).build();
+	let initial_language_value =
+		config.initial_language.as_deref().and_then(normalize_language_code).unwrap_or_default();
+	language_combo.set_value(&initial_language_value);
+	let language_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	language_sizer.add(&language_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	language_sizer.add(&language_combo, 1, SizerFlag::Expand, 0);
 	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -1120,6 +1150,7 @@ fn prompt_for_compose(
 	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&content_type_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add_sizer(&language_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&poll_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -1255,12 +1286,13 @@ fn prompt_for_compose(
 	};
 	let content_type_idx = content_type_choice.get_selection().unwrap_or(0) as usize;
 	let content_type = content_type_options.get(content_type_idx).and_then(|(_, value)| value.clone());
+	let language = normalize_language_code(&language_combo.get_value());
 	let media = media_items.borrow().clone();
 	let poll = poll_state.borrow().clone();
 	if trimmed.is_empty() && media.is_empty() && poll.is_none() {
 		return None;
 	}
-	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, media, poll })
+	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, language, media, poll })
 }
 
 pub fn prompt_for_post(
@@ -1280,6 +1312,7 @@ pub fn prompt_for_post(
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),
 			initial_cw: None,
+			initial_language: None,
 			default_visibility: default_visibility.unwrap_or(PostVisibility::Public),
 			can_change_visibility: true,
 		},
@@ -1340,6 +1373,7 @@ pub fn prompt_for_reply(
 			ok_label: "Post".to_string(),
 			initial_content: mention,
 			initial_cw,
+			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,
 		},
@@ -1383,6 +1417,7 @@ pub fn prompt_for_edit(
 			ok_label: "Save".to_string(),
 			initial_content: status.display_text(),
 			initial_cw,
+			initial_language: status.language.clone(),
 			default_visibility,
 			can_change_visibility: false,
 		},

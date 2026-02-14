@@ -56,6 +56,8 @@ pub struct Status {
 	pub in_reply_to_id: Option<String>,
 	pub in_reply_to_account_id: Option<String>,
 	#[serde(default)]
+	pub language: Option<String>,
+	#[serde(default)]
 	pub mentions: Vec<Mention>,
 	#[serde(default)]
 	pub tags: Vec<Tag>,
@@ -656,6 +658,7 @@ impl MastodonClient {
 		spoiler_text: Option<&str>,
 		media_ids: &[String],
 		content_type: Option<&str>,
+		language: Option<&str>,
 		poll: Option<&crate::network::PollData>,
 		in_reply_to_id: Option<&str>,
 	) -> Result<()> {
@@ -671,6 +674,11 @@ impl MastodonClient {
 			&& !content_type.trim().is_empty()
 		{
 			params.push(("content_type".to_string(), content_type.to_string()));
+		}
+		if let Some(language) = language
+			&& !language.trim().is_empty()
+		{
+			params.push(("language".to_string(), language.to_string()));
 		}
 		if let Some(in_reply_to_id) = in_reply_to_id
 			&& !in_reply_to_id.trim().is_empty()
@@ -1368,6 +1376,7 @@ impl MastodonClient {
 		status_id: &str,
 		status: &str,
 		spoiler_text: Option<&str>,
+		language: Option<&str>,
 		media_ids: &[String],
 		poll: Option<&crate::network::PollData>,
 	) -> Result<Status> {
@@ -1375,6 +1384,11 @@ impl MastodonClient {
 		let mut params = vec![("status".to_string(), status.to_string())];
 		if let Some(spoiler) = spoiler_text {
 			params.push(("spoiler_text".to_string(), spoiler.to_string()));
+		}
+		if let Some(language) = language
+			&& !language.trim().is_empty()
+		{
+			params.push(("language".to_string(), language.to_string()));
 		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));
