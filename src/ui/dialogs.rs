@@ -814,6 +814,10 @@ fn normalize_language_code(input: &str) -> Option<String> {
 	Some(trimmed.to_ascii_lowercase())
 }
 
+fn truncate_to_char_limit(text: &str, max_chars: usize) -> String {
+	text.chars().take(max_chars).collect()
+}
+
 pub struct OptionsDialogInput {
 	pub enter_to_send: bool,
 	pub always_show_link_dialog: bool,
@@ -1223,7 +1227,22 @@ fn prompt_for_compose(
 	};
 	update_title();
 	let update_title_on_change = update_title;
+	let content_text_limit = content_text;
+	let enforcing_limit = Rc::new(RefCell::new(false));
+	let enforcing_limit_on_change = enforcing_limit.clone();
 	content_text.on_text_changed(move |_| {
+		if *enforcing_limit_on_change.borrow() {
+			return;
+		}
+		let current = content_text_limit.get_value();
+		if current.chars().count() > max_chars {
+			let truncated = truncate_to_char_limit(&current, max_chars);
+			*enforcing_limit_on_change.borrow_mut() = true;
+			content_text_limit.set_value(&truncated);
+			content_text_limit.set_insertion_point_end();
+			*enforcing_limit_on_change.borrow_mut() = false;
+			bell();
+		}
 		update_title_on_change();
 	});
 	if let Some(cw) = initial_cw.as_deref().map(str::trim)
