@@ -804,39 +804,57 @@ fn parse_hotkey_key(input: &str) -> Option<char> {
 	}
 }
 
-#[allow(clippy::type_complexity, clippy::fn_params_excessive_bools)]
-pub fn prompt_for_options(
-	frame: &Frame,
-	enter_to_send: bool,
-	always_show_link_dialog: bool,
-	quick_action_keys: bool,
-	check_for_updates: bool,
-	autoload: AutoloadMode,
-	fetch_limit: u8,
-	content_warning_display: ContentWarningDisplay,
-	display_name_emoji_mode: DisplayNameEmojiMode,
-	sort_order: SortOrder,
-	timestamp_format: TimestampFormat,
-	preserve_thread_order: bool,
-	default_timelines_val: Vec<DefaultTimeline>,
-	notification_preference: NotificationPreference,
-	hotkey: HotkeyConfig,
-) -> Option<(
-	bool,
-	bool,
-	bool,
-	bool,
-	AutoloadMode,
-	u8,
-	ContentWarningDisplay,
-	DisplayNameEmojiMode,
-	SortOrder,
-	TimestampFormat,
-	bool,
-	Vec<DefaultTimeline>,
-	NotificationPreference,
-	HotkeyConfig,
-)> {
+pub struct OptionsDialogInput {
+	pub enter_to_send: bool,
+	pub always_show_link_dialog: bool,
+	pub quick_action_keys: bool,
+	pub check_for_updates: bool,
+	pub autoload: AutoloadMode,
+	pub fetch_limit: u8,
+	pub content_warning_display: ContentWarningDisplay,
+	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub sort_order: SortOrder,
+	pub timestamp_format: TimestampFormat,
+	pub preserve_thread_order: bool,
+	pub default_timelines: Vec<DefaultTimeline>,
+	pub notification_preference: NotificationPreference,
+	pub hotkey: HotkeyConfig,
+}
+
+pub struct OptionsDialogResult {
+	pub enter_to_send: bool,
+	pub always_show_link_dialog: bool,
+	pub quick_action_keys: bool,
+	pub check_for_updates: bool,
+	pub autoload: AutoloadMode,
+	pub fetch_limit: u8,
+	pub content_warning_display: ContentWarningDisplay,
+	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub sort_order: SortOrder,
+	pub timestamp_format: TimestampFormat,
+	pub preserve_thread_order: bool,
+	pub default_timelines: Vec<DefaultTimeline>,
+	pub notification_preference: NotificationPreference,
+	pub hotkey: HotkeyConfig,
+}
+
+pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<OptionsDialogResult> {
+	let OptionsDialogInput {
+		enter_to_send,
+		always_show_link_dialog,
+		quick_action_keys,
+		check_for_updates,
+		autoload,
+		fetch_limit,
+		content_warning_display,
+		display_name_emoji_mode,
+		sort_order,
+		timestamp_format,
+		preserve_thread_order,
+		default_timelines: default_timelines_val,
+		notification_preference,
+		hotkey,
+	} = input;
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 460).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -1014,22 +1032,22 @@ pub fn prompt_for_options(
 		Some(2) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
-	Some((
-		enter_checkbox.get_value(),
-		link_checkbox.get_value(),
-		quick_action_checkbox.get_value(),
-		update_checkbox.get_value(),
-		new_autoload,
-		new_fetch_limit,
-		new_cw_display,
-		new_display_name_emoji_mode,
-		new_sort,
-		new_timestamp,
-		thread_order_checkbox.get_value(),
-		current_defaults.borrow().clone(),
-		new_notification_preference,
-		current_hotkey.borrow().clone(),
-	))
+	Some(OptionsDialogResult {
+		enter_to_send: enter_checkbox.get_value(),
+		always_show_link_dialog: link_checkbox.get_value(),
+		quick_action_keys: quick_action_checkbox.get_value(),
+		check_for_updates: update_checkbox.get_value(),
+		autoload: new_autoload,
+		fetch_limit: new_fetch_limit,
+		content_warning_display: new_cw_display,
+		display_name_emoji_mode: new_display_name_emoji_mode,
+		sort_order: new_sort,
+		timestamp_format: new_timestamp,
+		preserve_thread_order: thread_order_checkbox.get_value(),
+		default_timelines: current_defaults.borrow().clone(),
+		notification_preference: new_notification_preference,
+		hotkey: current_hotkey.borrow().clone(),
+	})
 }
 
 fn prompt_for_compose(

@@ -500,38 +500,41 @@ pub fn handle_ui_command(
 			}
 		}
 		UiCommand::ShowOptions => {
-			if let Some((
-				enter_to_send,
-				always_show_link_dialog,
-				quick_action_keys,
-				check_for_updates,
-				autoload,
-				fetch_limit,
-				content_warning_display,
-				display_name_emoji_mode,
-				sort_order,
-				timestamp_format,
-				preserve_thread_order,
-				default_timelines,
-				notification_preference,
-				hotkey,
-			)) = dialogs::prompt_for_options(
+			if let Some(options) = dialogs::prompt_for_options(
 				frame,
-				state.config.enter_to_send,
-				state.config.always_show_link_dialog,
-				state.config.quick_action_keys,
-				state.config.check_for_updates_on_startup,
-				state.config.autoload,
-				state.config.fetch_limit,
-				state.config.content_warning_display,
-				state.config.display_name_emoji_mode,
-				state.config.sort_order,
-				state.config.timestamp_format,
-				state.config.preserve_thread_order,
-				state.config.default_timelines.clone(),
-				state.config.notification_preference,
-				state.config.hotkey.clone(),
+				dialogs::OptionsDialogInput {
+					enter_to_send: state.config.enter_to_send,
+					always_show_link_dialog: state.config.always_show_link_dialog,
+					quick_action_keys: state.config.quick_action_keys,
+					check_for_updates: state.config.check_for_updates_on_startup,
+					autoload: state.config.autoload,
+					fetch_limit: state.config.fetch_limit,
+					content_warning_display: state.config.content_warning_display,
+					display_name_emoji_mode: state.config.display_name_emoji_mode,
+					sort_order: state.config.sort_order,
+					timestamp_format: state.config.timestamp_format,
+					preserve_thread_order: state.config.preserve_thread_order,
+					default_timelines: state.config.default_timelines.clone(),
+					notification_preference: state.config.notification_preference,
+					hotkey: state.config.hotkey.clone(),
+				},
 			) {
+				let dialogs::OptionsDialogResult {
+					enter_to_send,
+					always_show_link_dialog,
+					quick_action_keys,
+					check_for_updates,
+					autoload,
+					fetch_limit,
+					content_warning_display,
+					display_name_emoji_mode,
+					sort_order,
+					timestamp_format,
+					preserve_thread_order,
+					default_timelines,
+					notification_preference,
+					hotkey,
+				} = options;
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.timestamp_format != timestamp_format
 					|| state.config.content_warning_display != content_warning_display
