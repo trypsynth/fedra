@@ -5,7 +5,8 @@ use std::{
 };
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
@@ -98,8 +99,8 @@ impl DefaultTimeline {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SortOrder {
-	#[default]
 	NewestToOldest,
+	#[default]
 	OldestToNewest,
 }
 
@@ -130,8 +131,8 @@ pub enum DisplayNameEmojiMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AutoloadMode {
 	Never,
-	#[default]
 	AtEnd,
+	#[default]
 	AtBoundary,
 }
 
@@ -161,13 +162,13 @@ fn default_timelines() -> Vec<DefaultTimeline> {
 
 fn deserialize_autoload_mode<'de, D>(deserializer: D) -> Result<AutoloadMode, D::Error>
 where
-	D: serde::Deserializer<'de>,
+	D: Deserializer<'de>,
 {
 	use serde::de::Error;
-	let value = serde_json::Value::deserialize(deserializer)?;
+	let value = Value::deserialize(deserializer)?;
 	match value {
-		serde_json::Value::Bool(b) => Ok(if b { AutoloadMode::AtBoundary } else { AutoloadMode::Never }),
-		serde_json::Value::String(s) => match s.as_str() {
+		Value::Bool(b) => Ok(if b { AutoloadMode::AtBoundary } else { AutoloadMode::Never }),
+		Value::String(s) => match s.as_str() {
 			"Never" => Ok(AutoloadMode::Never),
 			"AtEnd" => Ok(AutoloadMode::AtEnd),
 			"AtBoundary" => Ok(AutoloadMode::AtBoundary),
@@ -178,7 +179,7 @@ where
 }
 
 const fn default_fetch_limit() -> u8 {
-	20
+	40
 }
 
 impl Default for Config {

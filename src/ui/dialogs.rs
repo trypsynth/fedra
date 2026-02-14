@@ -5,8 +5,8 @@ use wxdragon::prelude::*;
 
 use crate::{
 	config::{
-		Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig, SortOrder,
-		TimestampFormat,
+		Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
+		NotificationPreference, SortOrder, TimestampFormat,
 	},
 	html::{self, Link},
 	mastodon::{Account as MastodonAccount, Mention, PollLimits, SearchType, Status, Tag},
@@ -819,7 +819,7 @@ pub fn prompt_for_options(
 	timestamp_format: TimestampFormat,
 	preserve_thread_order: bool,
 	default_timelines_val: Vec<DefaultTimeline>,
-	notification_preference: crate::config::NotificationPreference,
+	notification_preference: NotificationPreference,
 	hotkey: HotkeyConfig,
 ) -> Option<(
 	bool,
@@ -834,20 +834,15 @@ pub fn prompt_for_options(
 	TimestampFormat,
 	bool,
 	Vec<DefaultTimeline>,
-	crate::config::NotificationPreference,
+	NotificationPreference,
 	HotkeyConfig,
 )> {
 	let dialog = Dialog::builder(frame, "Options").with_size(400, 460).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-
-	// Create notebook for tabs
 	let notebook = Notebook::builder(&panel).build();
-
-	// === General Tab ===
 	let general_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let general_sizer = BoxSizer::builder(Orientation::Vertical).build();
-
 	let enter_checkbox = CheckBox::builder(&general_panel).with_label("Use &enter to send posts").build();
 	enter_checkbox.set_value(enter_to_send);
 	let link_checkbox = CheckBox::builder(&general_panel).with_label("Always prompt to open &links").build();
@@ -857,7 +852,6 @@ pub fn prompt_for_options(
 	quick_action_checkbox.set_value(quick_action_keys);
 	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
 	update_checkbox.set_value(check_for_updates);
-
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
 	let notification_choices =
 		vec!["Classic Windows Notifications".to_string(), "Sound only".to_string(), "Disabled".to_string()];
@@ -866,21 +860,19 @@ pub fn prompt_for_options(
 		.with_style(ComboBoxStyle::ReadOnly)
 		.build();
 	let notification_index = match notification_preference {
-		crate::config::NotificationPreference::Classic => 0,
-		crate::config::NotificationPreference::SoundOnly => 1,
-		crate::config::NotificationPreference::Disabled => 2,
+		NotificationPreference::Classic => 0,
+		NotificationPreference::SoundOnly => 1,
+		NotificationPreference::Disabled => 2,
 	};
 	notification_choice.set_selection(notification_index);
 	let notification_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	notification_sizer.add(&notification_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	notification_sizer.add(&notification_choice, 1, SizerFlag::Expand, 0);
-
 	general_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-
 	let hotkey_button = Button::builder(&general_panel).with_label("Customize Window Hotkey...").build();
 	let current_hotkey = Rc::new(RefCell::new(hotkey));
 	let hotkey_clone = current_hotkey.clone();
@@ -892,15 +884,11 @@ pub fn prompt_for_options(
 		}
 	});
 	general_sizer.add(&hotkey_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
-
 	general_sizer.add_stretch_spacer(1);
 	general_panel.set_sizer(general_sizer, true);
 	notebook.add_page(&general_panel, "General", true, None);
-
-	// === Timeline Tab ===
 	let timeline_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let timeline_sizer = BoxSizer::builder(Orientation::Vertical).build();
-
 	let autoload_label = StaticText::builder(&timeline_panel).with_label("&Autoload posts:").build();
 	let autoload_choices =
 		vec!["Never".to_string(), "When reaching the end".to_string(), "When navigating past the end".to_string()];
@@ -915,7 +903,6 @@ pub fn prompt_for_options(
 	let autoload_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	autoload_sizer.add(&autoload_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	autoload_sizer.add(&autoload_choice, 1, SizerFlag::Expand, 0);
-
 	let fetch_limit_label =
 		StaticText::builder(&timeline_panel).with_label("Posts to &fetch when loading more:").build();
 	let fetch_limit_spin =
@@ -923,7 +910,6 @@ pub fn prompt_for_options(
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	fetch_limit_sizer.add(&fetch_limit_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	fetch_limit_sizer.add(&fetch_limit_spin, 0, SizerFlag::empty(), 0);
-
 	let cw_label = StaticText::builder(&timeline_panel).with_label("Content warning display:").build();
 	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
 	let cw_choice =
@@ -952,14 +938,12 @@ pub fn prompt_for_options(
 	let emoji_mode_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	emoji_mode_sizer.add(&emoji_mode_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	emoji_mode_sizer.add(&emoji_mode_choice, 1, SizerFlag::Expand, 0);
-
 	let timestamp_checkbox = CheckBox::builder(&timeline_panel).with_label("Show relative &timestamps").build();
 	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&timeline_panel).with_label("Show oldest timeline entries &first").build();
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
 	let thread_order_checkbox = CheckBox::builder(&timeline_panel).with_label("Always preserve thread &order").build();
 	thread_order_checkbox.set_value(preserve_thread_order);
-
 	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -967,7 +951,6 @@ pub fn prompt_for_options(
 	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-
 	let customize_button = Button::builder(&timeline_panel).with_label("Customize Default Timelines...").build();
 	let current_defaults = Rc::new(RefCell::new(default_timelines_val));
 	let defaults_clone = current_defaults.clone();
@@ -979,12 +962,9 @@ pub fn prompt_for_options(
 		}
 	});
 	timeline_sizer.add(&customize_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
-
 	timeline_sizer.add_stretch_spacer(1);
 	timeline_panel.set_sizer(timeline_sizer, true);
 	notebook.add_page(&timeline_panel, "Timeline", false, None);
-
-	// === Buttons ===
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
 	ok_button.set_default();
@@ -992,23 +972,19 @@ pub fn prompt_for_options(
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-
 	main_sizer.add(&notebook, 1, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
-
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
-
 	let result = dialog.show_modal();
 	if result != ID_OK {
 		return None;
 	}
-
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
 	let new_timestamp =
 		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
@@ -1038,7 +1014,6 @@ pub fn prompt_for_options(
 		Some(2) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
-
 	Some((
 		enter_checkbox.get_value(),
 		link_checkbox.get_value(),
