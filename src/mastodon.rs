@@ -8,6 +8,7 @@ use reqwest::{
 	blocking::{Client, multipart},
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::{
 	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
@@ -44,8 +45,11 @@ pub struct Status {
 	pub media_attachments: Vec<MediaAttachment>,
 	pub application: Option<Application>,
 	pub visibility: String,
+	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub reblogs_count: u64,
+	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub favourites_count: u64,
+	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub replies_count: u64,
 	#[serde(default)]
 	pub favourited: bool,
@@ -71,7 +75,9 @@ pub struct Poll {
 	pub expires_at: Option<String>,
 	pub expired: bool,
 	pub multiple: bool,
+	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub votes_count: u64,
+	#[serde(default, deserialize_with = "deserialize_option_u64_or_zero")]
 	pub voters_count: Option<u64>,
 	pub options: Vec<PollOption>,
 	pub voted: Option<bool>,
@@ -82,6 +88,7 @@ pub struct Poll {
 #[allow(dead_code)]
 pub struct PollOption {
 	pub title: String,
+	#[serde(default, deserialize_with = "deserialize_option_u64_or_zero")]
 	pub votes_count: Option<u64>,
 }
 
@@ -470,11 +477,11 @@ pub struct Account {
 	pub url: String,
 	#[serde(default)]
 	pub note: String,
-	#[serde(default)]
+	#[serde(default, deserialize_with = "deserialize_u64_or_zero")]
 	pub followers_count: u64,
-	#[serde(default)]
+	#[serde(default, deserialize_with = "deserialize_u64_or_zero")]
 	pub following_count: u64,
-	#[serde(default)]
+	#[serde(default, deserialize_with = "deserialize_u64_or_zero")]
 	pub statuses_count: u64,
 	#[serde(default)]
 	pub fields: Vec<AccountField>,
@@ -1496,5 +1503,43 @@ pub struct InstanceInfo {
 impl Default for InstanceInfo {
 	fn default() -> Self {
 		Self { max_post_chars: 500, poll_limits: PollLimits::default() }
+	}
+}
+
+fn deserialize_u64_or_zero<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let val = Value::deserialize(deserializer)?;
+	match val {
+		Value::Number(n) => {
+			if let Some(i) = n.as_i64() {
+				if i < 0 { Ok(0) } else { Ok(i as u64) }
+			} else if let Some(u) = n.as_u64() {
+				Ok(u)
+			} else {
+				Ok(0)
+			}
+		}
+		_ => Ok(0),
+	}
+}
+
+fn deserialize_option_u64_or_zero<'de, D>(deserializer: D) -> std::result::Result<Option<u64>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let val = Value::deserialize(deserializer)?;
+	match val {
+		Value::Number(n) => {
+			if let Some(i) = n.as_i64() {
+				if i < 0 { Ok(Some(0)) } else { Ok(Some(i as u64)) }
+			} else if let Some(u) = n.as_u64() {
+				Ok(Some(u))
+			} else {
+				Ok(None)
+			}
+		}
+		_ => Ok(None),
 	}
 }
