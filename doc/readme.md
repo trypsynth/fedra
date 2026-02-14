@@ -78,6 +78,7 @@ Open options with `Ctrl+,`.
 - `Right Arrow`: Next timeline
 - `Ctrl+1`..`Ctrl+9`: Switch to timeline index 1-9
 - `Ctrl+W`: Close current timeline (when Quick Action Keys are off)
+- `Delete` (in Timelines list): Close current timeline
 - `Ctrl+[`: Previous account
 - `Ctrl+]`: Next account
 
@@ -102,7 +103,7 @@ Open options with `Ctrl+,`.
 - `Ctrl+Shift+O`: Open selected post in browser
 - `Ctrl+Shift+C`: Copy selected post text
 - `Ctrl+E`: Edit selected post
-- `Delete`: Delete selected post
+- `Delete` (in Posts list): Delete selected post
 - `Ctrl+V`: Vote in poll
 - `Ctrl+Shift+F`: Favorite/unfavorite
 - `Ctrl+Shift+K`: Bookmark/unbookmark
