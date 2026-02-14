@@ -157,20 +157,34 @@ pub fn process_stream_events(
 }
 
 /// Processes network responses from the background network thread.
-#[allow(clippy::too_many_arguments)]
-pub fn process_network_responses(
-	frame: &Frame,
-	state: &mut AppState,
-	timelines_selector: ListBox,
-	timeline_list: ListBox,
-	suppress_selection: &Cell<bool>,
-	live_region: StaticText,
-	quick_action_keys_enabled: &Cell<bool>,
-	autoload_mode: &Cell<AutoloadMode>,
-	sort_order_cell: &Cell<SortOrder>,
-	tray_hidden: &Cell<bool>,
-	ui_tx: &UiCommandSender,
-) {
+pub struct NetworkResponseContext<'a> {
+	pub frame: &'a Frame,
+	pub state: &'a mut AppState,
+	pub timelines_selector: ListBox,
+	pub timeline_list: ListBox,
+	pub suppress_selection: &'a Cell<bool>,
+	pub live_region: StaticText,
+	pub quick_action_keys_enabled: &'a Cell<bool>,
+	pub autoload_mode: &'a Cell<AutoloadMode>,
+	pub sort_order_cell: &'a Cell<SortOrder>,
+	pub tray_hidden: &'a Cell<bool>,
+	pub ui_tx: &'a UiCommandSender,
+}
+
+/// Processes network responses from the background network thread.
+#[allow(clippy::too_many_lines)]
+pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
+	let frame = ctx.frame;
+	let state = &mut *ctx.state;
+	let timelines_selector = ctx.timelines_selector;
+	let timeline_list = ctx.timeline_list;
+	let suppress_selection = ctx.suppress_selection;
+	let live_region = ctx.live_region;
+	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
+	let autoload_mode = ctx.autoload_mode;
+	let sort_order_cell = ctx.sort_order_cell;
+	let tray_hidden = ctx.tray_hidden;
+	let ui_tx = ctx.ui_tx;
 	let Some(handle) = &state.network_handle else { return };
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	macro_rules! dispatch_ui_command {

@@ -43,7 +43,7 @@ use crate::{
 	config::{Config, TimestampFormat},
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
-	responses::{process_network_responses, process_stream_events},
+	responses::{NetworkResponseContext, process_network_responses, process_stream_events},
 	timeline::TimelineManager,
 	ui::{
 		menu::update_menu_labels,
@@ -246,19 +246,22 @@ fn main() {
 				drain_ui_commands(&ui_rx, &mut ui_ctx);
 			}
 			process_stream_events(&mut state, timeline_list_wake, &suppress_wake, &frame_wake);
-			process_network_responses(
-				&frame_wake,
-				&mut state,
-				timelines_selector_wake,
-				timeline_list_wake,
-				&suppress_wake,
-				live_region_wake,
-				&quick_action_keys_drain,
-				&autoload_drain,
-				&sort_order_drain,
-				&tray_hidden_drain,
-				&ui_tx_timer,
-			);
+			{
+				let mut network_ctx = NetworkResponseContext {
+					frame: &frame_wake,
+					state: &mut state,
+					timelines_selector: timelines_selector_wake,
+					timeline_list: timeline_list_wake,
+					suppress_selection: &suppress_wake,
+					live_region: live_region_wake,
+					quick_action_keys_enabled: &quick_action_keys_drain,
+					autoload_mode: &autoload_drain,
+					sort_order_cell: &sort_order_drain,
+					tray_hidden: &tray_hidden_drain,
+					ui_tx: &ui_tx_timer,
+				};
+				process_network_responses(&mut network_ctx);
+			}
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
 				let view_options = state.timeline_view_options();
 				if state.config.timestamp_format == TimestampFormat::Relative
