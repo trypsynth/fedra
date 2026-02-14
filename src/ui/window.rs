@@ -153,7 +153,9 @@ pub fn bind_input_handlers(
 					}
 					8 => {
 						// Backspace
-						let _ = ui_tx_list_key.send(UiCommand::GoBack);
+						if quick_action_keys_list.get() {
+							let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+						}
 						event.skip(false);
 						return;
 					}
@@ -210,14 +212,12 @@ pub fn bind_input_handlers(
 				match key {
 					87 => {
 						// w
-						let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
-						event.skip(false);
-						return;
-					}
-					8 => {
-						// Backspace
-						let _ = ui_tx_list_key.send(UiCommand::CloseAndNavigateBack);
-						event.skip(false);
+						if !quick_action_keys_list.get() {
+							let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+							event.skip(false);
+							return;
+						}
+						event.skip(true);
 						return;
 					}
 					k if (49..=57).contains(&k) => {

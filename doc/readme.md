@@ -76,10 +76,8 @@ Open options with `Ctrl+,`.
 ### Navigation
 - `Left Arrow`: Previous timeline
 - `Right Arrow`: Next timeline
-- `Backspace`: Go back in timeline history
 - `Ctrl+1`..`Ctrl+9`: Switch to timeline index 1-9
-- `Ctrl+W`: Close current timeline
-- `Ctrl+Backspace`: Close current timeline and navigate back
+- `Ctrl+W`: Close current timeline (when Quick Action Keys are off)
 - `Ctrl+[`: Previous account
 - `Ctrl+]`: Next account
 
@@ -120,6 +118,7 @@ Open options with `Ctrl+,`.
 - Enable with `Ctrl+Shift+Q`
 - Disable with `q`
 - Single-key actions while enabled:
+  - `Backspace`: Close current timeline
   - `c`: New post
   - `r`: Reply to all
   - `Ctrl+R`: Reply to author
