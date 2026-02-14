@@ -1109,12 +1109,8 @@ fn prompt_for_compose(
 	let content_type_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
-	let media_label = StaticText::builder(&panel).with_label("Media:").build();
 	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
-	let media_count_label = StaticText::builder(&panel).with_label("No media attached.").build();
-	let poll_label = StaticText::builder(&panel).with_label("Poll:").build();
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
-	let poll_summary_label = StaticText::builder(&panel).with_label("No poll attached.").build();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(&ok_label).build();
 	if enter_to_send {
@@ -1131,12 +1127,8 @@ fn prompt_for_compose(
 	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&visibility_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&content_type_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&media_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
-	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&media_count_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&poll_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&poll_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add(&poll_summary_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -1145,50 +1137,21 @@ fn prompt_for_compose(
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial_media));
-	{
-		let count = media_items.borrow().len();
-		let label = if count == 0 {
-			"No media attached.".to_string()
-		} else if count == 1 {
-			"1 item attached.".to_string()
-		} else {
-			format!("{count} items attached.")
-		};
-		media_count_label.set_label(&label);
-	}
 	let media_items_manage = media_items.clone();
-	let media_count_update = media_count_label;
 	let media_parent = dialog;
 	media_button.on_click(move |_| {
 		let current = media_items_manage.borrow().clone();
 		if let Some(updated) = prompt_for_media(&media_parent, current) {
-			let count = updated.len();
 			*media_items_manage.borrow_mut() = updated;
-			let label = if count == 0 {
-				"No media attached.".to_string()
-			} else if count == 1 {
-				"1 item attached.".to_string()
-			} else {
-				format!("{count} items attached.")
-			};
-			media_count_update.set_label(&label);
 		}
 	});
 	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(initial_poll));
 	{
-		if let Some(poll) = poll_state.borrow().as_ref() {
-			let option_count = poll.options.len();
+		if let Some(_) = poll_state.borrow().as_ref() {
 			poll_button.set_label("Edit Poll...");
-			let label = if option_count == 1 {
-				"Poll with 1 option.".to_string()
-			} else {
-				format!("Poll with {option_count} options.")
-			};
-			poll_summary_label.set_label(&label);
 		}
 	}
 	let poll_state_manage = poll_state.clone();
-	let poll_summary_update = poll_summary_label;
 	let poll_button_update = poll_button;
 	let poll_parent = dialog;
 	let poll_limits = poll_limits.clone();
@@ -1199,20 +1162,12 @@ fn prompt_for_compose(
 		};
 		match result {
 			Some(PollDialogResult::Updated(poll)) => {
-				let option_count = poll.options.len();
 				*poll_state_manage.borrow_mut() = Some(poll);
 				poll_button_update.set_label("Edit Poll...");
-				let label = if option_count == 1 {
-					"Poll with 1 option.".to_string()
-				} else {
-					format!("Poll with {option_count} options.")
-				};
-				poll_summary_update.set_label(&label);
 			}
 			Some(PollDialogResult::Removed) => {
 				*poll_state_manage.borrow_mut() = None;
 				poll_button_update.set_label("Add Poll...");
-				poll_summary_update.set_label("No poll attached.");
 			}
 			None => {}
 		}
@@ -1234,6 +1189,19 @@ fn prompt_for_compose(
 	if !initial_content.is_empty() {
 		content_text.set_value(&initial_content);
 	}
+	let content_text_title = content_text;
+	let dialog_title = dialog;
+	let title_prefix_update = title_prefix.clone();
+	let update_title = move || {
+		let text = content_text_title.get_value();
+		let char_count = text.chars().count();
+		dialog_title.set_label(&format!("{title_prefix_update} - {char_count} of {max_chars} characters"));
+	};
+	update_title();
+	let update_title_on_change = update_title;
+	content_text.on_text_changed(move |_| {
+		update_title_on_change();
+	});
 	if let Some(cw) = initial_cw.as_deref().map(str::trim)
 		&& !cw.is_empty()
 	{
@@ -1263,21 +1231,12 @@ fn prompt_for_compose(
 			event.skip(true);
 		}
 	});
-	let timer = Timer::new(&dialog);
-	let title_prefix_timer = title_prefix.clone();
-	timer.on_tick(move |_| {
-		let text = content_text.get_value();
-		let char_count = text.chars().count();
-		dialog.set_label(&format!("{title_prefix_timer} - {char_count} of {max_chars} characters"));
-	});
-	timer.start(100, false);
 	dialog.centre();
 	content_text.set_focus();
 	if !initial_content.is_empty() {
 		content_text.set_insertion_point_end();
 	}
 	let result = dialog.show_modal();
-	timer.stop();
 	if result != ID_OK {
 		return None;
 	}

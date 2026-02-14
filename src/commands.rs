@@ -81,11 +81,9 @@ pub enum UiCommand {
 	ToggleContentWarning,
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
-	GoBack,
 	SwitchTimelineByIndex(usize),
 	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
 	CancelAuth,
-	CloseAndNavigateBack,
 	EditProfile,
 	ViewHelp,
 	Search,
@@ -337,9 +335,6 @@ pub fn handle_ui_command(
 		UiCommand::CloseTimeline => {
 			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
 		}
-		UiCommand::CloseAndNavigateBack => {
-			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, true);
-		}
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
 				&& !active.entries.is_empty()
@@ -429,43 +424,6 @@ pub fn handle_ui_command(
 			let _ = config::ConfigStore::new().save(&state.config);
 			let msg = if enabled { "Quick keys enabled" } else { "Quick keys disabled" };
 			live_region::announce(live_region, msg);
-		}
-		UiCommand::GoBack => {
-			if let Some(active) = state.timeline_manager.active_mut() {
-				let effective_sort_order = if state.config.preserve_thread_order
-					&& matches!(active.timeline_type, TimelineType::Thread { .. })
-				{
-					SortOrder::OldestToNewest
-				} else {
-					state.config.sort_order
-				};
-				sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
-			}
-			if state.timeline_manager.go_back() {
-				let index = state.timeline_manager.active_index();
-				if let Some(name) = state.timeline_manager.display_names().get(index) {
-					live_region::announce(live_region, name);
-				}
-				with_suppressed_selection(suppress_selection, || {
-					timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
-				});
-
-				let view_options = state.timeline_view_options();
-				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						view_options,
-						&state.cw_expanded,
-					);
-				}
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-			} else {
-				live_region::announce(live_region, "No previous timeline");
-			}
 		}
 		UiCommand::SwitchTimelineByIndex(index) => {
 			if index < state.timeline_manager.len() {
