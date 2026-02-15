@@ -230,9 +230,9 @@ impl Status {
 			meta.push(when);
 		}
 		meta.push(self.visibility_display());
-		meta.push(format!("{} replies", self.replies_count));
-		meta.push(format!("{} boosts", self.reblogs_count));
-		meta.push(format!("{} favorites", self.favourites_count));
+		meta.push(count_label(self.replies_count, "reply", "replies"));
+		meta.push(count_label(self.reblogs_count, "boost", "boosts"));
+		meta.push(count_label(self.favourites_count, "favorite", "favorites"));
 		if let Some(client) = self.client_name() {
 			meta.push(format!("via {client}"));
 		}
@@ -333,6 +333,10 @@ impl Status {
 			Some(format!("[Poll: {}]", options.join(", ")))
 		}
 	}
+}
+
+fn count_label(count: u64, singular: &str, plural: &str) -> String {
+	if count == 1 { format!("{count} {singular}") } else { format!("{count} {plural}") }
 }
 
 #[derive(Debug, Clone, Deserialize)]
