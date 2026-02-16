@@ -1502,6 +1502,8 @@ pub fn prompt_for_user_lookup(
 	dialog.set_escape_id(ID_CANCEL);
 	if let Some(default_value) = default_value {
 		combo.set_value(default_value);
+		#[allow(clippy::cast_possible_wrap)]
+		combo.set_text_selection(0, default_value.len() as i64);
 	} else if !suggestions.is_empty() {
 		combo.set_selection(0);
 	}

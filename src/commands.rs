@@ -925,34 +925,72 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::OpenUserTimelineByInput => {
 			let mut suggestions: Vec<String> = Vec::new();
 			let mut default_value: Option<String> = None;
+			let self_acct = state.active_account().and_then(|a| a.acct.as_deref()).map(|a| format!("@{a}"));
+
+			let mut push_unique = |suggestions: &mut Vec<String>, handle: String| {
+				if self_acct.as_deref() != Some(handle.as_str()) && !suggestions.contains(&handle) {
+					suggestions.push(handle);
+				}
+			};
+
+			let collect_status_users =
+				|suggestions: &mut Vec<String>,
+				 status: &Status,
+				 push_unique: &mut dyn FnMut(&mut Vec<String>, String)| {
+					push_unique(suggestions, format!("@{}", status.account.acct));
+					if let Some(reblog) = &status.reblog {
+						push_unique(suggestions, format!("@{}", reblog.account.acct));
+						for mention in &reblog.mentions {
+							push_unique(suggestions, format!("@{}", mention.acct));
+						}
+					}
+					for mention in &status.mentions {
+						push_unique(suggestions, format!("@{}", mention.acct));
+					}
+				};
+
+			// Collect from selected entry first (these appear at the top)
 			if let Some(entry) = get_selected_entry(state) {
 				match entry {
 					TimelineEntry::Status(status) => {
-						if let Some(reblog) = &status.reblog {
-							let booster = format!("@{}", status.account.acct);
-							let author = format!("@{}", reblog.account.acct);
-							suggestions.push(booster.clone());
-							if author != booster {
-								suggestions.push(author);
-							}
-							default_value = Some(booster);
-						} else {
-							let handle = format!("@{}", status.account.acct);
-							suggestions.push(handle.clone());
-							default_value = Some(handle);
-						}
+						default_value = Some(format!("@{}", status.account.acct));
+						collect_status_users(&mut suggestions, status, &mut push_unique);
 					}
 					TimelineEntry::Notification(notification) => {
 						let handle = format!("@{}", notification.account.acct);
-						suggestions.push(handle.clone());
-						default_value = Some(handle);
+						default_value = Some(handle.clone());
+						push_unique(&mut suggestions, handle);
+						if let Some(status) = &notification.status {
+							collect_status_users(&mut suggestions, status, &mut push_unique);
+						}
 					}
 					TimelineEntry::Account(account) => {
 						let handle = format!("@{}", account.acct);
-						suggestions.push(handle.clone());
-						default_value = Some(handle);
+						default_value = Some(handle.clone());
+						push_unique(&mut suggestions, handle);
 					}
 					TimelineEntry::Hashtag(_) => {}
+				}
+			}
+
+			// Collect from all entries in the active timeline
+			if let Some(active) = state.timeline_manager.active() {
+				for entry in &active.entries {
+					match entry {
+						TimelineEntry::Status(status) => {
+							collect_status_users(&mut suggestions, status, &mut push_unique);
+						}
+						TimelineEntry::Notification(notification) => {
+							push_unique(&mut suggestions, format!("@{}", notification.account.acct));
+							if let Some(status) = &notification.status {
+								collect_status_users(&mut suggestions, status, &mut push_unique);
+							}
+						}
+						TimelineEntry::Account(account) => {
+							push_unique(&mut suggestions, format!("@{}", account.acct));
+						}
+						TimelineEntry::Hashtag(_) => {}
+					}
 				}
 			}
 			if let Some((input, action)) =
