@@ -101,6 +101,13 @@ fn normalize_text(input: &str) -> String {
 	final_out.trim().to_string()
 }
 
+pub fn clean_url(raw: &str) -> String {
+	let Ok(cleaner) = clearurls::UrlCleaner::from_embedded_rules() else {
+		return raw.to_string();
+	};
+	cleaner.clear_single_url_str(raw).map(|c| c.into_owned()).unwrap_or_else(|_| raw.to_string())
+}
+
 #[derive(Debug, Clone)]
 pub struct Link {
 	pub url: String,

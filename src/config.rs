@@ -46,6 +46,8 @@ pub struct Config {
 	pub check_for_updates_on_startup: bool,
 	#[serde(default)]
 	pub hotkey: HotkeyConfig,
+	#[serde(default = "default_strip_tracking")]
+	pub strip_tracking: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -156,6 +158,10 @@ const fn default_check_for_updates() -> bool {
 	true
 }
 
+const fn default_strip_tracking() -> bool {
+	true
+}
+
 fn default_timelines() -> Vec<DefaultTimeline> {
 	vec![DefaultTimeline::Local, DefaultTimeline::Direct]
 }
@@ -202,6 +208,7 @@ impl Default for Config {
 			notification_preference: NotificationPreference::default(),
 			check_for_updates_on_startup: true,
 			hotkey: HotkeyConfig::default(),
+			strip_tracking: true,
 		}
 	}
 }

@@ -508,6 +508,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				dialogs::OptionsDialogInput {
 					enter_to_send: state.config.enter_to_send,
 					always_show_link_dialog: state.config.always_show_link_dialog,
+					strip_tracking: state.config.strip_tracking,
 					quick_action_keys: state.config.quick_action_keys,
 					check_for_updates: state.config.check_for_updates_on_startup,
 					autoload: state.config.autoload,
@@ -525,6 +526,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				let dialogs::OptionsDialogResult {
 					enter_to_send,
 					always_show_link_dialog,
+					strip_tracking,
 					quick_action_keys,
 					check_for_updates,
 					autoload,
@@ -546,6 +548,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
+				state.config.strip_tracking = strip_tracking;
 				state.config.quick_action_keys = quick_action_keys;
 				state.config.check_for_updates_on_startup = check_for_updates;
 				state.config.autoload = autoload;
@@ -1099,10 +1102,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::OpenLinks => {
 			let Some(status) = get_selected_status(state) else { return };
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-			let links = html::extract_links(&target.content);
+			let mut links = html::extract_links(&target.content);
 			if links.is_empty() {
 				live_region::announce(live_region, "No links in this post");
 				return;
+			}
+			if state.config.strip_tracking {
+				for link in &mut links {
+					link.url = html::clean_url(&link.url);
+				}
 			}
 			let url_to_open = if links.len() == 1 && !state.config.always_show_link_dialog {
 				Some(links[0].url.clone())

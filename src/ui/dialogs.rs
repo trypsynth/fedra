@@ -814,9 +814,11 @@ fn normalize_language_code(input: &str) -> Option<String> {
 	Some(trimmed.to_ascii_lowercase())
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct OptionsDialogInput {
 	pub enter_to_send: bool,
 	pub always_show_link_dialog: bool,
+	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
 	pub autoload: AutoloadMode,
@@ -831,9 +833,11 @@ pub struct OptionsDialogInput {
 	pub hotkey: HotkeyConfig,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct OptionsDialogResult {
 	pub enter_to_send: bool,
 	pub always_show_link_dialog: bool,
+	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
 	pub autoload: AutoloadMode,
@@ -852,6 +856,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let OptionsDialogInput {
 		enter_to_send,
 		always_show_link_dialog,
+		strip_tracking,
 		quick_action_keys,
 		check_for_updates,
 		autoload,
@@ -875,6 +880,9 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	enter_checkbox.set_value(enter_to_send);
 	let link_checkbox = CheckBox::builder(&general_panel).with_label("Always prompt to open &links").build();
 	link_checkbox.set_value(always_show_link_dialog);
+	let strip_tracking_checkbox =
+		CheckBox::builder(&general_panel).with_label("Strip &tracking parameters from URLs").build();
+	strip_tracking_checkbox.set_value(strip_tracking);
 	let quick_action_checkbox =
 		CheckBox::builder(&general_panel).with_label("Use &quick action keys in timelines").build();
 	quick_action_checkbox.set_value(quick_action_keys);
@@ -898,6 +906,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	notification_sizer.add(&notification_choice, 1, SizerFlag::Expand, 0);
 	general_sizer.add(&enter_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&link_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&strip_tracking_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -1045,6 +1054,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	Some(OptionsDialogResult {
 		enter_to_send: enter_checkbox.get_value(),
 		always_show_link_dialog: link_checkbox.get_value(),
+		strip_tracking: strip_tracking_checkbox.get_value(),
 		quick_action_keys: quick_action_checkbox.get_value(),
 		check_for_updates: update_checkbox.get_value(),
 		autoload: new_autoload,

@@ -11,6 +11,7 @@ members = ["xtask"]
 anyhow = "1.0.101"
 chrono = "0.4.43"
 chrono-humanize = "0.2.3"
+clearurls = "0.0.4"
 ego-tree = "0.10.0"
 live-region = "0.1.4"
 pulldown-cmark = { version = "0.13.0", default-features = false, features = ["html"] }
