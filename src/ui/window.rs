@@ -386,7 +386,36 @@ pub fn bind_input_handlers(
 		}
 		event.skip(true);
 	});
-
+	let timeline_list_context = parts.timeline_list;
+	let shutdown_context = is_shutting_down.clone();
+	timeline_list_context.bind_internal(EventType::CONTEXT_MENU, move |_event| {
+		if shutdown_context.get() {
+			return;
+		}
+		let mut menu = Menu::builder().build();
+		menu.append(ID_REPLY, "&Reply...", "Reply to all mentioned users", ItemKind::Normal);
+		menu.append(ID_REPLY_AUTHOR, "Reply to &Author...", "Reply to author only", ItemKind::Normal);
+		menu.append_separator();
+		menu.append(ID_FAVORITE, "&Favorite", "Favorite or unfavorite selected post", ItemKind::Normal);
+		menu.append(ID_BOOKMARK, "&Bookmark", "Bookmark or unbookmark selected post", ItemKind::Normal);
+		menu.append(ID_BOOST, "&Boost", "Boost or unboost selected post", ItemKind::Normal);
+		menu.append_separator();
+		menu.append(ID_VIEW_THREAD, "View &Thread", "View conversation thread", ItemKind::Normal);
+		menu.append(ID_OPEN_LINKS, "Open &Links", "Open links in selected post", ItemKind::Normal);
+		menu.append(ID_VIEW_IN_BROWSER, "&Open in Browser", "Open selected post in web browser", ItemKind::Normal);
+		menu.append(ID_COPY_POST, "&Copy Post", "Copy selected post text", ItemKind::Normal);
+		menu.append_separator();
+		menu.append(ID_VIEW_PROFILE, "View &Profile", "View profile of selected post's author", ItemKind::Normal);
+		menu.append(
+			ID_VIEW_USER_TIMELINE,
+			"&User Timeline",
+			"Open timeline of selected post's author",
+			ItemKind::Normal,
+		);
+		menu.append(ID_VIEW_MENTIONS, "View &Mentions", "View mentions in selected post", ItemKind::Normal);
+		menu.append(ID_VIEW_HASHTAGS, "View &Hashtags", "View hashtags in selected post", ItemKind::Normal);
+		timeline_list_context.popup_menu(&mut menu, None);
+	});
 	let autoload_mode_selection = autoload_mode;
 	let sort_order_selection = sort_order_cell;
 	timeline_list_state.on_selection_changed(move |event| {
