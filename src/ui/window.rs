@@ -470,7 +470,7 @@ pub fn bind_input_handlers(
 	});
 
 	let ui_tx_menu = ui_tx;
-	let shutdown_menu = is_shutting_down.clone();
+	let shutdown_menu = is_shutting_down;
 	let frame_menu = parts.frame;
 	frame_menu.on_menu_selected(move |event| match event.get_id() {
 		ID_VIEW_PROFILE => {
@@ -680,12 +680,4 @@ pub fn bind_input_handlers(
 		_ => {}
 	});
 
-	let shutdown_close = is_shutting_down;
-	let frame_close = parts.frame;
-	frame_close.on_close(move |event| {
-		if !shutdown_close.get() {
-			shutdown_close.set(true);
-		}
-		event.skip(true);
-	});
 }

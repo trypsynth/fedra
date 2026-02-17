@@ -40,27 +40,30 @@ impl AppShell {
 		*self.hotkey_handle.borrow_mut() = start_hotkey_listener(ui_tx, hotkey);
 	}
 
-	pub fn attach_destroy(self: Rc<Self>, frame: &Frame) {
-		let self_cleanup = self;
-		frame.on_destroy(move |_| {
-			if let Some(mut menu) = self_cleanup.tray_menu.borrow_mut().take() {
-				menu.destroy_menu();
-			}
-			self_cleanup.taskbar.destroy();
-			#[cfg(target_os = "windows")]
-			if let Some(handle) = self_cleanup.hotkey_handle.borrow_mut().take() {
-				use windows::Win32::{
-					Foundation::{LPARAM, WPARAM},
-					UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
-				};
-				if handle.thread_id != 0 {
-					unsafe {
-						let _ = PostThreadMessageW(handle.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-					}
+	/// Clean up the tray icon and hotkey thread. Safe to call multiple times.
+	/// This should be called during `on_close` (before window destruction begins)
+	/// so that destroying the tray icon doesn't cause a focus shift back to the
+	/// still-alive window, which screen readers would announce.
+	pub fn cleanup(&self) {
+		if let Some(mut menu) = self.tray_menu.borrow_mut().take() {
+			menu.destroy_menu();
+		}
+		self.taskbar.destroy();
+		#[cfg(target_os = "windows")]
+		if let Some(handle) = self.hotkey_handle.borrow_mut().take() {
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT},
+			};
+			if handle.thread_id != 0 {
+				unsafe {
+					let _ = PostThreadMessageW(handle.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
 				}
-				let _ = handle.join_handle.join();
 			}
-		});
+			// Don't join — the thread will exit on its own after processing WM_QUIT.
+			// Blocking here during close can hang the UI thread.
+			drop(handle.join_handle);
+		}
 	}
 }
 

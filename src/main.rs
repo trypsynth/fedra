@@ -209,7 +209,7 @@ fn main() {
 			None,
 		);
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone(), &state.config.hotkey));
-		app_shell.clone().attach_destroy(&frame);
+		let app_shell_close = app_shell.clone();
 		state.app_shell = Some(app_shell);
 
 		if state.config.check_for_updates_on_startup {
@@ -315,12 +315,24 @@ fn main() {
 		bind_input_handlers(
 			&window_parts,
 			ui_tx.clone(),
-			is_shutting_down,
+			is_shutting_down.clone(),
 			suppress_selection.clone(),
 			quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,
 		);
+		let shutdown_close = is_shutting_down;
+		let frame_close = frame;
+		frame.on_close(move |event| {
+			if !shutdown_close.get() {
+				shutdown_close.set(true);
+			}
+			// Hide the window and clean up the tray icon before destruction begins,
+			// so the screen reader doesn't announce the window during teardown.
+			frame_close.show(false);
+			app_shell_close.cleanup();
+			event.skip(true);
+		});
 		frame.show(true);
 		frame.centre();
 	});
