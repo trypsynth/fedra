@@ -1,5 +1,5 @@
 use std::{
-	cmp::Ordering,
+	collections::{HashMap, HashSet},
 	slice,
 	sync::mpsc::{self, Receiver, Sender},
 	thread::{self, JoinHandle},
@@ -420,19 +420,57 @@ fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineDat
 	let mut statuses = context.ancestors;
 	statuses.push(focus);
 	statuses.extend(context.descendants);
-	let mut indexed: Vec<(usize, Status)> = statuses.into_iter().enumerate().collect();
-	indexed.sort_by(|(a_idx, a), (b_idx, b)| {
-		let a_time: Option<DateTime<chrono::Utc>> = a.created_at.parse().ok();
-		let b_time: Option<DateTime<chrono::Utc>> = b.created_at.parse().ok();
-		match (a_time, b_time) {
-			(Some(a_time), Some(b_time)) => b_time.cmp(&a_time).then_with(|| a_idx.cmp(b_idx)),
-			(Some(_), None) => Ordering::Less,
-			(None, Some(_)) => Ordering::Greater,
-			(None, None) => a_idx.cmp(b_idx),
+
+	let mut status_map: HashMap<String, Status> = HashMap::new();
+	let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
+	for status in statuses {
+		status_map.insert(status.id.clone(), status.clone());
+		if let Some(parent_id) = &status.in_reply_to_id {
+			children_map.entry(parent_id.clone()).or_default().push(status.id.clone());
 		}
+	}
+	let mut roots: Vec<String> = status_map
+		.values()
+		.filter(|s| s.in_reply_to_id.as_ref().is_none_or(|parent_id| !status_map.contains_key(parent_id)))
+		.map(|s| s.id.clone())
+		.collect();
+	let sort_key = |s: &Status| {
+		let time: Option<DateTime<chrono::Utc>> = s.created_at.parse().ok();
+		(time, s.id.clone())
+	};
+
+	roots.sort_by(|a_id, b_id| {
+		let a = &status_map[a_id];
+		let b = &status_map[b_id];
+		sort_key(a).cmp(&sort_key(b))
 	});
-	let sorted: Vec<Status> = indexed.into_iter().map(|(_, status)| status).collect();
-	TimelineData::Statuses(sorted, None)
+
+	let mut sorted_statuses: Vec<Status> = Vec::new();
+	let mut visited: HashSet<String> = HashSet::new();
+	let mut stack: Vec<String> = roots;
+	stack.reverse();
+	while let Some(current_id) = stack.pop() {
+		if !visited.insert(current_id.clone()) {
+			continue;
+		}
+
+		if let Some(status) = status_map.get(&current_id) {
+			sorted_statuses.push(status.clone());
+
+			if let Some(children) = children_map.get_mut(&current_id) {
+				children.sort_by(|a_id, b_id| {
+					let a = &status_map[a_id];
+					let b = &status_map[b_id];
+					sort_key(a).cmp(&sort_key(b))
+				});
+				for child_id in children.iter().rev() {
+					stack.push(child_id.clone());
+				}
+			}
+		}
+	}
+	sorted_statuses.reverse();
+	TimelineData::Statuses(sorted_statuses, None)
 }
 
 fn network_loop(
