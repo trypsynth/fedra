@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
 use reqwest::{
-	StatusCode,
-	Url,
+	StatusCode, Url,
 	blocking::{Client, multipart},
 };
 use serde::Deserialize;
@@ -758,7 +757,7 @@ impl MastodonClient {
 	}
 
 	fn wait_for_media_processing(&self, access_token: &str, media_id: &str) -> Result<()> {
-		let url = self.base_url.join(&format!("api/v1/media/{}", media_id))?;
+		let url = self.base_url.join(&format!("api/v1/media/{media_id}"))?;
 		for attempt in 0..60 {
 			let delay = cmp::min(1 + attempt, 5);
 			thread::sleep(Duration::from_secs(delay));
@@ -770,9 +769,9 @@ impl MastodonClient {
 				.context("Failed to check media processing status")?;
 			match response.status() {
 				StatusCode::OK => return Ok(()),
-				StatusCode::PARTIAL_CONTENT => continue,
+				StatusCode::PARTIAL_CONTENT => {}
 				status => {
-					anyhow::bail!("Media processing failed with status {}", status);
+					anyhow::bail!("Media processing failed with status {status}");
 				}
 			}
 		}

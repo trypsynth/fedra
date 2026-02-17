@@ -1024,37 +1024,60 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			};
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-			if target.mentions.is_empty() {
+			// Start with mentions the API resolved, then add any found only in the post HTML.
+			// The API omits mentions for accounts the local instance hasn't federated yet
+			// (e.g. brand-new or recently migrated accounts), so we need the HTML fallback.
+			let mut all_mentions: Vec<crate::mastodon::Mention> = target.mentions.clone();
+			for (url, text) in html::extract_mention_links(&target.content) {
+				if all_mentions.iter().any(|m| m.url == url) {
+					continue;
+				}
+				let acct = acct_from_mention_link(&text, &url);
+				let username = acct.split('@').next().unwrap_or("").to_string();
+				all_mentions.push(crate::mastodon::Mention {
+					id: String::new(), // unknown to local instance; use lookup_account fallback
+					username,
+					acct,
+					url,
+				});
+			}
+			if all_mentions.is_empty() {
 				live_region::announce(live_region, "No mentions in this post");
 				return;
 			}
-			if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &target.mentions) {
-				let mut account = None;
-				if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
-					match client.get_account(token, &mention.id) {
-						Ok(full) => account = Some(full),
-						Err(err) => {
-							dialogs::show_error(frame, &err);
-						}
+			if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &all_mentions) {
+				// Resolution chain: get_account by ID → lookup_account by acct → synthetic fallback
+				let account = if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
+					let by_id = if mention.id.is_empty() { None } else { client.get_account(token, &mention.id).ok() };
+					by_id.or_else(|| client.lookup_account(token, &mention.acct).ok())
+				} else {
+					None
+				};
+				let account = match account {
+					Some(acc) => acc,
+					None if mention.id.is_empty() => {
+						// HTML-derived mention: no local ID and lookup failed — nothing we can do
+						live_region::announce(live_region, &format!("Could not resolve account @{}", mention.acct));
+						return;
 					}
-				}
-				let account = account.unwrap_or_else(|| crate::mastodon::Account {
-					id: mention.id.clone(),
-					username: mention.username.clone(),
-					acct: mention.acct.clone(),
-					display_name: String::new(),
-					url: mention.url,
-					note: String::new(),
-					followers_count: 0,
-					following_count: 0,
-					statuses_count: 0,
-					fields: Vec::new(),
-					created_at: String::new(),
-					locked: false,
-					bot: false,
-					discoverable: None,
-					source: None,
-				});
+					None => crate::mastodon::Account {
+						id: mention.id.clone(),
+						username: mention.username.clone(),
+						acct: mention.acct.clone(),
+						display_name: String::new(),
+						url: mention.url,
+						note: String::new(),
+						followers_count: 0,
+						following_count: 0,
+						statuses_count: 0,
+						fields: Vec::new(),
+						created_at: String::new(),
+						locked: false,
+						bot: false,
+						discoverable: None,
+						source: None,
+					},
+				};
 
 				match action {
 					dialogs::UserLookupAction::Profile => {
@@ -1392,6 +1415,27 @@ fn do_bookmark(state: &AppState, live_region: StaticText) {
 	} else {
 		handle.send(NetworkCommand::Bookmark { status_id });
 	}
+}
+
+/// Derive a Mastodon `acct` (`user` or `user@instance`) from the display text and URL of a
+/// mention link parsed out of post HTML.  The display text from Mastodon HTML is already in the
+/// right format (`@user` or `@user@instance`), so we prefer it; the URL is the fallback.
+fn acct_from_mention_link(display_text: &str, url: &str) -> String {
+	let text = display_text.trim().trim_start_matches('@');
+	if text.contains('@') {
+		return text.to_string();
+	}
+	if let Ok(parsed) = Url::parse(url)
+		&& let Some(host) = parsed.host_str()
+	{
+		let path = parsed.path();
+		let username = path.trim_start_matches('/').trim_start_matches('@');
+		let username = username.split('/').next().unwrap_or(text);
+		if !username.is_empty() {
+			return format!("{username}@{host}");
+		}
+	}
+	text.to_string()
 }
 
 fn do_boost(state: &AppState, live_region: StaticText) {

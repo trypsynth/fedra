@@ -679,5 +679,4 @@ pub fn bind_input_handlers(
 		}
 		_ => {}
 	});
-
 }

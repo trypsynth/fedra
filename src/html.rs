@@ -115,6 +115,25 @@ pub struct Link {
 	pub url: String,
 }
 
+/// Extract links that are Mastodon `@mention`s (elements with `class="mention"`),
+/// returning `(href, display_text)` pairs. Used to find mentions the API did not resolve.
+pub fn extract_mention_links(html: &str) -> Vec<(String, String)> {
+	let fragment = scraper::Html::parse_fragment(html);
+	let mut result = Vec::new();
+	let selector = scraper::Selector::parse("a").unwrap();
+	for element in fragment.select(&selector) {
+		let Some(href) = element.value().attr("href") else { continue };
+		let is_mention =
+			element.value().attr("class").is_some_and(|class| class.split_whitespace().any(|c| c == "mention"));
+		if !is_mention {
+			continue;
+		}
+		let text: String = element.text().collect();
+		result.push((href.to_string(), text.trim().to_string()));
+	}
+	result
+}
+
 pub fn extract_links(html: &str) -> Vec<Link> {
 	let fragment = scraper::Html::parse_fragment(html);
 	let mut links = Vec::new();
