@@ -13,6 +13,7 @@ use serde_json::Value;
 use crate::{
 	config::{ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
 	html::strip_html,
+	template::{PostTemplateVars, render_template},
 	text::strip_display_name_emojis,
 	timeline::{TimelineTextOptions, TimelineType},
 };
@@ -200,47 +201,63 @@ impl Status {
 		out
 	}
 
-	pub fn timeline_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+	pub fn timeline_display(
+		&self,
+		options: &TimelineTextOptions,
+		cw_expanded: bool,
+		post_template: &str,
+		boost_template: &str,
+	) -> String {
 		self.reblog.as_ref().map_or_else(
-			|| self.base_display(options, cw_expanded),
+			|| {
+				let vars = self.build_template_vars(options, cw_expanded);
+				render_template(post_template, &vars)
+			},
 			|boosted| {
-				let post_booster = self.account.timeline_display_name(options.display_name_emoji_mode);
-				format!("{} boosted {}", post_booster, boosted.base_display(options, cw_expanded))
+				let booster = self.account.timeline_display_name(options.display_name_emoji_mode);
+				let mut vars = boosted.build_template_vars(options, cw_expanded);
+				vars.booster = booster;
+				render_template(boost_template, &vars)
 			},
 		)
 	}
 
-	fn base_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
-		let mut out = String::new();
+	pub(crate) fn base_display(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
+		let vars = self.build_template_vars(options, cw_expanded);
+		render_template(crate::template::DEFAULT_POST_TEMPLATE, &vars)
+	}
+
+	pub(crate) fn build_template_vars(&self, options: &TimelineTextOptions, cw_expanded: bool) -> PostTemplateVars {
 		let author = self.account.timeline_display_name(options.display_name_emoji_mode);
-		out.push_str(&author);
-		out.push_str(": ");
+		let username = format!("@{}", self.account.acct);
 		let content = self.content_with_cw(options.cw_display, cw_expanded);
-		if !content.is_empty() {
-			out.push_str(&content);
+		let content_warning = self.spoiler_text.trim().to_string();
+		let relative_time = friendly_time(&self.created_at, TimestampFormat::Relative).unwrap_or_default();
+		let absolute_time = friendly_time(&self.created_at, TimestampFormat::Absolute).unwrap_or_default();
+		let visibility = self.visibility_display();
+		let reply_count = count_label(self.replies_count, "reply", "replies");
+		let boost_count = count_label(self.reblogs_count, "boost", "boosts");
+		let favorite_count = count_label(self.favourites_count, "favorite", "favorites");
+		let client = self.client_name().unwrap_or_default();
+		let media = self.media_summary().unwrap_or_default();
+		let poll = self.poll_summary().map_or_else(String::new, |p| format!(" {p}"));
+
+		PostTemplateVars {
+			author,
+			username,
+			content,
+			content_warning,
+			relative_time,
+			absolute_time,
+			visibility,
+			reply_count,
+			boost_count,
+			favorite_count,
+			client,
+			media,
+			poll,
+			booster: String::new(),
 		}
-		if let Some(media) = self.media_summary() {
-			out.push_str(&media);
-		}
-		if let Some(poll_text) = self.poll_summary() {
-			let _ = write!(out, " {poll_text}");
-		}
-		let mut meta = Vec::new();
-		if let Some(when) = friendly_time(&self.created_at, options.timestamp_format) {
-			meta.push(when);
-		}
-		meta.push(self.visibility_display());
-		meta.push(count_label(self.replies_count, "reply", "replies"));
-		meta.push(count_label(self.reblogs_count, "boost", "boosts"));
-		meta.push(count_label(self.favourites_count, "favorite", "favorites"));
-		if let Some(client) = self.client_name() {
-			meta.push(format!("via {client}"));
-		}
-		if !meta.is_empty() {
-			out.push_str(" - ");
-			out.push_str(&meta.join(", "));
-		}
-		out
 	}
 
 	fn visibility_display(&self) -> String {
@@ -415,7 +432,7 @@ impl Notification {
 		}
 	}
 
-	pub fn timeline_display(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+	pub fn timeline_display(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
 		let actor = self.account.timeline_display_name(options.display_name_emoji_mode);
 		match self.kind.as_str() {
 			"mention" | "status" => self.status_text(options, cw_expanded),
@@ -428,7 +445,7 @@ impl Notification {
 			"poll" => format!("Poll ended: {}", self.status_text(options, cw_expanded)),
 			"update" => format!("{} edited {}", actor, self.status_text(options, cw_expanded)),
 			"admin.sign_up" => format!("{actor} signed up"),
-			"admin.report" => self.format_admin_report(actor, options.display_name_emoji_mode),
+			"admin.report" => self.format_admin_report(&actor, options.display_name_emoji_mode),
 			"severed_relationships" => "Some of your follow relationships have been severed".to_string(),
 			"moderation_warning" => "You have received a moderation warning".to_string(),
 			_ => self.status_text_if_any(options, cw_expanded).map_or_else(
@@ -438,13 +455,14 @@ impl Notification {
 		}
 	}
 
-	fn format_admin_report(&self, reporter: String, display_name_emoji_mode: DisplayNameEmojiMode) -> String {
+	fn format_admin_report(&self, reporter: &str, display_name_emoji_mode: DisplayNameEmojiMode) -> String {
 		self.report.as_ref().map_or_else(
 			|| format!("{reporter} filed a report"),
 			|report| {
-				let target = report.target_account.as_ref().map_or("unknown user".to_string(), |account| {
-					account.timeline_display_name(display_name_emoji_mode).to_string()
-				});
+				let target = report.target_account.as_ref().map_or_else(
+					|| "unknown user".to_string(),
+					|account| account.timeline_display_name(display_name_emoji_mode),
+				);
 				let category = match report.category.as_str() {
 					"spam" => "spam",
 					"legal" => "legal issue",
@@ -462,11 +480,11 @@ impl Notification {
 		)
 	}
 
-	fn status_text(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+	fn status_text(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
 		self.status_text_if_any(options, cw_expanded).unwrap_or_else(|| "No status content".to_string())
 	}
 
-	fn status_text_if_any(&self, options: TimelineTextOptions, cw_expanded: bool) -> Option<String> {
+	fn status_text_if_any(&self, options: &TimelineTextOptions, cw_expanded: bool) -> Option<String> {
 		self.status.as_ref().map(|status| status.base_display(options, cw_expanded))
 	}
 }
@@ -1516,15 +1534,12 @@ where
 {
 	let val = Value::deserialize(deserializer)?;
 	match val {
-		Value::Number(n) => {
-			if let Some(i) = n.as_i64() {
-				if i < 0 { Ok(0) } else { Ok(i as u64) }
-			} else if let Some(u) = n.as_u64() {
-				Ok(u)
-			} else {
-				Ok(0)
-			}
-		}
+		Value::Number(n) => n.as_i64().map_or_else(
+			|| n.as_u64().map_or(Ok(0), Ok),
+			|i| {
+				if i < 0 { Ok(0) } else { Ok(i.cast_unsigned()) }
+			},
+		),
 		_ => Ok(0),
 	}
 }
@@ -1535,15 +1550,12 @@ where
 {
 	let val = Value::deserialize(deserializer)?;
 	match val {
-		Value::Number(n) => {
-			if let Some(i) = n.as_i64() {
-				if i < 0 { Ok(Some(0)) } else { Ok(Some(i as u64)) }
-			} else if let Some(u) = n.as_u64() {
-				Ok(Some(u))
-			} else {
-				Ok(None)
-			}
-		}
+		Value::Number(n) => n.as_i64().map_or_else(
+			|| n.as_u64().map_or(Ok(None), |u| Ok(Some(u))),
+			|i| {
+				if i < 0 { Ok(Some(0)) } else { Ok(Some(i.cast_unsigned())) }
+			},
+		),
 		_ => Ok(None),
 	}
 }

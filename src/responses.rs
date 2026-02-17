@@ -167,9 +167,12 @@ pub fn process_stream_events(
 	if merged_any {
 		active_needs_update = true;
 	}
-	let view_options = state.timeline_view_options();
-	if active_needs_update && let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
+	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+	if active_needs_update
+		&& let Some(view_options) = view_options
+		&& let Some(active) = state.timeline_manager.active_mut()
+	{
+		update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
@@ -230,8 +233,8 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
-				let view_options = state.timeline_view_options();
-				let text_options = view_options.text_options;
+				let view_options = state.timeline_view_options_for(&timeline_type);
+				let text_options = &view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -287,7 +290,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 									timeline_list,
 									timeline,
 									suppress_selection,
-									view_options,
+									&view_options,
 									&state.cw_expanded,
 								);
 							}
@@ -299,7 +302,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								timeline_list,
 								timeline,
 								suppress_selection,
-								view_options,
+								&view_options,
 								&state.cw_expanded,
 							);
 						}
@@ -314,15 +317,20 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							merged_any = true;
 						}
 					}
-					let view_options = state.timeline_view_options();
-					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
-						update_active_timeline_ui(
-							timeline_list,
-							active,
-							suppress_selection,
-							view_options,
-							&state.cw_expanded,
-						);
+					if merged_any {
+						let view_options =
+							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+						if let Some(view_options) = view_options
+							&& let Some(active) = state.timeline_manager.active_mut()
+						{
+							update_active_timeline_ui(
+								timeline_list,
+								active,
+								suppress_selection,
+								&view_options,
+								&state.cw_expanded,
+							);
+						}
 					}
 				}
 			}
@@ -476,15 +484,20 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
-				let view_options = state.timeline_view_options();
-				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						view_options,
-						&state.cw_expanded,
-					);
+				{
+					let view_options =
+						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					if let Some(view_options) = view_options
+						&& let Some(active) = state.timeline_manager.active_mut()
+					{
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							&view_options,
+							&state.cw_expanded,
+						);
+					}
 				}
 				live_region::announce(live_region, "Deleted");
 			}
@@ -494,15 +507,20 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
 				let status_clone = status.clone();
 				update_status_in_timelines(state, &status.id, move |s| *s = status_clone.clone());
-				let view_options = state.timeline_view_options();
-				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						view_options,
-						&state.cw_expanded,
-					);
+				{
+					let view_options =
+						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					if let Some(view_options) = view_options
+						&& let Some(active) = state.timeline_manager.active_mut()
+					{
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							&view_options,
+							&state.cw_expanded,
+						);
+					}
 				}
 				live_region::announce(live_region, "Edited");
 			}
@@ -712,13 +730,16 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::PollVoted { result } => match result {
 				Ok(poll) => {
 					update_poll_in_timelines(state, &poll);
-					let view_options = state.timeline_view_options();
-					if let Some(active) = state.timeline_manager.active_mut() {
+					let view_options =
+						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					if let Some(view_options) = view_options
+						&& let Some(active) = state.timeline_manager.active_mut()
+					{
 						update_active_timeline_ui(
 							timeline_list,
 							active,
 							suppress_selection,
-							view_options,
+							&view_options,
 							&state.cw_expanded,
 						);
 					}
@@ -749,8 +770,8 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
-				let view_options = state.timeline_view_options();
-				let text_options = view_options.text_options;
+				let view_options = state.timeline_view_options_for(&timeline_type);
+				let text_options = &view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -797,7 +818,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								timeline_list,
 								timeline,
 								suppress_selection,
-								view_options,
+								&view_options,
 								&state.cw_expanded,
 							);
 						}
@@ -811,15 +832,20 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							merged_any = true;
 						}
 					}
-					let view_options = state.timeline_view_options();
-					if merged_any && let Some(active) = state.timeline_manager.active_mut() {
-						update_active_timeline_ui(
-							timeline_list,
-							active,
-							suppress_selection,
-							view_options,
-							&state.cw_expanded,
-						);
+					if merged_any {
+						let view_options =
+							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+						if let Some(view_options) = view_options
+							&& let Some(active) = state.timeline_manager.active_mut()
+						{
+							update_active_timeline_ui(
+								timeline_list,
+								active,
+								suppress_selection,
+								&view_options,
+								&state.cw_expanded,
+							);
+						}
 					}
 				}
 			}

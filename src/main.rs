@@ -13,6 +13,7 @@ mod network;
 mod notifications;
 mod responses;
 mod streaming;
+mod template;
 mod text;
 mod timeline;
 mod ui;
@@ -22,6 +23,9 @@ mod update;
 use std::{
 	cell::Cell,
 	collections::{HashMap, HashSet},
+	fs::File,
+	io::Write,
+	panic,
 	rc::Rc,
 	sync::mpsc,
 	time::{Duration, Instant},
@@ -40,7 +44,7 @@ pub(crate) use crate::ui::ids::{
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
 	commands::{UiCommand, UiCommandContext, handle_ui_command},
-	config::{Config, TimestampFormat},
+	config::Config,
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
 	responses::{NetworkResponseContext, process_network_responses, process_stream_events},
@@ -117,8 +121,8 @@ impl AppState {
 		}
 	}
 
-	pub(crate) fn timeline_view_options(&self) -> TimelineViewOptions {
-		TimelineViewOptions::from_config(&self.config)
+	pub(crate) fn timeline_view_options_for(&self, timeline_type: &timeline::TimelineType) -> TimelineViewOptions {
+		TimelineViewOptions::from_config(&self.config, timeline_type)
 	}
 }
 
@@ -137,6 +141,16 @@ fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandConte
 }
 
 fn main() {
+	panic::set_hook(Box::new(|info| {
+		let log_path = config::config_dir().join("crash.log");
+		if let Ok(mut file) = File::create(&log_path) {
+			let _ = writeln!(file, "Fedra crashed at {}", chrono::Local::now());
+			let _ = writeln!(file, "{info}");
+			if let Some(location) = info.location() {
+				let _ = writeln!(file, "  at {}:{}:{}", location.file(), location.line(), location.column());
+			}
+		}
+	}));
 	let _ = wxdragon::main(|_| {
 		let _ = set_appearance(Appearance::System);
 		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
@@ -224,7 +238,6 @@ fn main() {
 			}
 			if busy_wake.get() {
 				reschedule_wake.set(true);
-				ui_waker_handler.reset();
 				return;
 			}
 			busy_wake.set(true);
@@ -263,15 +276,16 @@ fn main() {
 				process_network_responses(&mut network_ctx);
 			}
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
-				let view_options = state.timeline_view_options();
-				if state.config.timestamp_format == TimestampFormat::Relative
+				let view_options =
+					state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+				if let Some(view_options) = view_options
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
 					update_active_timeline_ui(
 						timeline_list_wake,
 						active,
 						&suppress_wake,
-						view_options,
+						&view_options,
 						&state.cw_expanded,
 					);
 				}
@@ -279,6 +293,7 @@ fn main() {
 			}
 
 			busy_wake.set(false);
+			ui_waker_handler.reset();
 			if reschedule_wake.replace(false) {
 				ui_waker_handler.wake();
 			}

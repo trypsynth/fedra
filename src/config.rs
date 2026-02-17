@@ -1,4 +1,5 @@
 use std::{
+	collections::HashMap,
 	env, fs, io,
 	path::{Path, PathBuf},
 	time::{SystemTime, UNIX_EPOCH},
@@ -7,6 +8,8 @@ use std::{
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+
+use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE};
 
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
@@ -48,6 +51,8 @@ pub struct Config {
 	pub hotkey: HotkeyConfig,
 	#[serde(default = "default_strip_tracking")]
 	pub strip_tracking: bool,
+	#[serde(default)]
+	pub templates: PostTemplates,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -138,6 +143,50 @@ pub enum AutoloadMode {
 	AtBoundary,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostTemplates {
+	#[serde(default = "default_post_template")]
+	pub post_template: String,
+	#[serde(default = "default_boost_template")]
+	pub boost_template: String,
+	#[serde(default)]
+	pub per_timeline: HashMap<String, PerTimelineTemplates>,
+}
+
+impl Default for PostTemplates {
+	fn default() -> Self {
+		Self {
+			post_template: default_post_template(),
+			boost_template: default_boost_template(),
+			per_timeline: HashMap::new(),
+		}
+	}
+}
+
+impl PostTemplates {
+	pub fn resolve_post_template(&self, key: &str) -> &str {
+		self.per_timeline.get(key).and_then(|pt| pt.post_template.as_deref()).unwrap_or(&self.post_template)
+	}
+
+	pub fn resolve_boost_template(&self, key: &str) -> &str {
+		self.per_timeline.get(key).and_then(|pt| pt.boost_template.as_deref()).unwrap_or(&self.boost_template)
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PerTimelineTemplates {
+	pub post_template: Option<String>,
+	pub boost_template: Option<String>,
+}
+
+fn default_post_template() -> String {
+	DEFAULT_POST_TEMPLATE.to_string()
+}
+
+fn default_boost_template() -> String {
+	DEFAULT_BOOST_TEMPLATE.to_string()
+}
+
 const fn default_enter_to_send() -> bool {
 	true
 }
@@ -209,6 +258,7 @@ impl Default for Config {
 			check_for_updates_on_startup: true,
 			hotkey: HotkeyConfig::default(),
 			strip_tracking: true,
+			templates: PostTemplates::default(),
 		}
 	}
 }
@@ -271,6 +321,19 @@ impl Default for ConfigStore {
 	fn default() -> Self {
 		Self::new()
 	}
+}
+
+pub fn config_dir() -> PathBuf {
+	let exe_dir = env::current_exe()
+		.ok()
+		.and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+		.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+	if is_installed(&exe_dir)
+		&& let Ok(appdata) = env::var("APPDATA")
+	{
+		return PathBuf::from(appdata).join(APP_NAME);
+	}
+	exe_dir
 }
 
 fn config_path() -> PathBuf {

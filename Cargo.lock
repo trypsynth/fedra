@@ -429,6 +429,7 @@ dependencies = [
  "ego-tree",
  "embed-manifest",
  "live-region",
+ "minijinja",
  "pulldown-cmark",
  "reqwest 0.13.2",
  "scraper",
@@ -1124,6 +1125,15 @@ checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
 dependencies = [
  "mime",
  "unicase",
+]
+
+[[package]]
+name = "minijinja"
+version = "2.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b479616bb6f0779fb0f3964246beda02d4b01144e1b0d5519616e012ccc2a245"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

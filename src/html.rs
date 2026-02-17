@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 pub fn strip_html(html: &str) -> String {
 	let fragment = scraper::Html::parse_fragment(html);
 	let mut output = String::new();
@@ -105,7 +107,7 @@ pub fn clean_url(raw: &str) -> String {
 	let Ok(cleaner) = clearurls::UrlCleaner::from_embedded_rules() else {
 		return raw.to_string();
 	};
-	cleaner.clear_single_url_str(raw).map(|c| c.into_owned()).unwrap_or_else(|_| raw.to_string())
+	cleaner.clear_single_url_str(raw).map_or_else(|_| raw.to_string(), Cow::into_owned)
 }
 
 #[derive(Debug, Clone)]

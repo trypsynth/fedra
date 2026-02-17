@@ -1,9 +1,10 @@
 use std::time::Instant;
 
 use crate::{
-	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode, TimestampFormat},
+	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode},
 	mastodon::{Account, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +82,22 @@ impl TimelineType {
 	pub const fn supports_paging(&self) -> bool {
 		!matches!(self, Self::Thread { .. })
 	}
+
+	pub const fn template_key(&self) -> &str {
+		match self {
+			Self::Home => "Home",
+			Self::Notifications => "Notifications",
+			Self::Direct => "Direct Messages",
+			Self::Local => "Local",
+			Self::Federated => "Federated",
+			Self::Bookmarks => "Bookmarks",
+			Self::Favorites => "Favorites",
+			Self::User { .. } => "User Timelines",
+			Self::Thread { .. } => "Threads",
+			Self::Search { .. } => "Search Results",
+			Self::Hashtag { .. } => "Hashtag Timelines",
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -91,24 +108,32 @@ pub enum TimelineEntry {
 	Hashtag(Tag),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TimelineTextOptions {
-	pub timestamp_format: TimestampFormat,
 	pub cw_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub post_template: String,
+	pub boost_template: String,
 }
 
 impl TimelineTextOptions {
-	pub const fn new(
-		timestamp_format: TimestampFormat,
-		cw_display: ContentWarningDisplay,
-		display_name_emoji_mode: DisplayNameEmojiMode,
-	) -> Self {
-		Self { timestamp_format, cw_display, display_name_emoji_mode }
+	pub fn from_config(config: &Config, timeline_type: &TimelineType) -> Self {
+		let key = timeline_type.template_key();
+		Self {
+			cw_display: config.content_warning_display,
+			display_name_emoji_mode: config.display_name_emoji_mode,
+			post_template: config.templates.resolve_post_template(key).to_string(),
+			boost_template: config.templates.resolve_boost_template(key).to_string(),
+		}
 	}
 
-	pub fn from_config(config: &Config) -> Self {
-		Self::new(config.timestamp_format, config.content_warning_display, config.display_name_emoji_mode)
+	pub fn from_config_default(config: &Config) -> Self {
+		Self {
+			cw_display: config.content_warning_display,
+			display_name_emoji_mode: config.display_name_emoji_mode,
+			post_template: DEFAULT_POST_TEMPLATE.to_string(),
+			boost_template: DEFAULT_BOOST_TEMPLATE.to_string(),
+		}
 	}
 }
 
@@ -122,9 +147,11 @@ impl TimelineEntry {
 		}
 	}
 
-	pub fn display_text(&self, options: TimelineTextOptions, cw_expanded: bool) -> String {
+	pub fn display_text(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
 		match self {
-			Self::Status(status) => status.timeline_display(options, cw_expanded),
+			Self::Status(status) => {
+				status.timeline_display(options, cw_expanded, &options.post_template, &options.boost_template)
+			}
 			Self::Notification(notification) => notification.timeline_display(options, cw_expanded),
 			Self::Account(account) => {
 				let name = account.timeline_display_name(options.display_name_emoji_mode);

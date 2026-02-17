@@ -14,7 +14,7 @@ use crate::{
 	html,
 	mastodon::{MastodonClient, Status},
 	network::{self, NetworkCommand},
-	timeline::{TimelineEntry, TimelineType},
+	timeline::{TimelineEntry, TimelineTextOptions, TimelineType},
 	ui::{
 		app_shell, dialogs,
 		menu::update_menu_labels,
@@ -394,7 +394,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 				return;
 			}
-			let text_options = state.timeline_view_options().text_options;
+			let text_options = state.timeline_manager.active().map_or_else(
+				|| TimelineTextOptions::from_config_default(&state.config),
+				|a| TimelineTextOptions::from_config(&state.config, &a.timeline_type),
+			);
 			let Some(active) = state.timeline_manager.active_mut() else { return };
 			let Some(list_index) = active.selected_index else {
 				live_region::announce(live_region, "No post selected");
@@ -428,7 +431,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.cw_expanded.insert(entry_id.to_string());
 			}
 			let is_expanded = state.cw_expanded.contains(entry_id);
-			let text = entry.display_text(text_options, is_expanded);
+			let text = entry.display_text(&text_options, is_expanded);
 			timeline_list.set_string(u32::try_from(list_index).unwrap(), &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
@@ -470,15 +473,20 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 					});
 				}
-				let view_options = state.timeline_view_options();
-				if let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						view_options,
-						&state.cw_expanded,
-					);
+				{
+					let view_options =
+						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					if let Some(view_options) = view_options
+						&& let Some(active) = state.timeline_manager.active_mut()
+					{
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							&view_options,
+							&state.cw_expanded,
+						);
+					}
 				}
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
@@ -516,11 +524,11 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					content_warning_display: state.config.content_warning_display,
 					display_name_emoji_mode: state.config.display_name_emoji_mode,
 					sort_order: state.config.sort_order,
-					timestamp_format: state.config.timestamp_format,
 					preserve_thread_order: state.config.preserve_thread_order,
 					default_timelines: state.config.default_timelines.clone(),
 					notification_preference: state.config.notification_preference,
 					hotkey: state.config.hotkey.clone(),
+					templates: state.config.templates.clone(),
 				},
 			) {
 				let dialogs::OptionsDialogResult {
@@ -534,17 +542,17 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					content_warning_display,
 					display_name_emoji_mode,
 					sort_order,
-					timestamp_format,
 					preserve_thread_order,
 					default_timelines,
 					notification_preference,
 					hotkey,
+					templates,
 				} = options;
 				let needs_refresh = state.config.sort_order != sort_order
-					|| state.config.timestamp_format != timestamp_format
 					|| state.config.content_warning_display != content_warning_display
 					|| state.config.display_name_emoji_mode != display_name_emoji_mode
-					|| state.config.preserve_thread_order != preserve_thread_order;
+					|| state.config.preserve_thread_order != preserve_thread_order
+					|| state.config.templates != templates;
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
@@ -558,6 +566,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.default_timelines = default_timelines;
 				state.config.notification_preference = notification_preference;
 				state.config.hotkey = hotkey;
+				state.config.templates = templates;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();
 				}
@@ -568,7 +577,6 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					update_menu_labels(&mb, state);
 				}
 				state.config.sort_order = sort_order;
-				state.config.timestamp_format = timestamp_format;
 				state.config.preserve_thread_order = preserve_thread_order;
 				#[cfg(target_os = "windows")]
 				if hotkey_changed && let Some(shell) = &state.app_shell {
@@ -578,15 +586,20 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				if let Err(err) = store.save(&state.config) {
 					dialogs::show_error(frame, &err);
 				}
-				let view_options = state.timeline_view_options();
-				if needs_refresh && let Some(active) = state.timeline_manager.active_mut() {
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						view_options,
-						&state.cw_expanded,
-					);
+				if needs_refresh {
+					let view_options =
+						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					if let Some(view_options) = view_options
+						&& let Some(active) = state.timeline_manager.active_mut()
+					{
+						update_active_timeline_ui(
+							timeline_list,
+							active,
+							suppress_selection,
+							&view_options,
+							&state.cw_expanded,
+						);
+					}
 				}
 			}
 		}
@@ -1423,9 +1436,20 @@ fn open_timeline(
 			with_suppressed_selection(suppress_selection, || {
 				selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
-			let view_options = state.timeline_view_options();
-			if let Some(active) = state.timeline_manager.active_mut() {
-				update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
+			{
+				let view_options =
+					state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+				if let Some(view_options) = view_options
+					&& let Some(active) = state.timeline_manager.active_mut()
+				{
+					update_active_timeline_ui(
+						timeline_list,
+						active,
+						suppress_selection,
+						&view_options,
+						&state.cw_expanded,
+					);
+				}
 			}
 		}
 		if let Some(mb) = frame.get_menu_bar() {
@@ -1487,9 +1511,13 @@ fn close_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
-	let view_options = state.timeline_view_options();
-	if let Some(active) = state.timeline_manager.active_mut() {
-		update_active_timeline_ui(timeline_list, active, suppress_selection, view_options, &state.cw_expanded);
+	{
+		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+		if let Some(view_options) = view_options
+			&& let Some(active) = state.timeline_manager.active_mut()
+		{
+			update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
+		}
 	}
 	if let Some(name) = active_name {
 		live_region::announce(live_region, &name);

@@ -7,7 +7,7 @@ use crate::{
 	timeline::{Timeline, TimelineEntry, TimelineTextOptions, TimelineType},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TimelineViewOptions {
 	pub sort_order: SortOrder,
 	pub preserve_thread_order: bool,
@@ -15,11 +15,11 @@ pub struct TimelineViewOptions {
 }
 
 impl TimelineViewOptions {
-	pub fn from_config(config: &Config) -> Self {
+	pub fn from_config(config: &Config, timeline_type: &TimelineType) -> Self {
 		Self {
 			sort_order: config.sort_order,
 			preserve_thread_order: config.preserve_thread_order,
-			text_options: TimelineTextOptions::from_config(config),
+			text_options: TimelineTextOptions::from_config(config, timeline_type),
 		}
 	}
 }
@@ -28,7 +28,7 @@ pub fn update_timeline_ui(
 	timeline_list: ListBox,
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
-	text_options: TimelineTextOptions,
+	text_options: &TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
@@ -67,13 +67,13 @@ pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnO
 }
 
 pub fn with_frozen_listbox<T>(listbox: ListBox, f: impl FnOnce() -> T) -> T {
-	listbox.freeze();
 	struct ThawOnDrop(ListBox);
 	impl Drop for ThawOnDrop {
 		fn drop(&mut self) {
 			self.0.thaw();
 		}
 	}
+	listbox.freeze();
 	let thaw_guard = ThawOnDrop(listbox);
 	let result = f();
 	drop(thaw_guard);
@@ -157,7 +157,7 @@ pub fn update_active_timeline_ui(
 	timeline_list: ListBox,
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
-	options: TimelineViewOptions,
+	options: &TimelineViewOptions,
 	cw_expanded: &HashSet<String>,
 ) {
 	let effective_sort_order =
@@ -172,7 +172,7 @@ pub fn update_active_timeline_ui(
 				timeline_list,
 				&timeline.entries,
 				effective_sort_order,
-				options.text_options,
+				&options.text_options,
 				cw_expanded,
 			);
 			apply_timeline_selection(timeline_list, timeline, effective_sort_order);

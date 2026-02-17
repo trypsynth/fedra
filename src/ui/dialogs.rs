@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, collections::HashMap, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
 use wxdragon::prelude::*;
@@ -6,11 +6,12 @@ use wxdragon::prelude::*;
 use crate::{
 	config::{
 		Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
-		NotificationPreference, SortOrder, TimestampFormat,
+		NotificationPreference, PerTimelineTemplates, PostTemplates, SortOrder,
 	},
 	html::{self, Link},
 	mastodon::{Account as MastodonAccount, Mention, PollLimits, SearchType, Status, Tag},
 	network::{NetworkCommand, ProfileUpdate},
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
 };
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
@@ -826,11 +827,11 @@ pub struct OptionsDialogInput {
 	pub content_warning_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub sort_order: SortOrder,
-	pub timestamp_format: TimestampFormat,
 	pub preserve_thread_order: bool,
 	pub default_timelines: Vec<DefaultTimeline>,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
+	pub templates: PostTemplates,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -845,11 +846,11 @@ pub struct OptionsDialogResult {
 	pub content_warning_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub sort_order: SortOrder,
-	pub timestamp_format: TimestampFormat,
 	pub preserve_thread_order: bool,
 	pub default_timelines: Vec<DefaultTimeline>,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
+	pub templates: PostTemplates,
 }
 
 pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<OptionsDialogResult> {
@@ -864,13 +865,13 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		content_warning_display,
 		display_name_emoji_mode,
 		sort_order,
-		timestamp_format,
 		preserve_thread_order,
 		default_timelines: default_timelines_val,
 		notification_preference,
 		hotkey,
+		templates,
 	} = input;
-	let dialog = Dialog::builder(frame, "Options").with_size(400, 460).build();
+	let dialog = Dialog::builder(frame, "Options").with_size(500, 520).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let notebook = Notebook::builder(&panel).build();
@@ -975,8 +976,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let emoji_mode_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	emoji_mode_sizer.add(&emoji_mode_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	emoji_mode_sizer.add(&emoji_mode_choice, 1, SizerFlag::Expand, 0);
-	let timestamp_checkbox = CheckBox::builder(&timeline_panel).with_label("Show relative &timestamps").build();
-	timestamp_checkbox.set_value(timestamp_format == TimestampFormat::Relative);
 	let sort_checkbox = CheckBox::builder(&timeline_panel).with_label("Show oldest timeline entries &first").build();
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
 	let thread_order_checkbox = CheckBox::builder(&timeline_panel).with_label("Always preserve thread &order").build();
@@ -985,7 +984,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&emoji_mode_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	timeline_sizer.add(&timestamp_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let customize_button = Button::builder(&timeline_panel).with_label("Customize Default Timelines...").build();
@@ -1002,6 +1000,116 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	timeline_sizer.add_stretch_spacer(1);
 	timeline_panel.set_sizer(timeline_sizer, true);
 	notebook.add_page(&timeline_panel, "Timeline", false, None);
+	let template_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
+	let template_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let timeline_keys: Vec<&str> = vec![
+		"Global Default",
+		"Home",
+		"Notifications",
+		"Direct Messages",
+		"Local",
+		"Federated",
+		"Bookmarks",
+		"Favorites",
+		"User Timelines",
+		"Threads",
+		"Search Results",
+		"Hashtag Timelines",
+	];
+	let timeline_key_strings: Vec<String> = timeline_keys.iter().map(|s| (*s).to_string()).collect();
+	let template_timeline_label = StaticText::builder(&template_panel).with_label("&Timeline:").build();
+	let template_timeline_choice = ComboBox::builder(&template_panel)
+		.with_choices(timeline_key_strings)
+		.with_style(ComboBoxStyle::ReadOnly)
+		.build();
+	template_timeline_choice.set_selection(0);
+	let template_timeline_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	template_timeline_sizer.add(&template_timeline_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	template_timeline_sizer.add(&template_timeline_choice, 1, SizerFlag::Expand, 0);
+	let post_template_label = StaticText::builder(&template_panel).with_label("&Post template:").build();
+	let post_template_text = TextCtrl::builder(&template_panel)
+		.with_style(TextCtrlStyle::MultiLine)
+		.with_value(&templates.post_template)
+		.build();
+	let boost_template_label = StaticText::builder(&template_panel).with_label("&Boost template:").build();
+	let boost_template_text = TextCtrl::builder(&template_panel)
+		.with_style(TextCtrlStyle::MultiLine)
+		.with_value(&templates.boost_template)
+		.build();
+	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let reset_button = Button::builder(&template_panel).with_label("Reset to default").build();
+	template_button_sizer.add(&reset_button, 0, SizerFlag::empty(), 0);
+	template_sizer.add_sizer(&template_timeline_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	template_sizer.add(
+		&post_template_label,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+		8,
+	);
+	template_sizer.add(&post_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	template_sizer.add(
+		&boost_template_label,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+		8,
+	);
+	template_sizer.add(&boost_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	template_sizer.add_sizer(&template_button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	template_panel.set_sizer(template_sizer, true);
+	notebook.add_page(&template_panel, "Templates", false, None);
+	// State for template editing: maps timeline key -> (post_template, boost_template)
+	let template_state: Rc<RefCell<HashMap<String, (String, String)>>> = Rc::new(RefCell::new(HashMap::new()));
+	{
+		let mut state = template_state.borrow_mut();
+		state.insert("Global Default".to_string(), (templates.post_template.clone(), templates.boost_template.clone()));
+		for key in &timeline_keys[1..] {
+			let pt = templates.per_timeline.get(*key);
+			let post = pt.and_then(|p| p.post_template.clone()).unwrap_or_else(|| templates.post_template.clone());
+			let boost = pt.and_then(|p| p.boost_template.clone()).unwrap_or_else(|| templates.boost_template.clone());
+			state.insert((*key).to_string(), (post, boost));
+		}
+	}
+	let ts_change = template_state.clone();
+	let post_text_change = post_template_text;
+	let boost_text_change = boost_template_text;
+	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Global Default".to_string()));
+	let prev_sel_change = prev_selection.clone();
+	let timeline_keys_clone = timeline_keys.clone();
+	template_timeline_choice.on_selection_changed(move |_| {
+		let Some(new_index) = template_timeline_choice.get_selection() else { return };
+		let new_index = new_index as usize;
+		let Some(new_key) = timeline_keys_clone.get(new_index) else { return };
+		{
+			let mut state = ts_change.borrow_mut();
+			let prev = prev_sel_change.borrow().clone();
+			state.insert(prev, (post_text_change.get_value(), boost_text_change.get_value()));
+		}
+		let state = ts_change.borrow();
+		if let Some((post, boost)) = state.get(*new_key) {
+			post_text_change.set_value(post);
+			boost_text_change.set_value(boost);
+		}
+		*prev_sel_change.borrow_mut() = (*new_key).to_string();
+	});
+	let ts_reset = template_state.clone();
+	let post_text_reset = post_template_text;
+	let boost_text_reset = boost_template_text;
+	let prev_sel_reset = prev_selection.clone();
+	reset_button.on_click(move |_| {
+		let current_key = prev_sel_reset.borrow().clone();
+		let (default_post, default_boost) = if current_key == "Global Default" {
+			(DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string())
+		} else {
+			let state = ts_reset.borrow();
+			state
+				.get("Global Default")
+				.cloned()
+				.unwrap_or_else(|| (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()))
+		};
+		post_text_reset.set_value(&default_post);
+		boost_text_reset.set_value(&default_boost);
+		ts_reset.borrow_mut().insert(current_key, (default_post, default_boost));
+	});
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
 	ok_button.set_default();
@@ -1023,8 +1131,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		return None;
 	}
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
-	let new_timestamp =
-		if timestamp_checkbox.get_value() { TimestampFormat::Relative } else { TimestampFormat::Absolute };
 	let new_cw_display = match cw_choice.get_selection() {
 		Some(0) => ContentWarningDisplay::Inline,
 		Some(1) => ContentWarningDisplay::Hidden,
@@ -1051,6 +1157,32 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		Some(2) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
+	{
+		let mut ts = template_state.borrow_mut();
+		let current_key = prev_selection.borrow().clone();
+		ts.insert(current_key, (post_template_text.get_value(), boost_template_text.get_value()));
+	}
+	let new_templates = {
+		let ts = template_state.borrow();
+		let (global_post, global_boost) = ts
+			.get("Global Default")
+			.cloned()
+			.unwrap_or_else(|| (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()));
+		let mut per_timeline = HashMap::new();
+		for key in &timeline_keys[1..] {
+			if let Some((post, boost)) = ts.get(*key) {
+				let post_override = if *post == global_post { None } else { Some(post.clone()) };
+				let boost_override = if *boost == global_boost { None } else { Some(boost.clone()) };
+				if post_override.is_some() || boost_override.is_some() {
+					per_timeline.insert(
+						(*key).to_string(),
+						PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
+					);
+				}
+			}
+		}
+		PostTemplates { post_template: global_post, boost_template: global_boost, per_timeline }
+	};
 	Some(OptionsDialogResult {
 		enter_to_send: enter_checkbox.get_value(),
 		always_show_link_dialog: link_checkbox.get_value(),
@@ -1062,11 +1194,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		content_warning_display: new_cw_display,
 		display_name_emoji_mode: new_display_name_emoji_mode,
 		sort_order: new_sort,
-		timestamp_format: new_timestamp,
 		preserve_thread_order: thread_order_checkbox.get_value(),
 		default_timelines: current_defaults.borrow().clone(),
 		notification_preference: new_notification_preference,
 		hotkey: current_hotkey.borrow().clone(),
+		templates: new_templates,
 	})
 }
 
@@ -1123,7 +1255,7 @@ fn prompt_for_compose(
 	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
 	let language_choices = vec![
-		"".to_string(),
+		String::new(),
 		"en".to_string(),
 		"es".to_string(),
 		"fr".to_string(),
@@ -1181,7 +1313,7 @@ fn prompt_for_compose(
 	});
 	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(initial_poll));
 	{
-		if let Some(_) = poll_state.borrow().as_ref() {
+		if poll_state.borrow().as_ref().is_some() {
 			poll_button.set_label("Edit Poll...");
 		}
 	}
