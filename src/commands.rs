@@ -1511,6 +1511,9 @@ fn close_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
+	if let Some(name) = active_name {
+		live_region::announce(live_region, &name);
+	}
 	{
 		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
 		if let Some(view_options) = view_options
@@ -1518,8 +1521,5 @@ fn close_timeline(
 		{
 			update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
 		}
-	}
-	if let Some(name) = active_name {
-		live_region::announce(live_region, &name);
 	}
 }
