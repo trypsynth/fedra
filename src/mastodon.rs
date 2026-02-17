@@ -1,9 +1,10 @@
-use std::fmt::Write;
+use std::{cmp, fmt::Write, thread, time::Duration};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
 use reqwest::{
+	StatusCode,
 	Url,
 	blocking::{Client, multipart},
 };
@@ -744,17 +745,38 @@ impl MastodonClient {
 		{
 			form = form.text("description", description.to_string());
 		}
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.multipart(form)
-			.send()
-			.context("Failed to upload media")?
-			.error_for_status()
-			.context("Instance rejected media upload")?;
+		let response =
+			self.http.post(url).bearer_auth(access_token).multipart(form).send().context("Failed to upload media")?;
+		let status = response.status();
+		let response = response.error_for_status().context("Instance rejected media upload")?;
 		let payload: MediaResponse = response.json().context("Invalid media upload response")?;
+		// v2/media returns 202 when the media is still processing asynchronously.
+		if status == reqwest::StatusCode::ACCEPTED {
+			self.wait_for_media_processing(access_token, &payload.id)?;
+		}
 		Ok(payload.id)
+	}
+
+	fn wait_for_media_processing(&self, access_token: &str, media_id: &str) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v1/media/{}", media_id))?;
+		for attempt in 0..60 {
+			let delay = cmp::min(1 + attempt, 5);
+			thread::sleep(Duration::from_secs(delay));
+			let response = self
+				.http
+				.get(url.clone())
+				.bearer_auth(access_token)
+				.send()
+				.context("Failed to check media processing status")?;
+			match response.status() {
+				StatusCode::OK => return Ok(()),
+				StatusCode::PARTIAL_CONTENT => continue,
+				status => {
+					anyhow::bail!("Media processing failed with status {}", status);
+				}
+			}
+		}
+		anyhow::bail!("Media processing timed out")
 	}
 
 	fn parse_link_header(header: &str) -> Option<String> {
