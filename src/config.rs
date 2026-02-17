@@ -34,8 +34,6 @@ pub struct Config {
 	#[serde(default)]
 	pub sort_order: SortOrder,
 	#[serde(default)]
-	pub timestamp_format: TimestampFormat,
-	#[serde(default)]
 	pub content_warning_display: ContentWarningDisplay,
 	#[serde(default)]
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
@@ -249,7 +247,6 @@ impl Default for Config {
 			autoload: AutoloadMode::default(),
 			fetch_limit: default_fetch_limit(),
 			sort_order: SortOrder::default(),
-			timestamp_format: TimestampFormat::default(),
 			content_warning_display: ContentWarningDisplay::default(),
 			display_name_emoji_mode: DisplayNameEmojiMode::default(),
 			preserve_thread_order: true,
