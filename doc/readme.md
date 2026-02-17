@@ -61,7 +61,6 @@ Open options with `Ctrl+,`.
   - Unicode emojis
   - Instance emojis
   - All
-- `Show relative timestamps`
 - `Show oldest timeline entries first`
 - `Always preserve thread order`
 - `Customize Default Timelines...`
@@ -69,6 +68,42 @@ Open options with `Ctrl+,`.
   - Additional startup timelines are configurable
 - Post language:
   - Per-post ISO language code can be set in compose dialogs
+
+### Templates Tab
+Customize how posts appear in each timeline using [Jinja2-style](https://jinja.palletsprojects.com/en/stable/templates/) templates.
+
+- Select a timeline from the dropdown (or **Global Default** to set the fallback used by all timelines without their own override).
+- Edit the **Post template** and **Boost template** text fields.
+- Click **Reset to default** to restore the selected timeline's templates to the global default (or restore the global default to the built-in default).
+
+Templates are rendered per-entry each time a timeline is displayed. If a template contains a syntax error, the entry falls back to `author: content`.
+
+#### Available Variables
+
+| Variable | Value |
+|---|---|
+| `{{ author }}` | Display name (respects emoji filtering setting) |
+| `{{ username }}` | `@acct` handle |
+| `{{ content }}` | Post text, HTML-stripped (respects content warning display setting) |
+| `{{ content_warning }}` | Spoiler text, or empty if none |
+| `{{ relative_time }}` | Relative timestamp, e.g. `2 hours ago` |
+| `{{ absolute_time }}` | Absolute local timestamp, e.g. `Feb 17, 2026 at 2:30 PM` |
+| `{{ visibility }}` | `Public`, `Unlisted`, `Followers only`, or `Direct` |
+| `{{ reply_count }}` | e.g. `3 replies` |
+| `{{ boost_count }}` | e.g. `1 boost` |
+| `{{ favorite_count }}` | e.g. `5 favorites` |
+| `{{ client }}` | Posting app name, or empty if unknown |
+| `{{ media }}` | Media attachment summary, or empty if none |
+| `{{ poll }}` | Poll summary, or empty if none |
+| `{{ booster }}` | Display name of the person who boosted (boost template only; empty for regular posts) |
+
+#### Conditionals
+
+You can use `{% if %}` blocks to show text only when a variable is non-empty:
+
+```
+{% if client %}, via {{ client }}{% endif %}
+```
 
 ## Keyboard Shortcuts
 
