@@ -59,6 +59,14 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_COPY_POST, "&Copy Post\tCtrl+Shift+C", "Copy selected post text", ItemKind::Normal)
 		.expect("Failed to append copy post menu item");
 	post_menu
+		.append(
+			crate::ui::ids::ID_VIEW_POST,
+			"View &Post Details\tShift+Enter",
+			"View post content in a dialog",
+			ItemKind::Normal,
+		)
+		.expect("Failed to append view post menu item");
+	post_menu
 		.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread for selected post", ItemKind::Normal)
 		.expect("Failed to append view thread menu item");
 	post_menu.append_separator();

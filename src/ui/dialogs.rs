@@ -1,9 +1,14 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
-use wxdragon::prelude::*;
+use wxdragon::{
+	event::{WebViewEventData, WebViewEvents},
+	prelude::*,
+	widgets::WebView,
+};
 
 use crate::{
+	commands::UiCommand,
 	config::{
 		Account, AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
 		NotificationPreference, PerTimelineTemplates, PostTemplates, SortOrder,
@@ -12,6 +17,7 @@ use crate::{
 	mastodon::{Account as MastodonAccount, Mention, PollLimits, SearchType, Status, Tag},
 	network::{NetworkCommand, ProfileUpdate},
 	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
+	ui::ids::{ID_BOOST, ID_FAVORITE, ID_REPLY},
 };
 
 pub fn parse_instance_url(value: &str) -> Option<Url> {
@@ -2821,4 +2827,130 @@ pub fn show_update_dialog(parent: &dyn WxWidget, new_version: &str, changelog: &
 	dialog.raise();
 	changelog_ctrl.set_focus();
 	dialog.show_modal() == ID_OK
+}
+
+pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiCommand> {
+	let title = format!("Post by {}", status.account.display_name_or_username());
+	let dialog = Dialog::builder(parent, &title).with_size(600, 500).build();
+	let panel = Panel::builder(&dialog).build();
+	let sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let web_view = WebView::builder(&panel).build();
+	web_view.add_script_message_handler("wx");
+	let dialog_close_msg = dialog;
+	web_view.on_script_message_received(move |event: WebViewEventData| {
+		if let Some(msg) = event.get_string() {
+			if msg == "close_dialog" {
+				dialog_close_msg.end_modal(ID_CANCEL);
+			} else if let Some(url) = msg.strip_prefix("open_link:") {
+				let _ = wxdragon::utils::launch_default_browser(url, wxdragon::utils::BrowserLaunchFlags::Default);
+			}
+		}
+	});
+
+	let content = if status.spoiler_text.is_empty() {
+		status.content.clone()
+	} else {
+		format!("<p><strong>Content Warning: {}</strong></p><hr>{}", status.spoiler_text, status.content)
+	};
+
+	let html = format!(
+		"<html>
+		<head>
+			<style>
+				body {{ font-family: sans-serif; padding: 10px; }}
+				img {{ max-width: 100%; height: auto; }}
+				video {{ max-width: 100%; height: auto; }}
+			</style>
+		</head>
+		<body>
+			<h2>{} <small>({})</small></h2>
+			{}
+		</body>
+		</html>",
+		status.account.display_name_or_username(),
+		status.account.acct,
+		content
+	);
+
+	web_view.set_page(&html, "");
+
+	let web_view_for_load = web_view;
+	let timer = Rc::new(Timer::new(&dialog));
+	let timer_copy = Rc::clone(&timer);
+	web_view.on_loaded(move |_| {
+		let web_view_for_timer = web_view_for_load;
+		timer_copy.on_tick(move |_| {
+			let pos = web_view_for_timer.client_to_screen(Point::new(0, 0));
+			let size = web_view_for_timer.get_size();
+			let x = pos.x + size.width / 2;
+			let y = pos.y + size.height / 2;
+			let sim = UIActionSimulator::new();
+			sim.mouse_move(x, y);
+			sim.mouse_click(MouseButton::Left);
+		});
+		timer_copy.start(100, true);
+		web_view_for_load.run_script(
+			"document.addEventListener('keydown', function(event) { \
+             if (event.key === 'Escape' || event.keyCode === 27) { \
+             window.wx.postMessage('close_dialog'); \
+             } \
+             }); \
+             document.addEventListener('click', function(event) { \
+             var target = event.target; \
+             while (target && target.tagName !== 'A') { target = target.parentNode; } \
+             if (target && target.tagName === 'A' && target.href) { \
+             event.preventDefault(); \
+             window.wx.postMessage('open_link:' + target.href); \
+             } \
+             });",
+		);
+	});
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let reply_btn = Button::builder(&panel).with_id(ID_REPLY).with_label("Reply").build();
+	let boost_btn = Button::builder(&panel)
+		.with_id(ID_BOOST)
+		.with_label(if status.reblogged { "Unboost" } else { "Boost" })
+		.build();
+	let fav_btn = Button::builder(&panel)
+		.with_id(ID_FAVORITE)
+		.with_label(if status.favourited { "Unfavorite" } else { "Favorite" })
+		.build();
+	let close_btn = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+	close_btn.set_default();
+	button_sizer.add(&reply_btn, 0, SizerFlag::All, 5);
+	button_sizer.add(&boost_btn, 0, SizerFlag::All, 5);
+	button_sizer.add(&fav_btn, 0, SizerFlag::All, 5);
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&close_btn, 0, SizerFlag::All, 5);
+	sizer.add(&web_view, 1, SizerFlag::Expand | SizerFlag::All, 5);
+	sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	panel.set_sizer(sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.centre();
+	let dialog_reply = dialog;
+	reply_btn.on_click(move |_| {
+		dialog_reply.end_modal(ID_REPLY);
+	});
+	let dialog_boost = dialog;
+	boost_btn.on_click(move |_| {
+		dialog_boost.end_modal(ID_BOOST);
+	});
+	let dialog_fav = dialog;
+	fav_btn.on_click(move |_| {
+		dialog_fav.end_modal(ID_FAVORITE);
+	});
+	let dialog_close = dialog;
+	close_btn.on_click(move |_| {
+		dialog_close.end_modal(ID_CANCEL);
+	});
+	let result = dialog.show_modal();
+	match result {
+		ID_REPLY => Some(UiCommand::Reply { reply_all: true }),
+		ID_BOOST => Some(UiCommand::Boost),
+		ID_FAVORITE => Some(UiCommand::Favorite),
+		_ => None,
+	}
 }

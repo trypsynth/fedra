@@ -86,6 +86,7 @@ pub enum UiCommand {
 	CancelAuth,
 	EditProfile,
 	ViewHelp,
+	ViewPost,
 	Search,
 	CheckForUpdates,
 }
@@ -1330,6 +1331,16 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				}
 			} else {
 				live_region::announce(live_region, "Could not determine help path");
+			}
+		}
+		UiCommand::ViewPost => {
+			let Some(status) = get_selected_status(state) else {
+				live_region::announce(live_region, "No post selected");
+				return;
+			};
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+			if let Some(next_cmd) = crate::ui::dialogs::show_post_view_dialog(frame, target) {
+				handle_ui_command(next_cmd, ctx);
 			}
 		}
 		UiCommand::Search => {
