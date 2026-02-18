@@ -24,12 +24,14 @@ thread_local! {
 }
 
 pub fn run_update_check(frame: Frame, silent: bool) {
+	let config = crate::config::ConfigStore::new().load();
 	let current_version = env!("CARGO_PKG_VERSION").to_string();
+	let current_commit = env!("FEDRA_COMMIT_HASH").to_string();
 	let is_installer = is_installer_distribution();
 	let handle_ptr = frame.handle_ptr() as usize;
 
 	thread::spawn(move || {
-		let outcome = update::check_for_updates(&current_version, is_installer);
+		let outcome = update::check_for_updates(&current_version, &current_commit, is_installer, config.update_channel);
 		wxdragon::call_after(Box::new(move || {
 			present_update_result(handle_ptr, outcome, silent, &current_version);
 		}));

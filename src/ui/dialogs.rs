@@ -828,6 +828,7 @@ pub struct OptionsDialogInput {
 	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
+	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
 	pub content_warning_display: ContentWarningDisplay,
@@ -847,6 +848,7 @@ pub struct OptionsDialogResult {
 	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
+	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
 	pub content_warning_display: ContentWarningDisplay,
@@ -866,6 +868,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		strip_tracking,
 		quick_action_keys,
 		check_for_updates,
+		update_channel,
 		autoload,
 		fetch_limit,
 		content_warning_display,
@@ -895,6 +898,20 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	quick_action_checkbox.set_value(quick_action_keys);
 	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
 	update_checkbox.set_value(check_for_updates);
+
+	let channel_label = StaticText::builder(&general_panel).with_label("Update Channel:").build();
+	let channel_choices = vec!["Stable".to_string(), "Dev".to_string()];
+	let channel_choice =
+		ComboBox::builder(&general_panel).with_choices(channel_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let channel_index = match update_channel {
+		crate::config::UpdateChannel::Stable => 0,
+		crate::config::UpdateChannel::Dev => 1,
+	};
+	channel_choice.set_selection(channel_index);
+	let channel_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	channel_sizer.add(&channel_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	channel_sizer.add(&channel_choice, 1, SizerFlag::Expand, 0);
+
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
 	let notification_choices =
 		vec!["Classic Windows Notifications".to_string(), "Sound only".to_string(), "Disabled".to_string()];
@@ -916,6 +933,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&strip_tracking_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let hotkey_button = Button::builder(&general_panel).with_label("Customize Window Hotkey...").build();
 	let current_hotkey = Rc::new(RefCell::new(hotkey));
@@ -1163,6 +1181,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		Some(2) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
+	let new_update_channel = match channel_choice.get_selection() {
+		Some(0) => crate::config::UpdateChannel::Stable,
+		Some(1) => crate::config::UpdateChannel::Dev,
+		_ => update_channel,
+	};
 	{
 		let mut ts = template_state.borrow_mut();
 		let current_key = prev_selection.borrow().clone();
@@ -1195,6 +1218,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		strip_tracking: strip_tracking_checkbox.get_value(),
 		quick_action_keys: quick_action_checkbox.get_value(),
 		check_for_updates: update_checkbox.get_value(),
+		update_channel: new_update_channel,
 		autoload: new_autoload,
 		fetch_limit: new_fetch_limit,
 		content_warning_display: new_cw_display,

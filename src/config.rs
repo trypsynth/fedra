@@ -46,11 +46,20 @@ pub struct Config {
 	#[serde(default = "default_check_for_updates")]
 	pub check_for_updates_on_startup: bool,
 	#[serde(default)]
+	pub update_channel: UpdateChannel,
+	#[serde(default)]
 	pub hotkey: HotkeyConfig,
 	#[serde(default = "default_strip_tracking")]
 	pub strip_tracking: bool,
 	#[serde(default)]
 	pub templates: PostTemplates,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum UpdateChannel {
+	#[default]
+	Stable,
+	Dev,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -253,6 +262,7 @@ impl Default for Config {
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),
 			check_for_updates_on_startup: true,
+			update_channel: UpdateChannel::default(),
 			hotkey: HotkeyConfig::default(),
 			strip_tracking: true,
 			templates: PostTemplates::default(),

@@ -520,6 +520,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					strip_tracking: state.config.strip_tracking,
 					quick_action_keys: state.config.quick_action_keys,
 					check_for_updates: state.config.check_for_updates_on_startup,
+					update_channel: state.config.update_channel,
 					autoload: state.config.autoload,
 					fetch_limit: state.config.fetch_limit,
 					content_warning_display: state.config.content_warning_display,
@@ -538,6 +539,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					strip_tracking,
 					quick_action_keys,
 					check_for_updates,
+					update_channel,
 					autoload,
 					fetch_limit,
 					content_warning_display,
@@ -560,6 +562,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.strip_tracking = strip_tracking;
 				state.config.quick_action_keys = quick_action_keys;
 				state.config.check_for_updates_on_startup = check_for_updates;
+				state.config.update_channel = update_channel;
 				state.config.autoload = autoload;
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
