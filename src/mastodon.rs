@@ -67,6 +67,45 @@ pub struct Status {
 	#[serde(default)]
 	pub tags: Vec<Tag>,
 	pub poll: Option<Poll>,
+	#[serde(default)]
+	pub filtered: Vec<FilterResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct FilterResult {
+	pub filter: Filter,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Filter {
+	pub id: String,
+	pub title: String,
+	pub context: Vec<FilterContext>,
+	#[serde(rename = "filter_action")]
+	pub action: FilterAction,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterContext {
+	Home,
+	Notifications,
+	Public,
+	Thread,
+	Account,
+	#[serde(other)]
+	Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterAction {
+	Warn,
+	Hide,
+	#[serde(other)]
+	Unknown,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -201,37 +240,68 @@ impl Status {
 		out
 	}
 
+	pub fn should_hide(&self, filter_ctx: &FilterContext) -> bool {
+		self.filtered.iter().any(|f| f.filter.action == FilterAction::Hide && f.filter.context.contains(filter_ctx))
+	}
+
+	fn filter_warning(&self, filter_ctx: &FilterContext) -> Option<String> {
+		self.filtered
+			.iter()
+			.find(|f| f.filter.action == FilterAction::Warn && f.filter.context.contains(filter_ctx))
+			.map(|f| f.filter.title.clone())
+	}
+
 	pub fn timeline_display(
 		&self,
 		options: &TimelineTextOptions,
 		cw_expanded: bool,
 		post_template: &str,
 		boost_template: &str,
+		filter_ctx: &FilterContext,
 	) -> String {
 		self.reblog.as_ref().map_or_else(
 			|| {
-				let vars = self.build_template_vars(options, cw_expanded);
+				let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
 				render_template(post_template, &vars)
 			},
 			|boosted| {
 				let booster = self.account.timeline_display_name(options.display_name_emoji_mode);
-				let mut vars = boosted.build_template_vars(options, cw_expanded);
+				let mut vars = boosted.build_template_vars(options, cw_expanded, filter_ctx);
 				vars.booster = booster;
 				render_template(boost_template, &vars)
 			},
 		)
 	}
 
-	pub(crate) fn base_display(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
-		let vars = self.build_template_vars(options, cw_expanded);
+	pub(crate) fn base_display(
+		&self,
+		options: &TimelineTextOptions,
+		cw_expanded: bool,
+		filter_ctx: &FilterContext,
+	) -> String {
+		let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
 		render_template(crate::template::DEFAULT_POST_TEMPLATE, &vars)
 	}
 
-	pub(crate) fn build_template_vars(&self, options: &TimelineTextOptions, cw_expanded: bool) -> PostTemplateVars {
+	pub(crate) fn build_template_vars(
+		&self,
+		options: &TimelineTextOptions,
+		cw_expanded: bool,
+		filter_ctx: &FilterContext,
+	) -> PostTemplateVars {
 		let author = self.account.timeline_display_name(options.display_name_emoji_mode);
 		let username = format!("@{}", self.account.acct);
-		let content = self.content_with_cw(options.cw_display, cw_expanded);
-		let content_warning = self.spoiler_text.trim().to_string();
+
+		let filter_cw = self.filter_warning(filter_ctx);
+		let (content_warning, is_filtered) =
+			filter_cw.map_or_else(|| (self.spoiler_text.trim().to_string(), false), |fw| (fw, true));
+
+		let content = if is_filtered {
+			self.content_with_spoiler(options.cw_display, cw_expanded, &content_warning)
+		} else {
+			self.content_with_cw(options.cw_display, cw_expanded)
+		};
+
 		let relative_time = friendly_time(&self.created_at, TimestampFormat::Relative).unwrap_or_default();
 		let absolute_time = friendly_time(&self.created_at, TimestampFormat::Absolute).unwrap_or_default();
 		let visibility = self.visibility_display();
@@ -271,8 +341,11 @@ impl Status {
 	}
 
 	fn content_with_cw(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> String {
+		self.content_with_spoiler(cw_display, cw_expanded, self.spoiler_text.trim())
+	}
+
+	fn content_with_spoiler(&self, cw_display: ContentWarningDisplay, cw_expanded: bool, spoiler: &str) -> String {
 		let content = self.display_text();
-		let spoiler = self.spoiler_text.trim();
 		if spoiler.is_empty() {
 			return content;
 		}
@@ -485,7 +558,7 @@ impl Notification {
 	}
 
 	fn status_text_if_any(&self, options: &TimelineTextOptions, cw_expanded: bool) -> Option<String> {
-		self.status.as_ref().map(|status| status.base_display(options, cw_expanded))
+		self.status.as_ref().map(|status| status.base_display(options, cw_expanded, &options.filter_context))
 	}
 }
 

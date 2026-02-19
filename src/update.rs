@@ -238,7 +238,9 @@ fn check_for_dev_updates(current_commit: &str, is_installer: bool) -> Result<Upd
 				UpdateError::NoDownload("Update is available but no matching download asset was found.".to_string())
 			})?,
 			_ => {
-				return Err(UpdateError::NoDownload("Latest release does not include downloadable assets.".to_string()));
+				return Err(UpdateError::NoDownload(
+					"Latest release does not include downloadable assets.".to_string(),
+				));
 			}
 		};
 		Ok(UpdateCheckOutcome::UpdateAvailable(UpdateAvailableResult {

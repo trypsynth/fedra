@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::{
 	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode},
-	mastodon::{Account, Notification, SearchType, Status, Tag},
+	mastodon::{Account, FilterContext, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
 	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
 };
@@ -35,6 +35,17 @@ impl TimelineType {
 			Self::User { name, .. } | Self::Thread { name, .. } => name.clone(),
 			Self::Search { query, .. } => format!("Search: {query}"),
 			Self::Hashtag { name } => format!("#{name}"),
+		}
+	}
+
+	pub const fn filter_context(&self) -> FilterContext {
+		match self {
+			Self::Home => FilterContext::Home,
+			Self::Notifications => FilterContext::Notifications,
+			Self::Local | Self::Federated | Self::Search { .. } | Self::Hashtag { .. } => FilterContext::Public,
+			Self::Thread { .. } => FilterContext::Thread,
+			Self::User { .. } => FilterContext::Account,
+			Self::Direct | Self::Bookmarks | Self::Favorites => FilterContext::Unknown,
 		}
 	}
 
@@ -114,6 +125,7 @@ pub struct TimelineTextOptions {
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub post_template: String,
 	pub boost_template: String,
+	pub filter_context: FilterContext,
 }
 
 impl TimelineTextOptions {
@@ -124,6 +136,7 @@ impl TimelineTextOptions {
 			display_name_emoji_mode: config.display_name_emoji_mode,
 			post_template: config.templates.resolve_post_template(key).to_string(),
 			boost_template: config.templates.resolve_boost_template(key).to_string(),
+			filter_context: timeline_type.filter_context(),
 		}
 	}
 
@@ -133,6 +146,7 @@ impl TimelineTextOptions {
 			display_name_emoji_mode: config.display_name_emoji_mode,
 			post_template: DEFAULT_POST_TEMPLATE.to_string(),
 			boost_template: DEFAULT_BOOST_TEMPLATE.to_string(),
+			filter_context: FilterContext::Unknown,
 		}
 	}
 }
@@ -149,9 +163,13 @@ impl TimelineEntry {
 
 	pub fn display_text(&self, options: &TimelineTextOptions, cw_expanded: bool) -> String {
 		match self {
-			Self::Status(status) => {
-				status.timeline_display(options, cw_expanded, &options.post_template, &options.boost_template)
-			}
+			Self::Status(status) => status.timeline_display(
+				options,
+				cw_expanded,
+				&options.post_template,
+				&options.boost_template,
+				&options.filter_context,
+			),
 			Self::Notification(notification) => notification.timeline_display(options, cw_expanded),
 			Self::Account(account) => {
 				let name = account.timeline_display_name(options.display_name_emoji_mode);

@@ -96,7 +96,9 @@ pub fn process_stream_events(
 			match event {
 				streaming::StreamEvent::Update { timeline_type, status } => {
 					status_snapshots.push((*status).clone());
-					if timeline.timeline_type == timeline_type {
+					if timeline.timeline_type == timeline_type
+						&& !status.should_hide(&timeline.timeline_type.filter_context())
+					{
 						timeline.entries.insert(0, TimelineEntry::Status(*status));
 						if is_active {
 							active_needs_update = true;
@@ -134,15 +136,22 @@ pub fn process_stream_events(
 							}
 							processed_notification_ids.insert(notification.id.clone());
 						}
-						timeline.entries.insert(0, TimelineEntry::Notification(*notification));
-						if is_active {
-							active_needs_update = true;
+						if notification
+							.status
+							.as_ref()
+							.is_none_or(|s| !s.should_hide(&timeline.timeline_type.filter_context()))
+						{
+							timeline.entries.insert(0, TimelineEntry::Notification(*notification));
+							if is_active {
+								active_needs_update = true;
+							}
 						}
 					}
 				}
 				streaming::StreamEvent::Conversation { timeline_type, conversation } => {
 					if timeline.timeline_type == timeline_type
 						&& let Some(status) = conversation.last_status
+						&& !status.should_hide(&timeline.timeline_type.filter_context())
 					{
 						status_snapshots.push(status.clone());
 						timeline.entries.insert(0, TimelineEntry::Status(status));
@@ -246,17 +255,30 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						};
 						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
+					let filter_context = timeline_type.filter_context();
 					let (new_entries, next_max_id): (Vec<TimelineEntry>, Option<String>) = match data {
-						TimelineData::Statuses(statuses, next) => {
-							(statuses.into_iter().map(TimelineEntry::Status).collect(), next)
-						}
-						TimelineData::Notifications(notifications, next) => {
-							(notifications.into_iter().map(TimelineEntry::Notification).collect(), next)
-						}
+						TimelineData::Statuses(statuses, next) => (
+							statuses
+								.into_iter()
+								.filter(|s| !s.should_hide(&filter_context))
+								.map(TimelineEntry::Status)
+								.collect(),
+							next,
+						),
+						TimelineData::Notifications(notifications, next) => (
+							notifications
+								.into_iter()
+								.filter(|n| n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context)))
+								.map(TimelineEntry::Notification)
+								.collect(),
+							next,
+						),
 						TimelineData::Conversations(conversations, next) => (
 							conversations
 								.into_iter()
-								.filter_map(|c| c.last_status.map(TimelineEntry::Status))
+								.filter_map(|c| {
+									c.last_status.filter(|s| !s.should_hide(&filter_context)).map(TimelineEntry::Status)
+								})
 								.collect(),
 							next,
 						),
