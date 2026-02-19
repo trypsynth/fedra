@@ -47,6 +47,19 @@ fn embed_commit_hash() {
 		_ => "unknown".to_string(),
 	};
 	println!("cargo:rustc-env=FEDRA_COMMIT_HASH={hash}");
+
+	// Force a rebuild if the commit changes
+	let git_dir = Path::new(".git");
+	if git_dir.exists() {
+		let head_path = git_dir.join("HEAD");
+		println!("cargo:rerun-if-changed={}", head_path.display());
+		if let Ok(head_content) = fs::read_to_string(&head_path) {
+			if let Some(ref_path) = head_content.trim().strip_prefix("ref: ") {
+				let ref_full_path = git_dir.join(ref_path);
+				println!("cargo:rerun-if-changed={}", ref_full_path.display());
+			}
+		}
+	}
 }
 
 fn embed_version_info() {

@@ -2880,6 +2880,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 	let html = format!(
 		"<html>
 		<head>
+			<title>{}</title>
 			<style>
 				body {{ font-family: sans-serif; padding: 10px; }}
 				img {{ max-width: 100%; height: auto; }}
@@ -2891,6 +2892,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 			{}
 		</body>
 		</html>",
+		title,
 		status.account.display_name_or_username(),
 		status.account.acct,
 		content
@@ -2914,19 +2916,28 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		});
 		timer_copy.start(100, true);
 		web_view_for_load.run_script(
-			"document.addEventListener('keydown', function(event) { \
-             if (event.key === 'Escape' || event.keyCode === 27) { \
-             window.wx.postMessage('close_dialog'); \
-             } \
-             }); \
-             document.addEventListener('click', function(event) { \
-             var target = event.target; \
-             while (target && target.tagName !== 'A') { target = target.parentNode; } \
-             if (target && target.tagName === 'A' && target.href) { \
-             event.preventDefault(); \
-             window.wx.postMessage('open_link:' + target.href); \
-             } \
-             });",
+			"function addEvent(elem, event, handler) { \
+				if (elem.addEventListener) { \
+					elem.addEventListener(event, handler, false); \
+				} else if (elem.attachEvent) { \
+					elem.attachEvent('on' + event, handler); \
+				} \
+			} \
+			addEvent(document, 'keydown', function(event) { \
+				if (event.key === 'Escape' || event.keyCode === 27) { \
+					window.wx.postMessage('close_dialog'); \
+				} \
+			}); \
+			addEvent(document, 'click', function(event) { \
+				event = event || window.event; \
+				var target = event.target || event.srcElement; \
+				while (target && target.tagName !== 'A') { target = target.parentNode; } \
+				if (target && target.tagName === 'A' && target.href) { \
+					if (event.preventDefault) event.preventDefault(); \
+					else event.returnValue = false; \
+					window.wx.postMessage('open_link:' + target.href); \
+				} \
+			});",
 		);
 	});
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
