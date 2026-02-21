@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
 use wxdragon::{
@@ -1101,6 +1101,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Global Default".to_string()));
 	let prev_sel_change = prev_selection.clone();
 	let timeline_keys_clone = timeline_keys.clone();
+	// Track which per-timeline tabs the user navigated to. Unvisited tabs must not have
+	// their stale initialised values compared against the (possibly changed) global template.
+	let visited_timelines: Rc<RefCell<HashSet<String>>> =
+		Rc::new(RefCell::new(HashSet::from(["Global Default".to_string()])));
+	let visited_change = visited_timelines.clone();
 	template_timeline_choice.on_selection_changed(move |_| {
 		let Some(new_index) = template_timeline_choice.get_selection() else { return };
 		let new_index = new_index as usize;
@@ -1116,6 +1121,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			boost_text_change.set_value(boost);
 		}
 		*prev_sel_change.borrow_mut() = (*new_key).to_string();
+		visited_change.borrow_mut().insert((*new_key).to_string());
 	});
 	let ts_reset = template_state.clone();
 	let post_text_reset = post_template_text;
@@ -1200,16 +1206,23 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			.cloned()
 			.unwrap_or_else(|| (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()));
 		let mut per_timeline = HashMap::new();
+		let visited = visited_timelines.borrow();
 		for key in &timeline_keys[1..] {
-			if let Some((post, boost)) = ts.get(*key) {
-				let post_override = if *post == global_post { None } else { Some(post.clone()) };
-				let boost_override = if *boost == global_boost { None } else { Some(boost.clone()) };
-				if post_override.is_some() || boost_override.is_some() {
-					per_timeline.insert(
-						(*key).to_string(),
-						PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
-					);
+			if visited.contains(*key) {
+				// User navigated to this tab: compare their text against the new global.
+				if let Some((post, boost)) = ts.get(*key) {
+					let post_override = if *post == global_post { None } else { Some(post.clone()) };
+					let boost_override = if *boost == global_boost { None } else { Some(boost.clone()) };
+					if post_override.is_some() || boost_override.is_some() {
+						per_timeline.insert(
+							(*key).to_string(),
+							PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
+						);
+					}
 				}
+			} else if let Some(original) = templates.per_timeline.get(*key) {
+				// User never visited this tab: preserve whatever override was in the config.
+				per_timeline.insert((*key).to_string(), original.clone());
 			}
 		}
 		PostTemplates { post_template: global_post, boost_template: global_boost, per_timeline }
