@@ -57,6 +57,14 @@ use crate::{
 	ui_wake::{UiCommandSender, UiWaker},
 };
 
+#[derive(Copy, Clone, Default)]
+pub struct ContextMenuState {
+	pub favourited: bool,
+	pub reblogged: bool,
+	pub bookmarked: bool,
+	pub is_direct: bool,
+}
+
 pub(crate) struct AppState {
 	pub(crate) config: Config,
 	pub(crate) timeline_manager: TimelineManager,
@@ -75,6 +83,7 @@ pub(crate) struct AppState {
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
+	pub(crate) context_menu_state: Rc<Cell<ContextMenuState>>,
 	pub(crate) media_ctrl: Option<MediaCtrl>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
@@ -100,6 +109,7 @@ impl AppState {
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
 			app_shell: None,
+			context_menu_state: Rc::new(Cell::new(ContextMenuState::default())),
 			media_ctrl: None,
 			ui_waker,
 			_instance_checker: instance_checker,
@@ -225,6 +235,7 @@ fn main() {
 		let timeline_list_wake = timeline_list;
 		let live_region_wake = live_region_label;
 		let mut state = state;
+		let context_menu_state_for_handlers = state.context_menu_state.clone();
 		let ui_waker_handler = ui_waker.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
@@ -320,6 +331,7 @@ fn main() {
 			quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,
+			context_menu_state_for_handlers,
 		);
 		let shutdown_close = is_shutting_down;
 		let frame_close = frame;

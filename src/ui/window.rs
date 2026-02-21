@@ -3,11 +3,12 @@ use std::{cell::Cell, rc::Rc};
 use wxdragon::prelude::*;
 
 use crate::{
-	ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST, ID_DIRECT_TIMELINE,
-	ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE,
-	ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_REFRESH, ID_REPLY,
-	ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
-	ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
+	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
+	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
+	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
+	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
+	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_THREAD,
+	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	ui::menu::build_menu_bar,
 	ui_wake::UiCommandSender,
@@ -62,6 +63,7 @@ pub fn bind_input_handlers(
 	quick_action_keys_enabled: Rc<Cell<bool>>,
 	autoload_mode: Rc<Cell<AutoloadMode>>,
 	sort_order_cell: Rc<Cell<SortOrder>>,
+	context_menu_state: Rc<Cell<ContextMenuState>>,
 ) {
 	let ui_tx_selector = ui_tx.clone();
 	let shutdown_selector = is_shutting_down.clone();
@@ -393,17 +395,24 @@ pub fn bind_input_handlers(
 	});
 	let timeline_list_context = parts.timeline_list;
 	let shutdown_context = is_shutting_down.clone();
+	let context_menu_state_ctx = context_menu_state;
 	timeline_list_context.bind_internal(EventType::CONTEXT_MENU, move |_event| {
 		if shutdown_context.get() {
 			return;
 		}
+		let cms = context_menu_state_ctx.get();
 		let mut menu = Menu::builder().build();
 		menu.append(ID_REPLY, "&Reply...", "Reply to all mentioned users", ItemKind::Normal);
 		menu.append(ID_REPLY_AUTHOR, "Reply to &Author...", "Reply to author only", ItemKind::Normal);
 		menu.append_separator();
-		menu.append(ID_FAVORITE, "&Favorite", "Favorite or unfavorite selected post", ItemKind::Normal);
-		menu.append(ID_BOOKMARK, "&Bookmark", "Bookmark or unbookmark selected post", ItemKind::Normal);
-		menu.append(ID_BOOST, "&Boost", "Boost or unboost selected post", ItemKind::Normal);
+		let fav_label = if cms.favourited { "Un&favorite" } else { "&Favorite" };
+		menu.append(ID_FAVORITE, fav_label, "Favorite or unfavorite selected post", ItemKind::Normal);
+		let bookmark_label = if cms.bookmarked { "Un&bookmark" } else { "&Bookmark" };
+		menu.append(ID_BOOKMARK, bookmark_label, "Bookmark or unbookmark selected post", ItemKind::Normal);
+		if !cms.is_direct {
+			let boost_label = if cms.reblogged { "Un&boost" } else { "&Boost" };
+			menu.append(ID_BOOST, boost_label, "Boost or unboost selected post", ItemKind::Normal);
+		}
 		menu.append_separator();
 		menu.append(ID_VIEW_POST, "View &Post Details", "View post content in a dialog", ItemKind::Normal);
 		menu.append(ID_VIEW_THREAD, "View &Thread", "View conversation thread", ItemKind::Normal);

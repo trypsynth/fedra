@@ -1,7 +1,7 @@
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
+	AppState, ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
 	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
@@ -351,6 +351,12 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		}
 	}
 
+	state.context_menu_state.set(ContextMenuState {
+		favourited: target.is_some_and(|t| t.favourited),
+		reblogged: target.is_some_and(|t| t.reblogged),
+		bookmarked: target.is_some_and(|t| t.bookmarked),
+		is_direct: target.is_some_and(|t| t.visibility == "direct"),
+	});
 	if let Some(load_more_item) = menu_bar.find_item(ID_LOAD_MORE) {
 		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };
 		let label = format!("Load &More\t{shortcut}");
