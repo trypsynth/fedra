@@ -191,6 +191,23 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 
 ## Changelog
 
+### Version 0.2.0
+* Added a webview-based dialog for viewing the raw contents of a post. [#18](https://github.com/trypsynth/fedra/issues/18).
+* Added a new option, checked by default, to remove tracking parameters from URLs.
+* Added an option to check for development builds upon update, not new stable releases.
+* Added timeline templates, allowing you to customize everything about how Fedra's timeline entries are displayed. The relative/absolute time check box has also been removed from the options dialog, and is now settable per-template. See the templates section of the readme for more details.
+* Filters are now respected in the timeline, and you can manage them in a super basic sense. This capability will be expanded in a future version.
+* Fixed attaching media, so more than teeny tiny files work now.
+* Fixed the handling of JSON responses from certain servers.
+* Hopefully fixed a rare but annoying crash in the new post dialog. [#14](https://github.com/trypsynth/fedra/issues/14).
+* It is now possible to type past the character limit once again, but you will get a warning sound when you do so.
+* Post statistics are now properly pluralized, so you will now hear "1 reply" instead of "1 replies".
+* pressing shift+f10 or the context menu key on a post will now bring up a menu of post actions. [#16](https://github.com/trypsynth/fedra/issues/16).
+* Replies are properly grouped in threads now.
+* The  mentions dialog will now include users who haven't fedrated with your instance yet.
+* The open user dialog will now be automatically prepopulated with all of the usernames that appear in your current timeline. [#9](https://github.com/trypsynth/fedra/issues/9).
+* When closing a timeline, the name of the newly focused one will now be spoken before the timeline contents, as intended.
+
 ### Version 0.1.1
 * Added the ability for you to set the language of your posts! [#17](https://github.com/trypsynth/fedra/issues/17).
 * API errors are now included in error output in a brief form.
