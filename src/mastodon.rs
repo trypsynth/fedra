@@ -85,6 +85,17 @@ pub struct Filter {
 	pub context: Vec<FilterContext>,
 	#[serde(rename = "filter_action")]
 	pub action: FilterAction,
+	#[serde(default)]
+	pub keywords: Vec<FilterKeyword>,
+	pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct FilterKeyword {
+	pub id: String,
+	pub keyword: String,
+	pub whole_word: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -99,13 +110,51 @@ pub enum FilterContext {
 	Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilterAction {
 	Warn,
 	Hide,
-	#[serde(other)]
-	Unknown,
+	Blur,
+	Other(String),
+}
+
+impl<'de> serde::Deserialize<'de> for FilterAction {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		match s.as_str() {
+			"warn" => Ok(Self::Warn),
+			"hide" => Ok(Self::Hide),
+			"blur" => Ok(Self::Blur),
+			_ => Ok(Self::Other(s)),
+		}
+	}
+}
+
+impl std::fmt::Display for FilterAction {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Warn => write!(f, "Warn"),
+			Self::Hide => write!(f, "Hide"),
+			Self::Blur => write!(f, "Blur"),
+			Self::Other(s) => write!(f, "{s}"),
+		}
+	}
+}
+
+impl std::fmt::Display for FilterContext {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Home => write!(f, "Home and lists"),
+			Self::Notifications => write!(f, "Notifications"),
+			Self::Public => write!(f, "Public timelines"),
+			Self::Thread => write!(f, "Conversations"),
+			Self::Account => write!(f, "Profiles"),
+			Self::Unknown => write!(f, "Unknown"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1534,6 +1583,116 @@ impl MastodonClient {
 			.context("Instance rejected edit request")?;
 		let status: Status = response.json().context("Invalid edit response")?;
 		Ok(status)
+	}
+
+	pub fn get_filters(&self, access_token: &str) -> Result<Vec<Filter>> {
+		let url = self.base_url.join("api/v2/filters")?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch filters")?
+			.error_for_status()
+			.context("Instance rejected filters request")?;
+		let filters: Vec<Filter> = response.json().context("Invalid filters response")?;
+		Ok(filters)
+	}
+
+	pub fn create_filter(
+		&self,
+		access_token: &str,
+		title: &str,
+		contexts: &[FilterContext],
+		action: &FilterAction,
+		keywords: &[(String, bool)], // (keyword, whole_word)
+		expires_in: Option<u32>,
+	) -> Result<Filter> {
+		let url = self.base_url.join("api/v2/filters")?;
+		let mut params = vec![
+			("title".to_string(), title.to_string()),
+			("filter_action".to_string(), action.to_string().to_lowercase()),
+		];
+		for context in contexts {
+			params.push(("context[]".to_string(), format!("{context:?}").to_lowercase()));
+		}
+		for (i, (keyword, whole_word)) in keywords.iter().enumerate() {
+			params.push((format!("keywords_attributes[{i}][keyword]"), keyword.clone()));
+			params.push((format!("keywords_attributes[{i}][whole_word]"), whole_word.to_string()));
+		}
+		if let Some(expires_in) = expires_in {
+			params.push(("expires_in".to_string(), expires_in.to_string()));
+		}
+
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to create filter")?
+			.error_for_status()
+			.context("Instance rejected filter creation")?;
+		let filter: Filter = response.json().context("Invalid filter response")?;
+		Ok(filter)
+	}
+
+	pub fn update_filter(
+		&self,
+		access_token: &str,
+		id: &str,
+		title: &str,
+		contexts: &[FilterContext],
+		action: &FilterAction,
+		keywords_attributes: &[(&str, &str, bool, bool)], // (id, keyword, whole_word, destroy)
+		expires_in: Option<u32>,
+	) -> Result<Filter> {
+		let url = self.base_url.join(&format!("api/v2/filters/{id}"))?;
+		let mut params = vec![
+			("title".to_string(), title.to_string()),
+			("filter_action".to_string(), action.to_string().to_lowercase()),
+		];
+		for context in contexts {
+			params.push(("context[]".to_string(), format!("{context:?}").to_lowercase()));
+		}
+		for (i, (keyword_id, keyword, whole_word, destroy)) in keywords_attributes.iter().enumerate() {
+			if !keyword_id.is_empty() {
+				params.push((format!("keywords_attributes[{i}][id]"), (*keyword_id).to_string()));
+			}
+			params.push((format!("keywords_attributes[{i}][keyword]"), (*keyword).to_string()));
+			params.push((format!("keywords_attributes[{i}][whole_word]"), whole_word.to_string()));
+			if *destroy {
+				params.push((format!("keywords_attributes[{i}][_destroy]"), "true".to_string()));
+			}
+		}
+		if let Some(expires_in) = expires_in {
+			params.push(("expires_in".to_string(), expires_in.to_string()));
+		}
+
+		let response = self
+			.http
+			.put(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to update filter")?
+			.error_for_status()
+			.context("Instance rejected filter update")?;
+		let filter: Filter = response.json().context("Invalid filter response")?;
+		Ok(filter)
+	}
+
+	pub fn delete_filter(&self, access_token: &str, id: &str) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v2/filters/{id}"))?;
+		let _ = self
+			.http
+			.delete(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to delete filter")?
+			.error_for_status()
+			.context("Instance rejected filter deletion")?;
+		Ok(())
 	}
 }
 

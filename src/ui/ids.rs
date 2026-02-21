@@ -50,6 +50,7 @@ define_ids! {
 	// Account/settings
 	ID_OPTIONS,
 	ID_MANAGE_ACCOUNTS,
+	ID_MANAGE_FILTERS,
 	ID_EDIT_PROFILE,
 	// System tray
 	ID_TRAY_TOGGLE,

@@ -18,6 +18,12 @@ pub fn build_menu_bar() -> MenuBar {
 		ItemKind::Normal,
 	);
 	file_menu.append(
+		crate::ui::ids::ID_MANAGE_FILTERS,
+		"Manage &Filters...",
+		"Manage content filters",
+		ItemKind::Normal,
+	);
+	file_menu.append(
 		ID_EDIT_PROFILE,
 		"Edit &Profile...\tCtrl+Shift+E",
 		"Edit current account profile",

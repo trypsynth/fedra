@@ -89,6 +89,7 @@ pub enum UiCommand {
 	ViewPost,
 	Search,
 	CheckForUpdates,
+	ManageFilters,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -1365,6 +1366,86 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::CheckForUpdates => {
 			crate::ui::update_check::run_update_check(*frame, false);
+		}
+		UiCommand::ManageFilters => {
+			let Some(client) = &state.client else {
+				live_region::announce(live_region, "Network not available");
+				return;
+			};
+			let Some(token) = &state.access_token else {
+				live_region::announce(live_region, "Not logged in");
+				return;
+			};
+
+			match client.get_filters(token) {
+				Ok(mut filters) => loop {
+					let result = dialogs::prompt_manage_filters(frame, &filters);
+					match result {
+						dialogs::ManageFiltersResult::Add => {
+							if let Some(data) = dialogs::prompt_filter_edit(frame, None) {
+								let keywords: Vec<(String, bool)> = data
+									.keywords
+									.iter()
+									.filter(|(_, _, _, d)| !*d)
+									.map(|(_, k, w, _)| (k.clone(), *w))
+									.collect();
+								match client.create_filter(
+									token,
+									&data.title,
+									&data.contexts,
+									&data.action,
+									&keywords,
+									data.expires_in,
+								) {
+									Ok(_) => {
+										if let Ok(new_filters) = client.get_filters(token) {
+											filters = new_filters;
+										}
+									}
+									Err(e) => dialogs::show_error(frame, &e),
+								}
+							}
+						}
+						dialogs::ManageFiltersResult::Edit(id) => {
+							if let Some(filter) = filters.iter().find(|f| f.id == id)
+								&& let Some(data) = dialogs::prompt_filter_edit(frame, Some(filter))
+							{
+								let keywords_attrs: Vec<(&str, &str, bool, bool)> = data
+									.keywords
+									.iter()
+									.map(|(id, k, w, d)| (id.as_str(), k.as_str(), *w, *d))
+									.collect();
+								match client.update_filter(
+									token,
+									&id,
+									&data.title,
+									&data.contexts,
+									&data.action,
+									&keywords_attrs,
+									data.expires_in,
+								) {
+									Ok(_) => {
+										if let Ok(new_filters) = client.get_filters(token) {
+											filters = new_filters;
+										}
+									}
+									Err(e) => dialogs::show_error(frame, &e),
+								}
+							}
+						}
+						dialogs::ManageFiltersResult::Delete(id) => match client.delete_filter(token, &id) {
+							Ok(()) => {
+								if let Ok(new_filters) = client.get_filters(token) {
+									filters = new_filters;
+								}
+							}
+							Err(e) => dialogs::show_error(frame, &e),
+						},
+						dialogs::ManageFiltersResult::None => break,
+					}
+				},
+				Err(e) => dialogs::show_error(frame, &e),
+			}
 		}
 	}
 }

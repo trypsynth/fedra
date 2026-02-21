@@ -497,6 +497,12 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::ManageAccounts);
 		}
+		crate::ui::ids::ID_MANAGE_FILTERS => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::ManageFilters);
+		}
 		ID_EDIT_PROFILE => {
 			if shutdown_menu.get() {
 				return;
