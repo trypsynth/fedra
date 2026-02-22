@@ -110,6 +110,7 @@ pub struct PostResult {
 	pub language: Option<String>,
 	pub media: Vec<PostMedia>,
 	pub poll: Option<PostPoll>,
+	pub continue_thread: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +150,8 @@ struct ComposeDialogConfig {
 	initial_language: Option<String>,
 	default_visibility: PostVisibility,
 	can_change_visibility: bool,
+	show_thread_checkbox: bool,
+	initial_thread_mode: bool,
 }
 
 const fn visibility_index(visibility: PostVisibility) -> usize {
@@ -1343,6 +1346,11 @@ fn prompt_for_compose(
 	language_sizer.add(&language_combo, 1, SizerFlag::Expand, 0);
 	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
+	let thread_checkbox = CheckBox::builder(&panel).with_label("Thread mode (Send and Reply)").build();
+	if !config.show_thread_checkbox {
+		thread_checkbox.show(false);
+	}
+	thread_checkbox.set_value(config.initial_thread_mode);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(&ok_label).build();
 	if enter_to_send {
@@ -1362,6 +1370,9 @@ fn prompt_for_compose(
 	main_sizer.add_sizer(&language_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&poll_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	if config.show_thread_checkbox {
+		main_sizer.add(&thread_checkbox, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	}
 	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -1505,7 +1516,16 @@ fn prompt_for_compose(
 	if trimmed.is_empty() && media.is_empty() && poll.is_none() {
 		return None;
 	}
-	Some(PostResult { content: trimmed.to_string(), visibility, spoiler_text, content_type, language, media, poll })
+	Some(PostResult {
+		content: trimmed.to_string(),
+		visibility,
+		spoiler_text,
+		content_type,
+		language,
+		media,
+		poll,
+		continue_thread: thread_checkbox.get_value(),
+	})
 }
 
 pub fn prompt_for_post(
@@ -1528,6 +1548,8 @@ pub fn prompt_for_post(
 			initial_language: None,
 			default_visibility: default_visibility.unwrap_or(PostVisibility::Public),
 			can_change_visibility: true,
+			show_thread_checkbox: true,
+			initial_thread_mode: false,
 		},
 		Vec::new(),
 		None,
@@ -1542,6 +1564,7 @@ pub fn prompt_for_reply(
 	reply_all: bool,
 	self_acct: Option<&str>,
 	enter_to_send: bool,
+	initial_thread_mode: bool,
 ) -> Option<PostResult> {
 	let author = replying_to.account.display_name_or_username();
 	let mention = if reply_all {
@@ -1589,6 +1612,8 @@ pub fn prompt_for_reply(
 			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,
+			show_thread_checkbox: true,
+			initial_thread_mode,
 		},
 		Vec::new(),
 		None,
@@ -1634,6 +1659,8 @@ pub fn prompt_for_edit(
 			initial_language: status.language.clone(),
 			default_visibility,
 			can_change_visibility: false,
+			show_thread_checkbox: false,
+			initial_thread_mode: false,
 		},
 		initial_media,
 		initial_poll,

@@ -413,10 +413,15 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					&format!("Failed to find user {handle}: {}", summarize_api_error(&err)),
 				);
 			}
-			NetworkResponse::PostComplete(Ok(())) => {
+			NetworkResponse::PostComplete(Ok(status)) => {
 				live_region::announce(live_region, "Posted");
+				if state.pending_thread_continuation {
+					state.pending_thread_continuation = false;
+					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
+				}
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
+				state.pending_thread_continuation = false;
 				live_region::announce(live_region, &spoken_failure("Failed to post", err));
 			}
 			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
@@ -498,10 +503,15 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to unboost", err));
 			}
-			NetworkResponse::Replied(Ok(())) => {
+			NetworkResponse::Replied(Ok(status)) => {
 				live_region::announce(live_region, "Reply sent");
+				if state.pending_thread_continuation {
+					state.pending_thread_continuation = false;
+					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
+				}
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
+				state.pending_thread_continuation = false;
 				live_region::announce(live_region, &spoken_failure("Failed to reply", err));
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {

@@ -813,7 +813,7 @@ impl MastodonClient {
 		language: Option<&str>,
 		poll: Option<&crate::network::PollData>,
 		in_reply_to_id: Option<&str>,
-	) -> Result<()> {
+	) -> Result<Status> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
 			vec![("status".to_string(), status.to_string()), ("visibility".to_string(), visibility.to_string())];
@@ -848,7 +848,8 @@ impl MastodonClient {
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
 			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
-		self.http
+		let response = self
+			.http
 			.post(url)
 			.bearer_auth(access_token)
 			.form(&params)
@@ -856,7 +857,8 @@ impl MastodonClient {
 			.context("Failed to post status")?
 			.error_for_status()
 			.context("Instance rejected status post")?;
-		Ok(())
+		let status: Status = response.json().context("Invalid status response")?;
+		Ok(status)
 	}
 
 	pub fn upload_media(&self, access_token: &str, path: &str, description: Option<&str>) -> Result<String> {

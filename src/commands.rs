@@ -26,6 +26,27 @@ use crate::{
 	ui_wake::UiCommandSender,
 };
 
+fn post_result_to_data(post: dialogs::PostResult) -> network::PostData {
+	network::PostData {
+		content: post.content,
+		visibility: post.visibility.as_api_str().to_string(),
+		spoiler_text: post.spoiler_text,
+		content_type: post.content_type,
+		language: post.language,
+		media: post
+			.media
+			.into_iter()
+			.map(|item| network::MediaUpload { path: item.path, description: item.description })
+			.collect(),
+		poll: post.poll.map(|poll| network::PollData {
+			options: poll.options,
+			expires_in: poll.expires_in,
+			multiple: poll.multiple,
+			hide_totals: poll.hide_totals,
+		}),
+	}
+}
+
 fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
 	let mut min_id: Option<u128> = None;
 	let mut min_id_str: Option<String> = None;
@@ -90,6 +111,7 @@ pub enum UiCommand {
 	Search,
 	CheckForUpdates,
 	ManageFilters,
+	ContinueThread(Box<Status>),
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -167,23 +189,42 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			};
 			if let Some(handle) = &state.network_handle {
-				handle.send(NetworkCommand::PostStatus {
-					content: post.content,
-					visibility: post.visibility.as_api_str().to_string(),
-					spoiler_text: post.spoiler_text,
-					content_type: post.content_type,
-					language: post.language,
-					media: post
-						.media
-						.into_iter()
-						.map(|item| network::MediaUpload { path: item.path, description: item.description })
-						.collect(),
-					poll: post.poll.map(|poll| network::PollData {
-						options: poll.options,
-						expires_in: poll.expires_in,
-						multiple: poll.multiple,
-						hide_totals: poll.hide_totals,
-					}),
+				state.pending_thread_continuation = post.continue_thread;
+				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post) });
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::ContinueThread(mut status) => {
+			if status.visibility == "public" {
+				status.visibility = "unlisted".to_string();
+			}
+			let (max_post_chars, enter_to_send) = (state.max_post_chars, state.config.enter_to_send);
+			let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
+			let Some(reply) = dialogs::prompt_for_reply(
+				frame,
+				&status,
+				max_post_chars,
+				&state.poll_limits,
+				true,
+				self_acct,
+				enter_to_send,
+				true,
+			) else {
+				return;
+			};
+			if let Some(handle) = &state.network_handle {
+				state.pending_thread_continuation = reply.continue_thread;
+				let post_data = post_result_to_data(reply);
+				handle.send(NetworkCommand::Reply {
+					in_reply_to_id: status.id.clone(),
+					content: post_data.content,
+					visibility: post_data.visibility,
+					spoiler_text: post_data.spoiler_text,
+					content_type: post_data.content_type,
+					language: post_data.language,
+					media: post_data.media,
+					poll: post_data.poll,
 				});
 			} else {
 				live_region::announce(live_region, "Network not available");
@@ -206,28 +247,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				reply_all,
 				self_acct,
 				enter_to_send,
+				false,
 			) else {
 				return;
 			};
 			if let Some(handle) = &state.network_handle {
+				state.pending_thread_continuation = reply.continue_thread;
+				let post_data = post_result_to_data(reply);
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: target.id.clone(),
-					content: reply.content,
-					visibility: reply.visibility.as_api_str().to_string(),
-					spoiler_text: reply.spoiler_text,
-					content_type: reply.content_type,
-					language: reply.language,
-					media: reply
-						.media
-						.into_iter()
-						.map(|item| network::MediaUpload { path: item.path, description: item.description })
-						.collect(),
-					poll: reply.poll.map(|poll| network::PollData {
-						options: poll.options,
-						expires_in: poll.expires_in,
-						multiple: poll.multiple,
-						hide_totals: poll.hide_totals,
-					}),
+					content: post_data.content,
+					visibility: post_data.visibility,
+					spoiler_text: post_data.spoiler_text,
+					content_type: post_data.content_type,
+					language: post_data.language,
+					media: post_data.media,
+					poll: post_data.poll,
 				});
 			} else {
 				live_region::announce(live_region, "Network not available");

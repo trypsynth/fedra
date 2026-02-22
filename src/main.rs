@@ -87,6 +87,7 @@ pub(crate) struct AppState {
 	pub(crate) media_ctrl: Option<MediaCtrl>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
+	pub(crate) pending_thread_continuation: bool,
 }
 
 impl AppState {
@@ -113,6 +114,7 @@ impl AppState {
 			media_ctrl: None,
 			ui_waker,
 			_instance_checker: instance_checker,
+			pending_thread_continuation: false,
 		}
 	}
 

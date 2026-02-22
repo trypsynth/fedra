@@ -27,6 +27,17 @@ pub enum RelationshipAction {
 	HideBoosts,
 }
 
+#[derive(Debug, Clone)]
+pub struct PostData {
+	pub content: String,
+	pub visibility: String,
+	pub spoiler_text: Option<String>,
+	pub content_type: Option<String>,
+	pub language: Option<String>,
+	pub media: Vec<MediaUpload>,
+	pub poll: Option<PollData>,
+}
+
 #[derive(Debug)]
 pub enum NetworkCommand {
 	FetchTimeline {
@@ -42,13 +53,7 @@ pub enum NetworkCommand {
 		handle: String,
 	},
 	PostStatus {
-		content: String,
-		visibility: String,
-		spoiler_text: Option<String>,
-		content_type: Option<String>,
-		language: Option<String>,
-		media: Vec<MediaUpload>,
-		poll: Option<PollData>,
+		post: PostData,
 	},
 	Favorite {
 		status_id: String,
@@ -203,7 +208,7 @@ pub enum NetworkResponse {
 		handle: String,
 		result: Result<Account>,
 	},
-	PostComplete(Result<()>),
+	PostComplete(Result<Status>),
 	Favorited {
 		status_id: String,
 		result: Result<Status>,
@@ -228,7 +233,7 @@ pub enum NetworkResponse {
 		status_id: String,
 		result: Result<Status>,
 	},
-	Replied(Result<()>),
+	Replied(Result<Status>),
 	StatusDeleted {
 		status_id: String,
 		result: Result<()>,
@@ -308,7 +313,7 @@ fn post_with_media(
 	media: Vec<MediaUpload>,
 	poll: Option<&PollData>,
 	in_reply_to_id: Option<&str>,
-) -> Result<()> {
+) -> Result<Status> {
 	let mut media_ids = Vec::new();
 	let mut upload_failed = None;
 	for item in media {
@@ -518,25 +523,17 @@ fn network_loop(
 				let result = client.lookup_account(access_token, &handle);
 				send_response(responses, ui_waker, NetworkResponse::AccountLookupResult { handle, result });
 			}
-			Ok(NetworkCommand::PostStatus {
-				content,
-				visibility,
-				spoiler_text,
-				content_type,
-				language,
-				media,
-				poll,
-			}) => {
+			Ok(NetworkCommand::PostStatus { post }) => {
 				let result = post_with_media(
 					client,
 					access_token,
-					&content,
-					&visibility,
-					spoiler_text.as_deref(),
-					content_type.as_deref(),
-					language.as_deref(),
-					media,
-					poll.as_ref(),
+					&post.content,
+					&post.visibility,
+					post.spoiler_text.as_deref(),
+					post.content_type.as_deref(),
+					post.language.as_deref(),
+					post.media,
+					post.poll.as_ref(),
 					None,
 				);
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
