@@ -140,7 +140,8 @@ pub fn switch_to_account(
 		}
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
-			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none();
+			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none()
+			|| state.active_account().is_some_and(|a| a.default_post_visibility.is_none());
 		if needs_verify {
 			if let Ok(account) = client.verify_credentials(&token)
 				&& let Some(active) = state.active_account_mut()
@@ -148,6 +149,7 @@ pub fn switch_to_account(
 				active.acct = Some(account.acct);
 				active.display_name = Some(account.display_name);
 				active.user_id = Some(account.id.clone());
+				active.default_post_visibility = account.source.and_then(|s| s.privacy);
 				state.current_user_id = Some(account.id);
 				let _ = ConfigStore::new().save(&state.config);
 			}

@@ -153,7 +153,13 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				if state.timeline_manager.active().is_some_and(|t| t.timeline_type == TimelineType::Direct) {
 					Some(dialogs::PostVisibility::Direct)
 				} else {
-					None
+					state.active_account().and_then(|a| a.default_post_visibility.as_deref()).and_then(|v| match v {
+						"public" => Some(dialogs::PostVisibility::Public),
+						"unlisted" => Some(dialogs::PostVisibility::Unlisted),
+						"private" => Some(dialogs::PostVisibility::Private),
+						"direct" => Some(dialogs::PostVisibility::Direct),
+						_ => None,
+					})
 				};
 			let Some(post) =
 				dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send, default_visibility)

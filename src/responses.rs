@@ -4,7 +4,7 @@ use wxdragon::prelude::*;
 
 use crate::{
 	AppState, UiCommand,
-	config::{AutoloadMode, SortOrder},
+	config::{AutoloadMode, ConfigStore, SortOrder},
 	mastodon::{Poll, Status},
 	network::{NetworkCommand, NetworkResponse, TimelineData},
 	streaming,
@@ -781,8 +781,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::CredentialsFetched { result: Err(err) } => {
 				live_region::announce(live_region, &spoken_failure("Failed to fetch profile", &err));
 			}
-			NetworkResponse::ProfileUpdated { result: Ok(_) } => {
+			NetworkResponse::ProfileUpdated { result: Ok(account) } => {
 				live_region::announce(live_region, "Profile updated");
+				if let Some(active) = state.active_account_mut() {
+					active.default_post_visibility = account.source.and_then(|s| s.privacy);
+				}
+				let _ = ConfigStore::new().save(&state.config);
 				let _ = ui_tx.send(UiCommand::Refresh);
 			}
 			NetworkResponse::ProfileUpdated { result: Err(err) } => {

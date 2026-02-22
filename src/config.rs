@@ -258,6 +258,8 @@ pub struct Account {
 	pub acct: Option<String>,
 	pub display_name: Option<String>,
 	pub user_id: Option<String>,
+	#[serde(default)]
+	pub default_post_visibility: Option<String>,
 }
 
 impl Account {
@@ -271,6 +273,7 @@ impl Account {
 			acct: None,
 			display_name: None,
 			user_id: None,
+			default_post_visibility: None,
 		}
 	}
 }
