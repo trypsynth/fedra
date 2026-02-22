@@ -845,6 +845,7 @@ impl MastodonClient {
 			}
 			params.push(("poll[expires_in]".to_string(), poll.expires_in.to_string()));
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
+			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
 		self.http
 			.post(url)
@@ -1571,6 +1572,7 @@ impl MastodonClient {
 			}
 			params.push(("poll[expires_in]".to_string(), poll.expires_in.to_string()));
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
+			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
 		let response = self
 			.http

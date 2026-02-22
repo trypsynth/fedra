@@ -189,6 +189,7 @@ pub struct PollData {
 	pub options: Vec<String>,
 	pub expires_in: u32,
 	pub multiple: bool,
+	pub hide_totals: bool,
 }
 
 #[derive(Debug)]

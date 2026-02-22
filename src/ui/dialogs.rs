@@ -124,6 +124,7 @@ pub struct PostPoll {
 	pub options: Vec<String>,
 	pub expires_in: u32,
 	pub multiple: bool,
+	pub hide_totals: bool,
 }
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
@@ -201,19 +202,30 @@ fn prompt_for_poll(
 	let option_label = StaticText::builder(&panel).with_label("Selected option text:").build();
 	let option_text = TextCtrl::builder(&panel).build();
 	let limits = limits.clone();
-	let duration_label = StaticText::builder(&panel)
-		.with_label(&format!(
-			"Duration in minutes (min {}, max {}):",
-			limits.min_expiration / 60,
-			limits.max_expiration / 60
-		))
-		.build();
-	let min_minutes_u32 = (limits.min_expiration / 60).max(1);
-	let max_minutes_u32 = (limits.max_expiration / 60).max(min_minutes_u32);
-	let min_minutes = i32::try_from(min_minutes_u32).unwrap_or(i32::MAX);
-	let max_minutes = i32::try_from(max_minutes_u32).unwrap_or(i32::MAX);
-	let duration_spin = SpinCtrl::builder(&panel).with_range(min_minutes, max_minutes).build();
+	const DURATION_PRESETS: &[(u32, &str)] = &[
+		(300, "5 minutes"),
+		(1_800, "30 minutes"),
+		(3_600, "1 hour"),
+		(21_600, "6 hours"),
+		(43_200, "12 hours"),
+		(86_400, "1 day"),
+		(259_200, "3 days"),
+		(604_800, "7 days"),
+	];
+	let presets_secs: Vec<u32> = DURATION_PRESETS
+		.iter()
+		.filter(|(s, _)| *s >= limits.min_expiration && *s <= limits.max_expiration)
+		.map(|(s, _)| *s)
+		.collect();
+	let presets_secs = if presets_secs.is_empty() { vec![limits.min_expiration] } else { presets_secs };
+	let preset_labels: Vec<String> = presets_secs
+		.iter()
+		.map(|s| DURATION_PRESETS.iter().find(|(ps, _)| ps == s).map_or_else(|| format!("{} minutes", s / 60), |(_, label)| (*label).to_string()))
+		.collect();
+	let duration_label = StaticText::builder(&panel).with_label("Duration:").build();
+	let duration_choice = ComboBox::builder(&panel).with_choices(preset_labels).build();
 	let multiple_checkbox = CheckBox::builder(&panel).with_label("Allow multiple selections").build();
+	let hide_totals_checkbox = CheckBox::builder(&panel).with_label("Hide vote counts until poll closes").build();
 	let remove_poll_button = Button::builder(&panel).with_label("Remove Poll").build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Done").build();
@@ -234,8 +246,9 @@ fn prompt_for_poll(
 	main_sizer.add(&option_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&option_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&duration_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
-	main_sizer.add(&duration_spin, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&duration_choice, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&multiple_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&hide_totals_checkbox, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 8);
 	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -260,11 +273,19 @@ fn prompt_for_poll(
 			option_text.set_value(&first);
 		}
 	}
-	let default_minutes_u32 = existing.as_ref().map_or(min_minutes_u32, |poll| poll.expires_in / 60);
-	let default_minutes = i32::try_from(default_minutes_u32).unwrap_or(min_minutes);
-	duration_spin.set_value(default_minutes.clamp(min_minutes, max_minutes));
+	let default_expires = existing.as_ref().map_or(86_400, |poll| poll.expires_in);
+	let default_idx = presets_secs
+		.iter()
+		.enumerate()
+		.min_by_key(|&(_, s)| s.abs_diff(default_expires))
+		.map(|(i, _)| i)
+		.unwrap_or(0);
+	if let Ok(idx) = u32::try_from(default_idx) {
+		duration_choice.set_selection(idx);
+	}
 	if let Some(existing) = existing.as_ref() {
 		multiple_checkbox.set_value(existing.multiple);
+		hide_totals_checkbox.set_value(existing.hide_totals);
 	}
 	remove_poll_button.enable(existing.is_some());
 	let options_add = options.clone();
@@ -401,13 +422,17 @@ fn prompt_for_poll(
 		show_warning_widget(parent, "Too many poll options for this instance.", "Poll");
 		return None;
 	}
-	let minutes = u32::try_from(duration_spin.value().max(min_minutes)).unwrap_or(0);
-	let expires_in = minutes.saturating_mul(60);
-	if expires_in < limits.min_expiration || expires_in > limits.max_expiration {
-		show_warning_widget(parent, "Poll duration is outside this instance's limits.", "Poll");
+	let selected_preset = duration_choice.get_selection().and_then(|i| presets_secs.get(i as usize).copied());
+	let Some(expires_in) = selected_preset else {
+		show_warning_widget(parent, "Please select a poll duration.", "Poll");
 		return None;
-	}
-	Some(PollDialogResult::Updated(PostPoll { options, expires_in, multiple: multiple_checkbox.get_value() }))
+	};
+	Some(PollDialogResult::Updated(PostPoll {
+		options,
+		expires_in,
+		multiple: multiple_checkbox.get_value(),
+		hide_totals: hide_totals_checkbox.get_value(),
+	}))
 }
 
 fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Vec<PostMedia>> {
@@ -1601,6 +1626,7 @@ pub fn prompt_for_edit(
 		options: p.options.iter().map(|o| o.title.clone()).collect(),
 		expires_in: 3600, // API doesn't return original expires_in, defaulting to 1 hour
 		multiple: p.multiple,
+		hide_totals: false, // API doesn't return hide_totals, defaulting to false
 	});
 
 	prompt_for_compose(

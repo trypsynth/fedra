@@ -176,6 +176,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						options: poll.options,
 						expires_in: poll.expires_in,
 						multiple: poll.multiple,
+						hide_totals: poll.hide_totals,
 					}),
 				});
 			} else {
@@ -219,6 +220,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						options: poll.options,
 						expires_in: poll.expires_in,
 						multiple: poll.multiple,
+						hide_totals: poll.hide_totals,
 					}),
 				});
 			} else {
@@ -299,6 +301,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						options: poll.options,
 						expires_in: poll.expires_in,
 						multiple: poll.multiple,
+						hide_totals: poll.hide_totals,
 					}),
 				});
 			} else {
