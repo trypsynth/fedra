@@ -329,7 +329,7 @@ impl Status {
 		filter_ctx: &FilterContext,
 	) -> String {
 		let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
-		render_template(crate::template::DEFAULT_POST_TEMPLATE, &vars)
+		render_template(&options.post_template, &vars)
 	}
 
 	pub(crate) fn build_template_vars(
@@ -559,7 +559,15 @@ impl Notification {
 		let actor = self.account.timeline_display_name(options.display_name_emoji_mode);
 		match self.kind.as_str() {
 			"mention" | "status" => self.status_text(options, cw_expanded),
-			"reblog" => format!("{} boosted {}", actor, self.status_text(options, cw_expanded)),
+			"reblog" => self.status.as_ref().map_or_else(
+				|| format!("{} boosted a post", actor),
+				|status| {
+					let mut vars = status.build_template_vars(options, cw_expanded, &options.filter_context);
+					vars.booster = actor.clone();
+					vars.booster_username = format!("@{}", self.account.acct);
+					render_template(&options.boost_template, &vars)
+				},
+			),
 			"favourite" => {
 				format!("{} favorited {}", actor, self.status_text(options, cw_expanded))
 			}
