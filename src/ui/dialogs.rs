@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet}, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, collections::HashMap, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
 use url::Url;
 use wxdragon::{
@@ -1059,7 +1059,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let template_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let template_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let timeline_keys: Vec<&str> = vec![
-		"Global Default",
 		"Home",
 		"Notifications",
 		"Direct Messages",
@@ -1085,12 +1084,12 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let post_template_label = StaticText::builder(&template_panel).with_label("&Post template:").build();
 	let post_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
-		.with_value(&templates.post_template)
+		.with_value(templates.per_timeline.get("Home").and_then(|pt| pt.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE))
 		.build();
 	let boost_template_label = StaticText::builder(&template_panel).with_label("&Boost template:").build();
 	let boost_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
-		.with_value(&templates.boost_template)
+		.with_value(templates.per_timeline.get("Home").and_then(|pt| pt.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE))
 		.build();
 	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let reset_button = Button::builder(&template_panel).with_label("Reset to default").build();
@@ -1117,25 +1116,19 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let template_state: Rc<RefCell<HashMap<String, (String, String)>>> = Rc::new(RefCell::new(HashMap::new()));
 	{
 		let mut state = template_state.borrow_mut();
-		state.insert("Global Default".to_string(), (templates.post_template.clone(), templates.boost_template.clone()));
-		for key in &timeline_keys[1..] {
+		for key in &timeline_keys {
 			let pt = templates.per_timeline.get(*key);
-			let post = pt.and_then(|p| p.post_template.clone()).unwrap_or_else(|| templates.post_template.clone());
-			let boost = pt.and_then(|p| p.boost_template.clone()).unwrap_or_else(|| templates.boost_template.clone());
+			let post = pt.and_then(|p| p.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE).to_string();
+			let boost = pt.and_then(|p| p.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE).to_string();
 			state.insert((*key).to_string(), (post, boost));
 		}
 	}
 	let ts_change = template_state.clone();
 	let post_text_change = post_template_text;
 	let boost_text_change = boost_template_text;
-	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Global Default".to_string()));
+	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Home".to_string()));
 	let prev_sel_change = prev_selection.clone();
 	let timeline_keys_clone = timeline_keys.clone();
-	// Track which per-timeline tabs the user navigated to. Unvisited tabs must not have
-	// their stale initialised values compared against the (possibly changed) global template.
-	let visited_timelines: Rc<RefCell<HashSet<String>>> =
-		Rc::new(RefCell::new(HashSet::from(["Global Default".to_string()])));
-	let visited_change = visited_timelines.clone();
 	template_timeline_choice.on_selection_changed(move |_| {
 		let Some(new_index) = template_timeline_choice.get_selection() else { return };
 		let new_index = new_index as usize;
@@ -1151,7 +1144,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			boost_text_change.set_value(boost);
 		}
 		*prev_sel_change.borrow_mut() = (*new_key).to_string();
-		visited_change.borrow_mut().insert((*new_key).to_string());
 	});
 	let ts_reset = template_state.clone();
 	let post_text_reset = post_template_text;
@@ -1159,18 +1151,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let prev_sel_reset = prev_selection.clone();
 	reset_button.on_click(move |_| {
 		let current_key = prev_sel_reset.borrow().clone();
-		let (default_post, default_boost) = if current_key == "Global Default" {
-			(DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string())
-		} else {
-			let state = ts_reset.borrow();
-			state
-				.get("Global Default")
-				.cloned()
-				.unwrap_or_else(|| (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()))
-		};
-		post_text_reset.set_value(&default_post);
-		boost_text_reset.set_value(&default_boost);
-		ts_reset.borrow_mut().insert(current_key, (default_post, default_boost));
+		post_text_reset.set_value(DEFAULT_POST_TEMPLATE);
+		boost_text_reset.set_value(DEFAULT_BOOST_TEMPLATE);
+		ts_reset
+			.borrow_mut()
+			.insert(current_key, (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()));
 	});
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
@@ -1231,31 +1216,20 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	}
 	let new_templates = {
 		let ts = template_state.borrow();
-		let (global_post, global_boost) = ts
-			.get("Global Default")
-			.cloned()
-			.unwrap_or_else(|| (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()));
 		let mut per_timeline = HashMap::new();
-		let visited = visited_timelines.borrow();
-		for key in &timeline_keys[1..] {
-			if visited.contains(*key) {
-				// User navigated to this tab: compare their text against the new global.
-				if let Some((post, boost)) = ts.get(*key) {
-					let post_override = if *post == global_post { None } else { Some(post.clone()) };
-					let boost_override = if *boost == global_boost { None } else { Some(boost.clone()) };
-					if post_override.is_some() || boost_override.is_some() {
-						per_timeline.insert(
-							(*key).to_string(),
-							PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
-						);
-					}
+		for key in &timeline_keys {
+			if let Some((post, boost)) = ts.get(*key) {
+				let post_override = if post == DEFAULT_POST_TEMPLATE { None } else { Some(post.clone()) };
+				let boost_override = if boost == DEFAULT_BOOST_TEMPLATE { None } else { Some(boost.clone()) };
+				if post_override.is_some() || boost_override.is_some() {
+					per_timeline.insert(
+						(*key).to_string(),
+						PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
+					);
 				}
-			} else if let Some(original) = templates.per_timeline.get(*key) {
-				// User never visited this tab: preserve whatever override was in the config.
-				per_timeline.insert((*key).to_string(), original.clone());
 			}
 		}
-		PostTemplates { post_template: global_post, boost_template: global_boost, per_timeline }
+		PostTemplates { per_timeline }
 	};
 	Some(OptionsDialogResult {
 		enter_to_send: enter_checkbox.get_value(),

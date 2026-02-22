@@ -150,33 +150,19 @@ pub enum AutoloadMode {
 	AtBoundary,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PostTemplates {
-	#[serde(default = "default_post_template")]
-	pub post_template: String,
-	#[serde(default = "default_boost_template")]
-	pub boost_template: String,
 	#[serde(default)]
 	pub per_timeline: HashMap<String, PerTimelineTemplates>,
 }
 
-impl Default for PostTemplates {
-	fn default() -> Self {
-		Self {
-			post_template: default_post_template(),
-			boost_template: default_boost_template(),
-			per_timeline: HashMap::new(),
-		}
-	}
-}
-
 impl PostTemplates {
 	pub fn resolve_post_template(&self, key: &str) -> &str {
-		self.per_timeline.get(key).and_then(|pt| pt.post_template.as_deref()).unwrap_or(&self.post_template)
+		self.per_timeline.get(key).and_then(|pt| pt.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE)
 	}
 
 	pub fn resolve_boost_template(&self, key: &str) -> &str {
-		self.per_timeline.get(key).and_then(|pt| pt.boost_template.as_deref()).unwrap_or(&self.boost_template)
+		self.per_timeline.get(key).and_then(|pt| pt.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE)
 	}
 }
 
@@ -184,14 +170,6 @@ impl PostTemplates {
 pub struct PerTimelineTemplates {
 	pub post_template: Option<String>,
 	pub boost_template: Option<String>,
-}
-
-fn default_post_template() -> String {
-	DEFAULT_POST_TEMPLATE.to_string()
-}
-
-fn default_boost_template() -> String {
-	DEFAULT_BOOST_TEMPLATE.to_string()
 }
 
 const fn default_enter_to_send() -> bool {
