@@ -220,7 +220,12 @@ fn prompt_for_poll(
 	let presets_secs = if presets_secs.is_empty() { vec![limits.min_expiration] } else { presets_secs };
 	let preset_labels: Vec<String> = presets_secs
 		.iter()
-		.map(|s| DURATION_PRESETS.iter().find(|(ps, _)| ps == s).map_or_else(|| format!("{} minutes", s / 60), |(_, label)| (*label).to_string()))
+		.map(|s| {
+			DURATION_PRESETS
+				.iter()
+				.find(|(ps, _)| ps == s)
+				.map_or_else(|| format!("{} minutes", s / 60), |(_, label)| (*label).to_string())
+		})
 		.collect();
 	let duration_label = StaticText::builder(&panel).with_label("Duration:").build();
 	let duration_choice = ComboBox::builder(&panel).with_choices(preset_labels).build();
@@ -248,7 +253,12 @@ fn prompt_for_poll(
 	main_sizer.add(&duration_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&duration_choice, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&multiple_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add(&hide_totals_checkbox, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 8);
+	main_sizer.add(
+		&hide_totals_checkbox,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		8,
+	);
 	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -274,12 +284,8 @@ fn prompt_for_poll(
 		}
 	}
 	let default_expires = existing.as_ref().map_or(86_400, |poll| poll.expires_in);
-	let default_idx = presets_secs
-		.iter()
-		.enumerate()
-		.min_by_key(|&(_, s)| s.abs_diff(default_expires))
-		.map(|(i, _)| i)
-		.unwrap_or(0);
+	let default_idx =
+		presets_secs.iter().enumerate().min_by_key(|&(_, s)| s.abs_diff(default_expires)).map(|(i, _)| i).unwrap_or(0);
 	if let Ok(idx) = u32::try_from(default_idx) {
 		duration_choice.set_selection(idx);
 	}
@@ -1084,12 +1090,24 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let post_template_label = StaticText::builder(&template_panel).with_label("&Post template:").build();
 	let post_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
-		.with_value(templates.per_timeline.get("Home").and_then(|pt| pt.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE))
+		.with_value(
+			templates
+				.per_timeline
+				.get("Home")
+				.and_then(|pt| pt.post_template.as_deref())
+				.unwrap_or(DEFAULT_POST_TEMPLATE),
+		)
 		.build();
 	let boost_template_label = StaticText::builder(&template_panel).with_label("&Boost template:").build();
 	let boost_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
-		.with_value(templates.per_timeline.get("Home").and_then(|pt| pt.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE))
+		.with_value(
+			templates
+				.per_timeline
+				.get("Home")
+				.and_then(|pt| pt.boost_template.as_deref())
+				.unwrap_or(DEFAULT_BOOST_TEMPLATE),
+		)
 		.build();
 	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let reset_button = Button::builder(&template_panel).with_label("Reset to default").build();
