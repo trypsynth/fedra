@@ -462,10 +462,12 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let items_add = items.clone();
 	let media_list_add = media_list;
 	let remove_button_add = remove_button;
+	let desc_label_add = desc_label;
+	let desc_text_add = desc_text;
 	add_button.on_click(move |_| {
 		let file_dialog = FileDialog::builder(&panel)
 			.with_message("Select media to attach")
-			.with_wildcard("Media files|*.png;*.jpg;*.jpeg;*.gif;*.mp4;*.webm;*.mov|All files|*.*")
+			.with_wildcard("Media files|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.heic;*.heif;*.avif;*.mp4;*.m4v;*.webm;*.mov;*.mp3;*.ogg;*.wav;*.flac;*.opus;*.aac;*.m4a;*.3gp|All files|*.*")
 			.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist | FileDialogStyle::Multiple)
 			.build();
 		if file_dialog.show_modal() == ID_OK {
@@ -489,6 +491,9 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 						media_list_add.set_selection(selection, true);
 					}
 					remove_button_add.enable(true);
+					desc_label_add.enable(true);
+					desc_text_add.enable(true);
+					desc_text_add.set_value("");
 				}
 			}
 		}
