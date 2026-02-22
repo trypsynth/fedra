@@ -1,7 +1,7 @@
 use minijinja::{Environment, context};
 
 pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{{ media }}{{ poll }} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
-pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster_username }} boosted {{ username }}: {{ content }}{{ media }}{{ poll }} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{{ media }}{{ poll }} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
 
 pub struct PostTemplateVars {
 	pub author: String,

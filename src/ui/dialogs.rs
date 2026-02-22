@@ -1708,7 +1708,12 @@ pub fn prompt_for_user_lookup(
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let prompt_label = StaticText::builder(&panel).with_label("Username:").build();
-	let combo = ComboBox::builder(&panel).with_choices(suggestions.to_vec()).build();
+	let combo = ComboBox::builder(&panel).build();
+	combo.freeze();
+	for suggestion in suggestions {
+		combo.append(suggestion);
+	}
+	combo.thaw();
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let profile_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Profile").build();
 	let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
