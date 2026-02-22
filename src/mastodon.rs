@@ -314,9 +314,9 @@ impl Status {
 				render_template(post_template, &vars)
 			},
 			|boosted| {
-				let booster = self.account.timeline_display_name(options.display_name_emoji_mode);
 				let mut vars = boosted.build_template_vars(options, cw_expanded, filter_ctx);
-				vars.booster = booster;
+				vars.booster = self.account.timeline_display_name(options.display_name_emoji_mode);
+				vars.booster_username = format!("@{}", self.account.acct);
 				render_template(boost_template, &vars)
 			},
 		)
@@ -376,6 +376,7 @@ impl Status {
 			media,
 			poll,
 			booster: String::new(),
+			booster_username: String::new(),
 		}
 	}
 
