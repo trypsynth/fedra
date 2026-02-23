@@ -36,6 +36,7 @@ pub struct PostData {
 	pub language: Option<String>,
 	pub media: Vec<MediaUpload>,
 	pub poll: Option<PollData>,
+	pub quoted_status_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -369,6 +370,7 @@ fn post_with_media(
 	media: Vec<MediaUpload>,
 	poll: Option<&PollData>,
 	in_reply_to_id: Option<&str>,
+	quoted_status_id: Option<&str>,
 ) -> Result<Status> {
 	let mut media_ids = Vec::new();
 	let mut upload_failed = None;
@@ -394,6 +396,7 @@ fn post_with_media(
 		language,
 		poll,
 		in_reply_to_id,
+		quoted_status_id,
 	)
 }
 
@@ -591,6 +594,7 @@ fn network_loop(
 					post.media,
 					post.poll.as_ref(),
 					None,
+					post.quoted_status_id.as_deref(),
 				);
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
 			}
@@ -656,6 +660,7 @@ fn network_loop(
 					media,
 					poll.as_ref(),
 					Some(&in_reply_to_id),
+					None,
 				);
 				send_response(responses, ui_waker, NetworkResponse::Replied(result));
 			}

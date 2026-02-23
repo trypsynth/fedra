@@ -26,7 +26,7 @@ use crate::{
 	ui_wake::UiCommandSender,
 };
 
-fn post_result_to_data(post: dialogs::PostResult) -> network::PostData {
+fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: Option<String>) -> network::PostData {
 	network::PostData {
 		content: post.content,
 		visibility: post.visibility.as_api_str().to_string(),
@@ -44,6 +44,7 @@ fn post_result_to_data(post: dialogs::PostResult) -> network::PostData {
 			multiple: poll.multiple,
 			hide_totals: poll.hide_totals,
 		}),
+		quoted_status_id,
 	}
 }
 
@@ -66,6 +67,7 @@ fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
 pub enum UiCommand {
 	NewPost,
 	Reply { reply_all: bool },
+	Quote,
 	DeletePost,
 	EditPost,
 	CopyPost,
@@ -194,7 +196,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			};
 			if let Some(handle) = &state.network_handle {
 				state.pending_thread_continuation = post.continue_thread;
-				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post) });
+				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
 			} else {
 				live_region::announce(live_region, "Network not available");
 			}
@@ -219,7 +221,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			};
 			if let Some(handle) = &state.network_handle {
 				state.pending_thread_continuation = reply.continue_thread;
-				let post_data = post_result_to_data(reply);
+				let post_data = post_result_to_data(reply, None);
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: status.id.clone(),
 					content: post_data.content,
@@ -257,7 +259,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			};
 			if let Some(handle) = &state.network_handle {
 				state.pending_thread_continuation = reply.continue_thread;
-				let post_data = post_result_to_data(reply);
+				let post_data = post_result_to_data(reply, None);
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: target.id.clone(),
 					content: post_data.content,
@@ -268,6 +270,37 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					media: post_data.media,
 					poll: post_data.poll,
 				});
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::Quote => {
+			let (status, max_post_chars, enter_to_send) =
+				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
+			let Some(status) = status else {
+				live_region::announce(live_region, "No post selected");
+				return;
+			};
+			let target = status.reblog.as_ref().map_or(&status, std::convert::AsRef::as_ref);
+			if target.visibility == "direct" {
+				live_region::announce(live_region, "Cannot quote direct messages");
+				return;
+			}
+			if let Some(approval) = &target.quote_approval
+				&& approval.current_user == "denied"
+			{
+				live_region::announce(live_region, "You are not allowed to quote this post");
+				return;
+			}
+			let target_id = target.id.clone();
+			let Some(post) =
+				dialogs::prompt_for_quote(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
+			else {
+				return;
+			};
+			if let Some(handle) = &state.network_handle {
+				state.pending_thread_continuation = post.continue_thread;
+				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, Some(target_id)) });
 			} else {
 				live_region::announce(live_region, "Network not available");
 			}

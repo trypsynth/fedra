@@ -23,6 +23,7 @@ define_ids! {
 	ID_BOOST,
 	ID_DELETE_POST,
 	ID_EDIT_POST,
+	ID_QUOTE,
 	ID_VOTE,
 	// Post navigation
 	ID_VIEW_THREAD,

@@ -152,6 +152,7 @@ struct ComposeDialogConfig {
 	can_change_visibility: bool,
 	show_thread_checkbox: bool,
 	initial_thread_mode: bool,
+	quoted_text: Option<String>,
 }
 
 const fn visibility_index(visibility: PostVisibility) -> usize {
@@ -902,6 +903,8 @@ pub struct OptionsDialogResult {
 	pub templates: PostTemplates,
 }
 
+type TemplateState = HashMap<String, (String, String, String)>;
+
 pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<OptionsDialogResult> {
 	let OptionsDialogInput {
 		enter_to_send,
@@ -1094,22 +1097,25 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let post_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
 		.with_value(
-			templates
-				.per_timeline
-				.get("Home")
-				.and_then(|pt| pt.post_template.as_deref())
-				.unwrap_or(DEFAULT_POST_TEMPLATE),
+			templates.per_timeline.get("Home").and_then(|pt| pt.post.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE),
 		)
 		.build();
 	let boost_template_label = StaticText::builder(&template_panel).with_label("&Boost template:").build();
 	let boost_template_text = TextCtrl::builder(&template_panel)
 		.with_style(TextCtrlStyle::MultiLine)
 		.with_value(
+			templates.per_timeline.get("Home").and_then(|pt| pt.boost.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE),
+		)
+		.build();
+	let quote_template_label = StaticText::builder(&template_panel).with_label("&Quote template:").build();
+	let quote_template_text = TextCtrl::builder(&template_panel)
+		.with_style(TextCtrlStyle::MultiLine)
+		.with_value(
 			templates
 				.per_timeline
 				.get("Home")
-				.and_then(|pt| pt.boost_template.as_deref())
-				.unwrap_or(DEFAULT_BOOST_TEMPLATE),
+				.and_then(|pt| pt.quote.as_deref())
+				.unwrap_or(crate::template::DEFAULT_QUOTE_TEMPLATE),
 		)
 		.build();
 	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -1130,23 +1136,33 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		8,
 	);
 	template_sizer.add(&boost_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	template_sizer.add(
+		&quote_template_label,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+		8,
+	);
+	template_sizer.add(&quote_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	template_sizer.add_sizer(&template_button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	template_panel.set_sizer(template_sizer, true);
 	notebook.add_page(&template_panel, "Templates", false, None);
-	// State for template editing: maps timeline key -> (post_template, boost_template)
-	let template_state: Rc<RefCell<HashMap<String, (String, String)>>> = Rc::new(RefCell::new(HashMap::new()));
+	// State for template editing: maps timeline key -> (post_template, boost_template, quote_template)
+	let template_state: Rc<RefCell<TemplateState>> = Rc::new(RefCell::new(HashMap::new()));
 	{
 		let mut state = template_state.borrow_mut();
 		for key in &timeline_keys {
 			let pt = templates.per_timeline.get(*key);
-			let post = pt.and_then(|p| p.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE).to_string();
-			let boost = pt.and_then(|p| p.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE).to_string();
-			state.insert((*key).to_string(), (post, boost));
+			let post = pt.and_then(|p| p.post.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE).to_string();
+			let boost = pt.and_then(|p| p.boost.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE).to_string();
+			let quote =
+				pt.and_then(|p| p.quote.as_deref()).unwrap_or(crate::template::DEFAULT_QUOTE_TEMPLATE).to_string();
+			state.insert((*key).to_string(), (post, boost, quote));
 		}
 	}
 	let ts_change = template_state.clone();
 	let post_text_change = post_template_text;
 	let boost_text_change = boost_template_text;
+	let quote_text_change = quote_template_text;
 	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Home".to_string()));
 	let prev_sel_change = prev_selection.clone();
 	let timeline_keys_clone = timeline_keys.clone();
@@ -1157,26 +1173,37 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		{
 			let mut state = ts_change.borrow_mut();
 			let prev = prev_sel_change.borrow().clone();
-			state.insert(prev, (post_text_change.get_value(), boost_text_change.get_value()));
+			state.insert(
+				prev,
+				(post_text_change.get_value(), boost_text_change.get_value(), quote_text_change.get_value()),
+			);
 		}
 		let state = ts_change.borrow();
-		if let Some((post, boost)) = state.get(*new_key) {
+		if let Some((post, boost, quote)) = state.get(*new_key) {
 			post_text_change.set_value(post);
 			boost_text_change.set_value(boost);
+			quote_text_change.set_value(quote);
 		}
 		*prev_sel_change.borrow_mut() = (*new_key).to_string();
 	});
 	let ts_reset = template_state.clone();
 	let post_text_reset = post_template_text;
 	let boost_text_reset = boost_template_text;
+	let quote_text_reset = quote_template_text;
 	let prev_sel_reset = prev_selection.clone();
 	reset_button.on_click(move |_| {
 		let current_key = prev_sel_reset.borrow().clone();
 		post_text_reset.set_value(DEFAULT_POST_TEMPLATE);
 		boost_text_reset.set_value(DEFAULT_BOOST_TEMPLATE);
-		ts_reset
-			.borrow_mut()
-			.insert(current_key, (DEFAULT_POST_TEMPLATE.to_string(), DEFAULT_BOOST_TEMPLATE.to_string()));
+		quote_text_reset.set_value(crate::template::DEFAULT_QUOTE_TEMPLATE);
+		ts_reset.borrow_mut().insert(
+			current_key,
+			(
+				DEFAULT_POST_TEMPLATE.to_string(),
+				DEFAULT_BOOST_TEMPLATE.to_string(),
+				crate::template::DEFAULT_QUOTE_TEMPLATE.to_string(),
+			),
+		);
 	});
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
@@ -1233,19 +1260,24 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	{
 		let mut ts = template_state.borrow_mut();
 		let current_key = prev_selection.borrow().clone();
-		ts.insert(current_key, (post_template_text.get_value(), boost_template_text.get_value()));
+		ts.insert(
+			current_key,
+			(post_template_text.get_value(), boost_template_text.get_value(), quote_template_text.get_value()),
+		);
 	}
 	let new_templates = {
 		let ts = template_state.borrow();
 		let mut per_timeline = HashMap::new();
 		for key in &timeline_keys {
-			if let Some((post, boost)) = ts.get(*key) {
+			if let Some((post, boost, quote)) = ts.get(*key) {
 				let post_override = if post == DEFAULT_POST_TEMPLATE { None } else { Some(post.clone()) };
 				let boost_override = if boost == DEFAULT_BOOST_TEMPLATE { None } else { Some(boost.clone()) };
-				if post_override.is_some() || boost_override.is_some() {
+				let quote_override =
+					if quote == crate::template::DEFAULT_QUOTE_TEMPLATE { None } else { Some(quote.clone()) };
+				if post_override.is_some() || boost_override.is_some() || quote_override.is_some() {
 					per_timeline.insert(
 						(*key).to_string(),
-						PerTimelineTemplates { post_template: post_override, boost_template: boost_override },
+						PerTimelineTemplates { post: post_override, boost: boost_override, quote: quote_override },
 					);
 				}
 			}
@@ -1291,6 +1323,22 @@ fn prompt_for_compose(
 		Dialog::builder(frame, &format!("{title_prefix} - 0 of {max_chars} characters")).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	if let Some(quoted_text) = config.quoted_text {
+		let label = if title_prefix.starts_with("Quote ") {
+			format!("Quoting from {}:", title_prefix.trim_start_matches("Quote "))
+		} else {
+			"Quoting:".to_string()
+		};
+		let quote_label = StaticText::builder(&panel).with_label(&label).build();
+		let quote_text = TextCtrl::builder(&panel)
+			.with_value(&quoted_text)
+			.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
+			.build();
+		main_sizer.add(&quote_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+		main_sizer.add(&quote_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	}
+
 	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
 	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
@@ -1550,6 +1598,7 @@ pub fn prompt_for_post(
 			can_change_visibility: true,
 			show_thread_checkbox: true,
 			initial_thread_mode: false,
+			quoted_text: None,
 		},
 		Vec::new(),
 		None,
@@ -1614,6 +1663,7 @@ pub fn prompt_for_reply(
 			can_change_visibility: true,
 			show_thread_checkbox: true,
 			initial_thread_mode,
+			quoted_text: None,
 		},
 		Vec::new(),
 		None,
@@ -1661,9 +1711,48 @@ pub fn prompt_for_edit(
 			can_change_visibility: false,
 			show_thread_checkbox: false,
 			initial_thread_mode: false,
+			quoted_text: None,
 		},
 		initial_media,
 		initial_poll,
+	)
+}
+
+pub fn prompt_for_quote(
+	frame: &Frame,
+	quoting: &Status,
+	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
+	enter_to_send: bool,
+) -> Option<PostResult> {
+	let author = quoting.account.display_name_or_username();
+	let default_visibility = match quoting.visibility.as_str() {
+		"unlisted" => PostVisibility::Unlisted,
+		"private" => PostVisibility::Private,
+		"direct" => PostVisibility::Direct,
+		_ => PostVisibility::Public,
+	};
+	let quoted_text = quoting.content_with_cw(ContentWarningDisplay::Inline, true);
+
+	prompt_for_compose(
+		frame,
+		max_chars,
+		poll_limits,
+		enter_to_send,
+		ComposeDialogConfig {
+			title_prefix: format!("Quote {author}"),
+			ok_label: "Post".to_string(),
+			initial_content: String::new(),
+			initial_cw: None,
+			initial_language: None,
+			default_visibility,
+			can_change_visibility: true,
+			show_thread_checkbox: false,
+			initial_thread_mode: false,
+			quoted_text: Some(quoted_text),
+		},
+		Vec::new(),
+		None,
 	)
 }
 

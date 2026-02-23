@@ -804,25 +804,26 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 				if let Some(dlg) = &state.manage_list_members_dialog
-					&& matches!(search_type, crate::mastodon::SearchType::Accounts) {
-						let labels: Vec<String> = results
-							.accounts
-							.iter()
-							.map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct))
-							.collect();
-						let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-						let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
+					&& matches!(search_type, crate::mastodon::SearchType::Accounts)
+				{
+					let labels: Vec<String> = results
+						.accounts
+						.iter()
+						.map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct))
+						.collect();
+					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+					let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
 
-						if let Some(account) = dialogs::prompt_for_account_choice(frame, &accounts_ref, &label_refs)
-							&& let Some(handle) = &state.network_handle
-						{
-							handle.send(NetworkCommand::AddListAccount {
-								list_id: dlg.get_list_id().to_string(),
-								account_id: account.id,
-							});
-						}
-						return;
+					if let Some(account) = dialogs::prompt_for_account_choice(frame, &accounts_ref, &label_refs)
+						&& let Some(handle) = &state.network_handle
+					{
+						handle.send(NetworkCommand::AddListAccount {
+							list_id: dlg.get_list_id().to_string(),
+							account_id: account.id,
+						});
 					}
+					return;
+				}
 
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				let is_active = active_type.as_ref() == Some(&timeline_type);

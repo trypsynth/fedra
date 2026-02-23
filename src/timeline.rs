@@ -4,7 +4,7 @@ use crate::{
 	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode},
 	mastodon::{Account, FilterContext, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
-	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +129,7 @@ pub struct TimelineTextOptions {
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub post_template: String,
 	pub boost_template: String,
+	pub quote_template: String,
 	pub filter_context: FilterContext,
 }
 
@@ -140,6 +141,7 @@ impl TimelineTextOptions {
 			display_name_emoji_mode: config.display_name_emoji_mode,
 			post_template: config.templates.resolve_post_template(key).to_string(),
 			boost_template: config.templates.resolve_boost_template(key).to_string(),
+			quote_template: config.templates.resolve_quote_template(key).to_string(),
 			filter_context: timeline_type.filter_context(),
 		}
 	}
@@ -150,6 +152,7 @@ impl TimelineTextOptions {
 			display_name_emoji_mode: config.display_name_emoji_mode,
 			post_template: DEFAULT_POST_TEMPLATE.to_string(),
 			boost_template: DEFAULT_BOOST_TEMPLATE.to_string(),
+			quote_template: DEFAULT_QUOTE_TEMPLATE.to_string(),
 			filter_context: FilterContext::Unknown,
 		}
 	}
@@ -172,6 +175,7 @@ impl TimelineEntry {
 				cw_expanded,
 				&options.post_template,
 				&options.boost_template,
+				&options.quote_template,
 				&options.filter_context,
 			),
 			Self::Notification(notification) => notification.timeline_display(options, cw_expanded),

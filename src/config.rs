@@ -9,7 +9,7 @@ use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE};
+use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE};
 
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
@@ -158,18 +158,26 @@ pub struct PostTemplates {
 
 impl PostTemplates {
 	pub fn resolve_post_template(&self, key: &str) -> &str {
-		self.per_timeline.get(key).and_then(|pt| pt.post_template.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE)
+		self.per_timeline.get(key).and_then(|pt| pt.post.as_deref()).unwrap_or(DEFAULT_POST_TEMPLATE)
 	}
 
 	pub fn resolve_boost_template(&self, key: &str) -> &str {
-		self.per_timeline.get(key).and_then(|pt| pt.boost_template.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE)
+		self.per_timeline.get(key).and_then(|pt| pt.boost.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE)
+	}
+
+	pub fn resolve_quote_template(&self, key: &str) -> &str {
+		self.per_timeline.get(key).and_then(|pt| pt.quote.as_deref()).unwrap_or(DEFAULT_QUOTE_TEMPLATE)
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerTimelineTemplates {
-	pub post_template: Option<String>,
-	pub boost_template: Option<String>,
+	#[serde(rename = "post_template")]
+	pub post: Option<String>,
+	#[serde(rename = "boost_template")]
+	pub boost: Option<String>,
+	#[serde(rename = "quote_template")]
+	pub quote: Option<String>,
 }
 
 const fn default_enter_to_send() -> bool {

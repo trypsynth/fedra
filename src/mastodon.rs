@@ -34,6 +34,18 @@ pub struct AppCredentials {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+pub struct Quote {
+	pub quoted_status: Option<Box<Status>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct QuoteApproval {
+	pub current_user: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Status {
 	pub id: String,
 	pub url: Option<String>,
@@ -42,6 +54,8 @@ pub struct Status {
 	pub account: Account,
 	pub spoiler_text: String,
 	pub reblog: Option<Box<Self>>,
+	pub quote: Option<Quote>,
+	pub quote_approval: Option<QuoteApproval>,
 	#[serde(default)]
 	pub media_attachments: Vec<MediaAttachment>,
 	pub application: Option<Application>,
@@ -315,12 +329,17 @@ impl Status {
 		cw_expanded: bool,
 		post_template: &str,
 		boost_template: &str,
+		quote_template: &str,
 		filter_ctx: &FilterContext,
 	) -> String {
 		self.reblog.as_ref().map_or_else(
 			|| {
 				let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
-				render_template(post_template, &vars)
+				if self.quote.as_ref().is_some_and(|q| q.quoted_status.is_some()) {
+					render_template(quote_template, &vars)
+				} else {
+					render_template(post_template, &vars)
+				}
 			},
 			|boosted| {
 				let mut vars = boosted.build_template_vars(options, cw_expanded, filter_ctx);
@@ -354,7 +373,7 @@ impl Status {
 		let (content_warning, is_filtered) =
 			filter_cw.map_or_else(|| (self.spoiler_text.trim().to_string(), false), |fw| (fw, true));
 
-		let content = if is_filtered {
+		let mut content = if is_filtered {
 			self.content_with_spoiler(options.cw_display, cw_expanded, &content_warning)
 		} else {
 			self.content_with_cw(options.cw_display, cw_expanded)
@@ -369,6 +388,28 @@ impl Status {
 		let client = self.client_name().unwrap_or_default();
 		let media = self.media_summary().unwrap_or_default();
 		let poll = self.poll_summary().map_or_else(String::new, |p| format!(" {p}"));
+
+		let (quote_author, quote_username, quote_content, quote_media, quote_poll) =
+			self.quote.as_ref().and_then(|q| q.quoted_status.as_ref()).map_or_else(
+				|| (String::new(), String::new(), String::new(), String::new(), String::new()),
+				|quote| {
+					if content.starts_with("RE: http") {
+						if let Some(url_end) = content.find('\n') {
+							content = content[url_end..].trim().to_string();
+						} else {
+							if content.split_whitespace().count() <= 2 {
+								content.clear();
+							}
+						}
+					}
+					let author = quote.account.timeline_display_name(options.display_name_emoji_mode);
+					let username = format!("@{}", quote.account.acct);
+					let content = quote.content_with_cw(options.cw_display, cw_expanded);
+					let media = quote.media_summary().map(|s| format!(" {s}")).unwrap_or_default();
+					let poll = quote.poll_summary().map_or_else(String::new, |p| format!(" {p}"));
+					(author, username, content, media, poll)
+				},
+			);
 
 		PostTemplateVars {
 			author,
@@ -386,6 +427,11 @@ impl Status {
 			poll,
 			booster: String::new(),
 			booster_username: String::new(),
+			quote_author,
+			quote_username,
+			quote_content,
+			quote_media,
+			quote_poll,
 		}
 	}
 
@@ -399,7 +445,7 @@ impl Status {
 		}
 	}
 
-	fn content_with_cw(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> String {
+	pub fn content_with_cw(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> String {
 		self.content_with_spoiler(cw_display, cw_expanded, self.spoiler_text.trim())
 	}
 
@@ -830,6 +876,7 @@ impl MastodonClient {
 		language: Option<&str>,
 		poll: Option<&crate::network::PollData>,
 		in_reply_to_id: Option<&str>,
+		quote_id: Option<&str>,
 	) -> Result<Status> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
@@ -853,6 +900,11 @@ impl MastodonClient {
 			&& !in_reply_to_id.trim().is_empty()
 		{
 			params.push(("in_reply_to_id".to_string(), in_reply_to_id.to_string()));
+		}
+		if let Some(quote_id) = quote_id
+			&& !quote_id.trim().is_empty()
+		{
+			params.push(("quoted_status_id".to_string(), quote_id.to_string()));
 		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));

@@ -6,7 +6,7 @@ use crate::{
 	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
-	ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
+	ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
 	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_THREAD,
 	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
@@ -209,6 +209,13 @@ pub fn bind_input_handlers(
 				return;
 			}
 
+			if event.control_down() && key == 81 {
+				// Ctrl+Q
+				let _ = ui_tx_list_key.send(UiCommand::Quote);
+				event.skip(false);
+				return;
+			}
+
 			if event.control_down() {
 				if event.shift_down() && key == 75 {
 					// Ctrl+Shift+K
@@ -281,11 +288,18 @@ pub fn bind_input_handlers(
 				}
 			}
 
+			if quick_action_keys_list.get() && event.shift_down() && !event.control_down() && key == 81 {
+				// Shift+Q
+				let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(false));
+				event.skip(false);
+				return;
+			}
+
 			if quick_action_keys_list.get() && !event.control_down() && !event.shift_down() && !event.alt_down() {
 				match key {
 					81 => {
 						// q
-						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(false));
+						let _ = ui_tx_list_key.send(UiCommand::Quote);
 						event.skip(false);
 						return;
 					}
@@ -404,6 +418,7 @@ pub fn bind_input_handlers(
 		let mut menu = Menu::builder().build();
 		menu.append(ID_REPLY, "&Reply...", "Reply to all mentioned users", ItemKind::Normal);
 		menu.append(ID_REPLY_AUTHOR, "Reply to &Author...", "Reply to author only", ItemKind::Normal);
+		menu.append(ID_QUOTE, "&Quote...", "Quote this post", ItemKind::Normal);
 		menu.append_separator();
 		let fav_label = if cms.favourited { "Un&favorite" } else { "&Favorite" };
 		menu.append(ID_FAVORITE, fav_label, "Favorite or unfavorite selected post", ItemKind::Normal);
@@ -541,6 +556,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::Reply { reply_all: false });
+		}
+		ID_QUOTE => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::Quote);
 		}
 		ID_FAVORITE => {
 			if shutdown_menu.get() {
