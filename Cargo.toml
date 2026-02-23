@@ -9,7 +9,7 @@ members = ["xtask"]
 
 [dependencies]
 anyhow = "1.0.102"
-chrono = "0.4.43"
+chrono = "0.4.44"
 chrono-humanize = "0.2.3"
 clearurls = "0.0.4"
 ego-tree = "0.10.0"
