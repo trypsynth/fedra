@@ -18,6 +18,7 @@ pub enum TimelineType {
 	Favorites,
 	User { id: String, name: String },
 	Thread { id: String, name: String },
+	List { id: String, title: String },
 	Search { query: String, search_type: SearchType },
 	Hashtag { name: String },
 }
@@ -33,6 +34,7 @@ impl TimelineType {
 			Self::Bookmarks => "Bookmarks".to_string(),
 			Self::Favorites => "Favorites".to_string(),
 			Self::User { name, .. } | Self::Thread { name, .. } => name.clone(),
+			Self::List { title, .. } => format!("List: {title}"),
 			Self::Search { query, .. } => format!("Search: {query}"),
 			Self::Hashtag { name } => format!("#{name}"),
 		}
@@ -40,7 +42,7 @@ impl TimelineType {
 
 	pub const fn filter_context(&self) -> FilterContext {
 		match self {
-			Self::Home => FilterContext::Home,
+			Self::Home | Self::List { .. } => FilterContext::Home,
 			Self::Notifications => FilterContext::Notifications,
 			Self::Local | Self::Federated | Self::Search { .. } | Self::Hashtag { .. } => FilterContext::Public,
 			Self::Thread { .. } => FilterContext::Thread,
@@ -59,6 +61,7 @@ impl TimelineType {
 			Self::Favorites => "api/v1/favourites".to_string(),
 			Self::User { id, .. } => format!("api/v1/accounts/{id}/statuses"),
 			Self::Thread { id, .. } => format!("api/v1/statuses/{id}/context"),
+			Self::List { id, .. } => format!("api/v1/timelines/list/{id}"),
 			Self::Search { .. } => "api/v2/search".to_string(),
 			Self::Hashtag { name } => format!("api/v1/timelines/tag/{name}"),
 		}
@@ -71,12 +74,13 @@ impl TimelineType {
 		}
 	}
 
-	pub const fn stream_params(&self) -> Option<&str> {
+	pub fn stream_params(&self) -> Option<String> {
 		match self {
-			Self::Home | Self::Notifications => Some("user"),
-			Self::Direct => Some("direct"),
-			Self::Local => Some("public:local"),
-			Self::Federated => Some("public"),
+			Self::Home | Self::Notifications => Some("user".to_string()),
+			Self::Direct => Some("direct".to_string()),
+			Self::Local => Some("public:local".to_string()),
+			Self::Federated => Some("public".to_string()),
+			Self::List { id, .. } => Some(format!("list:{id}")),
 			Self::Bookmarks
 			| Self::Favorites
 			| Self::User { .. }
@@ -96,7 +100,7 @@ impl TimelineType {
 
 	pub const fn template_key(&self) -> &str {
 		match self {
-			Self::Home => "Home",
+			Self::Home | Self::List { .. } => "Home",
 			Self::Notifications => "Notifications",
 			Self::Direct => "Direct Messages",
 			Self::Local => "Local",

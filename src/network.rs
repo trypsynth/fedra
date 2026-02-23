@@ -161,6 +161,32 @@ pub enum NetworkCommand {
 		limit: Option<u32>,
 		offset: Option<u32>,
 	},
+	FetchLists,
+	CreateList {
+		title: String,
+		policy: String,
+		exclusive: bool,
+	},
+	UpdateList {
+		id: String,
+		title: String,
+		policy: String,
+		exclusive: bool,
+	},
+	DeleteList {
+		id: String,
+	},
+	FetchListAccounts {
+		list_id: String,
+	},
+	AddListAccount {
+		list_id: String,
+		account_id: String,
+	},
+	RemoveListAccount {
+		list_id: String,
+		account_id: String,
+	},
 	Shutdown,
 }
 
@@ -292,6 +318,36 @@ pub enum NetworkResponse {
 		search_type: SearchType,
 		result: Result<SearchResults>,
 		offset: Option<u32>,
+	},
+	ListsFetched {
+		result: Result<Vec<crate::mastodon::List>>,
+	},
+	ListCreated {
+		result: Result<crate::mastodon::List>,
+	},
+	ListUpdated {
+		result: Result<crate::mastodon::List>,
+	},
+	ListDeleted {
+		#[allow(dead_code)]
+		id: String,
+		result: Result<()>,
+	},
+	ListAccountsFetched {
+		list_id: String,
+		result: Result<Vec<Account>>,
+	},
+	ListAccountAdded {
+		#[allow(dead_code)]
+		list_id: String,
+		result: Result<()>,
+	},
+	ListAccountRemoved {
+		#[allow(dead_code)]
+		list_id: String,
+		#[allow(dead_code)]
+		account_id: String,
+		result: Result<()>,
 	},
 }
 
@@ -755,6 +811,34 @@ fn network_loop(
 					ui_waker,
 					NetworkResponse::SearchLoaded { query, search_type, result, offset },
 				);
+			}
+			Ok(NetworkCommand::FetchLists) => {
+				let result = client.get_lists(access_token);
+				send_response(responses, ui_waker, NetworkResponse::ListsFetched { result });
+			}
+			Ok(NetworkCommand::CreateList { title, policy, exclusive }) => {
+				let result = client.create_list(access_token, &title, &policy, exclusive);
+				send_response(responses, ui_waker, NetworkResponse::ListCreated { result });
+			}
+			Ok(NetworkCommand::UpdateList { id, title, policy, exclusive }) => {
+				let result = client.update_list(access_token, &id, &title, &policy, exclusive);
+				send_response(responses, ui_waker, NetworkResponse::ListUpdated { result });
+			}
+			Ok(NetworkCommand::DeleteList { id }) => {
+				let result = client.delete_list(access_token, &id);
+				send_response(responses, ui_waker, NetworkResponse::ListDeleted { id, result });
+			}
+			Ok(NetworkCommand::FetchListAccounts { list_id }) => {
+				let result = client.get_list_accounts(access_token, &list_id);
+				send_response(responses, ui_waker, NetworkResponse::ListAccountsFetched { list_id, result });
+			}
+			Ok(NetworkCommand::AddListAccount { list_id, account_id }) => {
+				let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
+				send_response(responses, ui_waker, NetworkResponse::ListAccountAdded { list_id, result });
+			}
+			Ok(NetworkCommand::RemoveListAccount { list_id, account_id }) => {
+				let result = client.remove_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
+				send_response(responses, ui_waker, NetworkResponse::ListAccountRemoved { list_id, account_id, result });
 			}
 			Ok(NetworkCommand::Shutdown) | Err(_) => {
 				break;

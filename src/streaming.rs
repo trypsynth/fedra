@@ -52,8 +52,10 @@ pub fn start_streaming(
 	let stream_param = timeline_type.stream_params()?;
 	let mut streaming_url = base_url.join("api/v1/streaming").ok()?;
 	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
-	streaming_url.set_scheme(scheme).ok()?;
-	streaming_url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", stream_param);
+	if streaming_url.set_scheme(scheme) == Err(()) {
+		return None;
+	}
+	streaming_url.query_pairs_mut().append_pair("access_token", access_token).append_pair("stream", &stream_param);
 	let (sender, receiver) = mpsc::channel();
 	let thread = thread::spawn(move || {
 		streaming_loop(&streaming_url, &timeline_type, &sender, &ui_waker);

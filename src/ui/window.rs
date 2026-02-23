@@ -512,6 +512,12 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::ManageFilters);
 		}
+		crate::ui::ids::ID_MANAGE_LISTS => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::ManageLists);
+		}
 		ID_EDIT_PROFILE => {
 			if shutdown_menu.get() {
 				return;
@@ -601,6 +607,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Direct));
+		}
+		crate::ui::ids::ID_OPEN_LIST => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::OpenList);
 		}
 		crate::ID_BOOKMARKS_TIMELINE => {
 			if shutdown_menu.get() {

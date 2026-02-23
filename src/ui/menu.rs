@@ -23,6 +23,7 @@ pub fn build_menu_bar() -> MenuBar {
 		"Manage content filters",
 		ItemKind::Normal,
 	);
+	file_menu.append(crate::ui::ids::ID_MANAGE_LISTS, "Manage &Lists...", "Create and manage lists", ItemKind::Normal);
 	file_menu.append(
 		ID_EDIT_PROFILE,
 		"Edit &Profile...\tCtrl+Shift+E",
@@ -112,6 +113,7 @@ pub fn build_menu_bar() -> MenuBar {
 		.append_item(ID_DIRECT_TIMELINE, "&Direct Messages\tCtrl+D", "Open direct messages timeline")
 		.append_item(crate::ID_BOOKMARKS_TIMELINE, "&Bookmarks", "Open bookmarks timeline")
 		.append_item(crate::ID_FAVORITES_TIMELINE, "F&avorites", "Open favorites timeline")
+		.append_item(crate::ui::ids::ID_OPEN_LIST, "Open &List...", "Open a Mastodon list")
 		.append_separator()
 		.append_item(ID_LOAD_MORE, "Load &More\t.", "Load more posts from server")
 		.append_separator()

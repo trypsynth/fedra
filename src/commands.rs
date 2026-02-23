@@ -111,6 +111,10 @@ pub enum UiCommand {
 	Search,
 	CheckForUpdates,
 	ManageFilters,
+	ManageLists,
+	ManageListsDialogClosed,
+	ManageListMembersDialogClosed,
+	OpenList,
 	ContinueThread(Box<Status>),
 }
 
@@ -1411,6 +1415,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::CheckForUpdates => {
 			crate::ui::update_check::run_update_check(*frame, false);
 		}
+		UiCommand::OpenList => {
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchLists);
+			} else {
+				live_region::announce(live_region, "Network not available");
+			}
+		}
+		UiCommand::ManageListsDialogClosed => {
+			state.manage_lists_dialog = None;
+		}
+		UiCommand::ManageListMembersDialogClosed => {
+			state.manage_list_members_dialog = None;
+		}
 		UiCommand::ManageFilters => {
 			let Some(client) = &state.client else {
 				live_region::announce(live_region, "Network not available");
@@ -1489,6 +1506,25 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					}
 				},
 				Err(e) => dialogs::show_error(frame, &e),
+			}
+		}
+		UiCommand::ManageLists => {
+			if let Some(handle) = &state.network_handle {
+				if let Some(dlg) = &state.manage_lists_dialog {
+					dlg.show();
+				} else {
+					let net_tx = handle.command_tx.clone();
+					let ui_tx_close = ui_tx.clone();
+					let dlg = dialogs::ManageListsDialog::new(frame, Vec::new(), net_tx, move || {
+						let _ = ui_tx_close.send(UiCommand::ManageListsDialogClosed);
+					});
+					dlg.show();
+					state.manage_lists_dialog = Some(dlg);
+
+					handle.send(NetworkCommand::FetchLists);
+				}
+			} else {
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 	}

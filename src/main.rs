@@ -58,6 +58,7 @@ use crate::{
 };
 
 #[derive(Copy, Clone, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ContextMenuState {
 	pub favourited: bool,
 	pub reblogged: bool,
@@ -77,6 +78,8 @@ pub(crate) struct AppState {
 	pub(crate) poll_limits: PollLimits,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 	pub(crate) profile_dialog: Option<ui::dialogs::ProfileDialog>,
+	pub(crate) manage_lists_dialog: Option<ui::dialogs::ManageListsDialog>,
+	pub(crate) manage_list_members_dialog: Option<ui::dialogs::ManageListMembersDialog>,
 	pub(crate) pending_auth_dialog: Option<Dialog>,
 	pub(crate) client: Option<MastodonClient>,
 	pub(crate) pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
@@ -104,6 +107,8 @@ impl AppState {
 			poll_limits: PollLimits::default(),
 			hashtag_dialog: None,
 			profile_dialog: None,
+			manage_lists_dialog: None,
+			manage_list_members_dialog: None,
 			pending_auth_dialog: None,
 			client: None,
 			pending_user_lookup_action: None,

@@ -803,6 +803,27 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, &spoken_failure("Failed to update profile", &err));
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
+				if let Some(dlg) = &state.manage_list_members_dialog
+					&& matches!(search_type, crate::mastodon::SearchType::Accounts) {
+						let labels: Vec<String> = results
+							.accounts
+							.iter()
+							.map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct))
+							.collect();
+						let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+						let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
+
+						if let Some(account) = dialogs::prompt_for_account_choice(frame, &accounts_ref, &label_refs)
+							&& let Some(handle) = &state.network_handle
+						{
+							handle.send(NetworkCommand::AddListAccount {
+								list_id: dlg.get_list_id().to_string(),
+								account_id: account.id,
+							});
+						}
+						return;
+					}
+
 				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
@@ -894,6 +915,86 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region,
 					&format!("Search for '{query}' failed: {}", summarize_api_error(err)),
 				);
+			}
+			NetworkResponse::ListsFetched { result: Ok(lists) } => {
+				if let Some(dlg) = &state.manage_lists_dialog {
+					dlg.update_lists(lists);
+				} else if lists.is_empty() {
+					live_region::announce(live_region, "No lists found");
+				} else if let Some(list) = dialogs::prompt_for_list_selection(frame, &lists) {
+					let timeline_type = TimelineType::List { id: list.id, title: list.title };
+					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
+				}
+			}
+			NetworkResponse::ListsFetched { result: Err(err) } => {
+				live_region::announce(live_region, &spoken_failure("Failed to fetch lists", &err));
+			}
+			NetworkResponse::ListCreated { result: Ok(list) } => {
+				live_region::announce(live_region, &format!("List '{}' created", list.title));
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::FetchLists);
+				}
+			}
+			NetworkResponse::ListCreated { result: Err(err) }
+			| NetworkResponse::ListUpdated { result: Err(err) }
+			| NetworkResponse::ListDeleted { result: Err(err), .. }
+			| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
+			| NetworkResponse::ListAccountAdded { result: Err(err), .. }
+			| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => {
+				dialogs::show_error(frame, &err);
+			}
+			NetworkResponse::ListUpdated { result: Ok(list) } => {
+				live_region::announce(live_region, &format!("List '{}' updated", list.title));
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::FetchLists);
+				}
+			}
+
+			NetworkResponse::ListDeleted { id: _, result: Ok(()) } => {
+				live_region::announce(live_region, "List deleted");
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::FetchLists);
+				}
+			}
+
+			NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
+				if let Some(dlg) = &state.manage_lists_dialog {
+					let list_title = dlg.get_list_title(&list_id).unwrap_or_default();
+					if let Some(handle) = &state.network_handle {
+						let net_tx = handle.command_tx.clone();
+						let ui_tx_dlg = ui_tx.clone();
+						let members_dlg = dialogs::ManageListMembersDialog::new(
+							frame,
+							list_id,
+							&list_title,
+							members,
+							net_tx,
+							move || {
+								let _ = ui_tx_dlg.send(UiCommand::ManageListMembersDialogClosed);
+							},
+						);
+						members_dlg.show();
+						state.manage_list_members_dialog = Some(members_dlg);
+					}
+				}
+			}
+
+			NetworkResponse::ListAccountAdded { result: Ok(()), .. } => {
+				live_region::announce(live_region, "Member added");
+				if let Some(dlg) = &state.manage_list_members_dialog
+					&& let Some(handle) = &state.network_handle
+				{
+					handle.send(NetworkCommand::FetchListAccounts { list_id: dlg.get_list_id().to_string() });
+				}
+			}
+
+			NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => {
+				live_region::announce(live_region, "Member removed");
+				if let Some(dlg) = &state.manage_list_members_dialog
+					&& let Some(handle) = &state.network_handle
+				{
+					handle.send(NetworkCommand::FetchListAccounts { list_id: dlg.get_list_id().to_string() });
+				}
 			}
 		}
 	}

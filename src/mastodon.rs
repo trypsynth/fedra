@@ -98,6 +98,15 @@ pub struct FilterKeyword {
 	pub whole_word: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct List {
+	pub id: String,
+	pub title: String,
+	pub replies_policy: Option<String>,
+	#[serde(default)]
+	pub exclusive: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterContext {
@@ -560,10 +569,10 @@ impl Notification {
 		match self.kind.as_str() {
 			"mention" | "status" => self.status_text(options, cw_expanded),
 			"reblog" => self.status.as_ref().map_or_else(
-				|| format!("{} boosted a post", actor),
+				|| format!("{actor} boosted a post"),
 				|status| {
 					let mut vars = status.build_template_vars(options, cw_expanded, &options.filter_context);
-					vars.booster = actor.clone();
+					vars.booster.clone_from(&actor);
 					vars.booster_username = format!("@{}", self.account.acct);
 					render_template(&options.boost_template, &vars)
 				},
@@ -1610,6 +1619,130 @@ impl MastodonClient {
 			.context("Instance rejected filters request")?;
 		let filters: Vec<Filter> = response.json().context("Invalid filters response")?;
 		Ok(filters)
+	}
+
+	pub fn get_lists(&self, access_token: &str) -> Result<Vec<List>> {
+		let url = self.base_url.join("api/v1/lists")?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch lists")?
+			.error_for_status()
+			.context("Instance rejected lists request")?;
+		let lists: Vec<List> = response.json().context("Invalid lists response")?;
+		Ok(lists)
+	}
+
+	pub fn create_list(&self, access_token: &str, title: &str, replies_policy: &str, exclusive: bool) -> Result<List> {
+		let url = self.base_url.join("api/v1/lists")?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&[
+				("title", title),
+				("replies_policy", replies_policy),
+				("exclusive", if exclusive { "true" } else { "false" }),
+			])
+			.send()
+			.context("Failed to create list")?
+			.error_for_status()
+			.context("Instance rejected list creation")?;
+		let list: List = response.json().context("Invalid list response")?;
+		Ok(list)
+	}
+
+	pub fn update_list(
+		&self,
+		access_token: &str,
+		id: &str,
+		title: &str,
+		replies_policy: &str,
+		exclusive: bool,
+	) -> Result<List> {
+		let url = self.base_url.join(&format!("api/v1/lists/{id}"))?;
+		let response = self
+			.http
+			.put(url)
+			.bearer_auth(access_token)
+			.form(&[
+				("title", title),
+				("replies_policy", replies_policy),
+				("exclusive", if exclusive { "true" } else { "false" }),
+			])
+			.send()
+			.context("Failed to update list")?
+			.error_for_status()
+			.context("Instance rejected list update")?;
+		let list: List = response.json().context("Invalid list response")?;
+		Ok(list)
+	}
+
+	pub fn delete_list(&self, access_token: &str, id: &str) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v1/lists/{id}"))?;
+		let _ = self
+			.http
+			.delete(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to delete list")?
+			.error_for_status()
+			.context("Instance rejected list deletion")?;
+		Ok(())
+	}
+
+	pub fn get_list_accounts(&self, access_token: &str, list_id: &str) -> Result<Vec<Account>> {
+		let mut url = self.base_url.join(&format!("api/v1/lists/{list_id}/accounts"))?;
+		url.query_pairs_mut().append_pair("limit", "0");
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch list accounts")?
+			.error_for_status()
+			.context("Instance rejected list accounts request")?;
+		let accounts: Vec<Account> = response.json().context("Invalid list accounts response")?;
+		Ok(accounts)
+	}
+
+	pub fn add_list_accounts(&self, access_token: &str, list_id: &str, account_ids: &[String]) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v1/lists/{list_id}/accounts"))?;
+		let mut params = Vec::new();
+		for id in account_ids {
+			params.push(("account_ids[]", id));
+		}
+		let _ = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&params)
+			.send()
+			.context("Failed to add accounts to list")?
+			.error_for_status()
+			.context("Instance rejected adding accounts")?;
+		Ok(())
+	}
+
+	pub fn remove_list_accounts(&self, access_token: &str, list_id: &str, account_ids: &[String]) -> Result<()> {
+		let mut url = self.base_url.join(&format!("api/v1/lists/{list_id}/accounts"))?;
+		{
+			let mut query = url.query_pairs_mut();
+			for id in account_ids {
+				query.append_pair("account_ids[]", id);
+			}
+		}
+		let _ = self
+			.http
+			.delete(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to remove accounts from list")?
+			.error_for_status()
+			.context("Instance rejected removing accounts")?;
+		Ok(())
 	}
 
 	pub fn create_filter(
