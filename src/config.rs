@@ -53,6 +53,15 @@ pub struct Config {
 	pub strip_tracking: bool,
 	#[serde(default)]
 	pub templates: PostTemplates,
+	#[serde(default)]
+	pub find_loading_mode: FindLoadingMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FindLoadingMode {
+	#[default]
+	None,
+	LoadOnNext,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -252,6 +261,7 @@ impl Default for Config {
 			hotkey: HotkeyConfig::default(),
 			strip_tracking: true,
 			templates: PostTemplates::default(),
+			find_loading_mode: FindLoadingMode::default(),
 		}
 	}
 }

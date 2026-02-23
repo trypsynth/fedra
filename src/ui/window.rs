@@ -126,6 +126,7 @@ pub fn bind_input_handlers(
 	let quick_action_keys_list = quick_action_keys_enabled;
 	let autoload_mode_list = autoload_mode.clone();
 	let sort_order_list = sort_order_cell.clone();
+	let find_frame = parts.frame;
 	timeline_list_state.bind_internal(EventType::KEY_DOWN, move |event| {
 		if shutdown_list_key.get() {
 			return;
@@ -178,6 +179,16 @@ pub fn bind_input_handlers(
 						event.skip(false);
 						return;
 					}
+					342 => {
+						// F3
+						if event.shift_down() {
+							let _ = ui_tx_list_key.send(UiCommand::FindPrev);
+						} else {
+							let _ = ui_tx_list_key.send(UiCommand::FindNext);
+						}
+						event.skip(false);
+						return;
+					}
 					_ => {}
 				}
 
@@ -202,11 +213,34 @@ pub fn bind_input_handlers(
 				}
 			}
 
-			if event.control_down() && event.shift_down() && key == 81 {
-				// Ctrl+Shift+Q
-				let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(true));
-				event.skip(false);
-				return;
+			if event.control_down() && event.shift_down() {
+				match key {
+					81 => {
+						// Ctrl+Shift+Q
+						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(true));
+						event.skip(false);
+						return;
+					}
+					70 => {
+						// Ctrl+Shift+F
+						let _ = ui_tx_list_key.send(UiCommand::Favorite);
+						event.skip(false);
+						return;
+					}
+					66 => {
+						// Ctrl+Shift+B
+						let _ = ui_tx_list_key.send(UiCommand::Boost);
+						event.skip(false);
+						return;
+					}
+					75 => {
+						// Ctrl+Shift+K
+						let _ = ui_tx_list_key.send(UiCommand::Bookmark);
+						event.skip(false);
+						return;
+					}
+					_ => {}
+				}
 			}
 
 			if event.control_down() && key == 81 {
@@ -217,12 +251,6 @@ pub fn bind_input_handlers(
 			}
 
 			if event.control_down() {
-				if event.shift_down() && key == 75 {
-					// Ctrl+Shift+K
-					let _ = ui_tx_list_key.send(UiCommand::Bookmark);
-					event.skip(false);
-					return;
-				}
 				match key {
 					87 => {
 						// w
@@ -281,6 +309,14 @@ pub fn bind_input_handlers(
 					46 => {
 						// .
 						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+						event.skip(false);
+						return;
+					}
+					70 => {
+						// f
+						if let Some(query) = crate::ui::dialogs::prompt_for_find(&find_frame) {
+							let _ = ui_tx_list_key.send(UiCommand::Find(query));
+						}
 						event.skip(false);
 						return;
 					}
@@ -730,6 +766,26 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::Search);
+		}
+		crate::ui::ids::ID_FIND => {
+			if shutdown_menu.get() {
+				return;
+			}
+			if let Some(query) = crate::ui::dialogs::prompt_for_find(&frame_menu) {
+				let _ = ui_tx_menu.send(UiCommand::Find(query));
+			}
+		}
+		crate::ui::ids::ID_FIND_NEXT => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::FindNext);
+		}
+		crate::ui::ids::ID_FIND_PREV => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::FindPrev);
 		}
 		ID_CHECK_FOR_UPDATES => {
 			if shutdown_menu.get() {

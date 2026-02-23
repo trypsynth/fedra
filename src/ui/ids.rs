@@ -62,6 +62,9 @@ define_ids! {
 	ID_VIEW_HELP,
 	ID_CHECK_FOR_UPDATES,
 	ID_SEARCH,
+	ID_FIND,
+	ID_FIND_NEXT,
+	ID_FIND_PREV,
 	// Internal
 	ID_UI_WAKE,
 }

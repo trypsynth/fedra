@@ -881,6 +881,7 @@ pub struct OptionsDialogInput {
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
+	pub find_loading_mode: crate::config::FindLoadingMode,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -901,6 +902,7 @@ pub struct OptionsDialogResult {
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
+	pub find_loading_mode: crate::config::FindLoadingMode,
 }
 
 type TemplateState = HashMap<String, (String, String, String)>;
@@ -923,6 +925,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		notification_preference,
 		hotkey,
 		templates,
+		find_loading_mode,
 	} = input;
 	let dialog = Dialog::builder(frame, "Options").with_size(500, 520).build();
 	let panel = Panel::builder(&dialog).build();
@@ -1048,12 +1051,17 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	sort_checkbox.set_value(sort_order == SortOrder::OldestToNewest);
 	let thread_order_checkbox = CheckBox::builder(&timeline_panel).with_label("Always preserve thread &order").build();
 	thread_order_checkbox.set_value(preserve_thread_order);
+
+	let find_load_checkbox = CheckBox::builder(&timeline_panel).with_label("Load more on find &next").build();
+	find_load_checkbox.set_value(find_loading_mode == crate::config::FindLoadingMode::LoadOnNext);
+
 	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&emoji_mode_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&find_load_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let customize_button = Button::builder(&timeline_panel).with_label("Customize Default Timelines...").build();
 	let current_defaults = Rc::new(RefCell::new(default_timelines_val));
 	let defaults_clone = current_defaults.clone();
@@ -1257,6 +1265,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		Some(1) => crate::config::UpdateChannel::Dev,
 		_ => update_channel,
 	};
+	let new_find_loading_mode = if find_load_checkbox.get_value() {
+		crate::config::FindLoadingMode::LoadOnNext
+	} else {
+		crate::config::FindLoadingMode::None
+	};
 	{
 		let mut ts = template_state.borrow_mut();
 		let current_key = prev_selection.borrow().clone();
@@ -1301,6 +1314,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		notification_preference: new_notification_preference,
 		hotkey: current_hotkey.borrow().clone(),
 		templates: new_templates,
+		find_loading_mode: new_find_loading_mode,
 	})
 }
 
@@ -4114,4 +4128,58 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		ID_FAVORITE => Some(UiCommand::Favorite),
 		_ => None,
 	}
+}
+
+pub fn prompt_for_find(parent: &dyn WxWidget) -> Option<String> {
+	let dialog = Dialog::builder(parent, "Find").with_size(350, 150).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let label = StaticText::builder(&panel).with_label("Find text in timeline:").build();
+	let input = TextCtrl::builder(&panel).with_style(TextCtrlStyle::ProcessEnter).build();
+
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let find_button = Button::builder(&panel).with_id(ID_OK).with_label("Find").build();
+	find_button.set_default();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&find_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+
+	main_sizer.add(&label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+
+	input.on_key_down(move |event| {
+		if let WindowEventData::Keyboard(ref key_event) = event {
+			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
+				dialog.end_modal(ID_OK);
+				event.skip(false);
+			} else {
+				event.skip(true);
+			}
+		} else {
+			event.skip(true);
+		}
+	});
+
+	dialog.centre();
+	input.set_focus();
+
+	if dialog.show_modal() == ID_OK {
+		let text = input.get_value();
+		if !text.is_empty() {
+			return Some(text);
+		}
+	}
+	None
 }
