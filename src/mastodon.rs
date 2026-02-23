@@ -357,7 +357,11 @@ impl Status {
 		filter_ctx: &FilterContext,
 	) -> String {
 		let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
-		render_template(&options.post_template, &vars)
+		if self.quote.as_ref().is_some_and(|q| q.quoted_status.is_some()) {
+			render_template(&options.quote_template, &vars)
+		} else {
+			render_template(&options.post_template, &vars)
+		}
 	}
 
 	pub(crate) fn build_template_vars(
@@ -396,10 +400,8 @@ impl Status {
 					if content.starts_with("RE: http") {
 						if let Some(url_end) = content.find('\n') {
 							content = content[url_end..].trim().to_string();
-						} else {
-							if content.split_whitespace().count() <= 2 {
-								content.clear();
-							}
+						} else if content.split_whitespace().count() <= 2 {
+							content.clear();
 						}
 					}
 					let author = quote.account.timeline_display_name(options.display_name_emoji_mode);
