@@ -1269,6 +1269,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			let Some(status) = get_selected_status(state) else { return };
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			let mut links = html::extract_links(&target.content);
+			if let Some(quote) = &target.quote
+				&& let Some(quoted_status) = &quote.quoted_status
+			{
+				let mut quote_links = html::extract_links(&quoted_status.content);
+				links.append(&mut quote_links);
+				if let Some(quote_url) = &quoted_status.url {
+					links.retain(|link| link.url != *quote_url);
+				}
+			}
+			// Remove duplicates while preserving order
+			let mut seen = std::collections::HashSet::new();
+			links.retain(|link| seen.insert(link.url.clone()));
+
 			if links.is_empty() {
 				live_region::announce(live_region, "No links in this post");
 				return;
@@ -1294,11 +1307,50 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			};
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+
+			let mut options = Vec::new();
+			let mut urls = Vec::new();
+
 			if let Some(url) = &target.url {
-				live_region::announce(live_region, "Opening post in browser");
-				let _ = launch_default_browser(url, BrowserLaunchFlags::Default);
-			} else {
+				options.push("Original Post");
+				urls.push(url.clone());
+			}
+
+			if let Some(quote) = &target.quote
+				&& let Some(quoted_status) = &quote.quoted_status
+				&& let Some(quote_url) = &quoted_status.url
+			{
+				options.push("Quoted Post");
+				urls.push(quote_url.clone());
+			}
+
+			if options.is_empty() {
 				live_region::announce(live_region, "Post URL not available");
+				return;
+			}
+
+			let url_to_open = if options.len() == 1 {
+				Some(urls[0].clone())
+			} else {
+				let dialog =
+					SingleChoiceDialog::builder(frame, "Which post do you want to open?", "View in Browser", &options)
+						.build();
+
+				if dialog.show_modal() == ID_OK {
+					let selection = dialog.get_selection();
+					if selection >= 0 && (selection as usize) < urls.len() {
+						Some(urls[selection as usize].clone())
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			};
+
+			if let Some(url) = url_to_open {
+				live_region::announce(live_region, "Opening post in browser");
+				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
 			}
 		}
 		UiCommand::ViewThread => {
