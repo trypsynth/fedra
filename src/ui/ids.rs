@@ -27,6 +27,7 @@ define_ids! {
 	ID_VOTE,
 	// Post navigation
 	ID_VIEW_THREAD,
+	ID_VIEW_QUOTED_THREAD,
 	ID_OPEN_LINKS,
 	ID_VIEW_IN_BROWSER,
 	ID_VIEW_MENTIONS,

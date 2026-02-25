@@ -240,6 +240,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	for response in handle.drain() {
 		match response {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
+				let mut should_find_next = false;
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
@@ -331,6 +332,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					}
 					timeline.next_max_id = next_max_id;
 					timeline.loading_more = false;
+					if is_active && timeline.pending_find_next {
+						timeline.pending_find_next = false;
+						should_find_next = true;
+					}
 				}
 				if !status_snapshots.is_empty() {
 					let mut merged_any = false;
@@ -354,6 +359,9 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							);
 						}
 					}
+				}
+				if should_find_next {
+					dispatch_ui_command!(crate::commands::UiCommand::FindNext);
 				}
 			}
 			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), max_id } => {

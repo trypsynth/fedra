@@ -99,6 +99,7 @@ pub enum UiCommand {
 	OpenLinks,
 	ViewInBrowser,
 	ViewThread,
+	ViewQuotedThread,
 	Vote,
 	LoadMore,
 	ToggleContentWarning,
@@ -1431,6 +1432,44 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				}
 			}
 		}
+		UiCommand::ViewQuotedThread => {
+			let quoted_info = get_selected_status(state).map_or_else(
+				|| {
+					live_region::announce(live_region, "No post selected");
+					None
+				},
+				|status| {
+					let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+					if let Some(quote) = &target.quote
+						&& let Some(quoted_status) = &quote.quoted_status
+					{
+						let name = format!("Thread: {}", quoted_status.account.display_name_or_username());
+						let timeline_type = TimelineType::Thread { id: quoted_status.id.clone(), name };
+						Some((timeline_type, *quoted_status.clone()))
+					} else {
+						live_region::announce(live_region, "No quoted post");
+						None
+					}
+				},
+			);
+
+			if let Some((timeline_type, focus_status)) = quoted_info {
+				open_timeline(
+					state,
+					timelines_selector,
+					timeline_list,
+					&timeline_type,
+					suppress_selection,
+					live_region,
+					frame,
+				);
+				let Some(handle) = &state.network_handle else {
+					live_region::announce(live_region, "Network not available");
+					return;
+				};
+				handle.send(NetworkCommand::FetchThread { timeline_type, focus: Box::new(focus_status) });
+			}
+		}
 		UiCommand::Vote => {
 			let Some(status) = get_selected_status(state) else {
 				live_region::announce(live_region, "No post selected");
@@ -1726,6 +1765,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							}
 						}
 						config::FindLoadingMode::LoadOnNext => {
+							active.pending_find_next = true;
 							live_region::announce(live_region, "Loading more...");
 							handle_ui_command(UiCommand::LoadMore, ctx);
 						}

@@ -263,6 +263,7 @@ pub struct Timeline {
 	pub last_load_attempt: Option<Instant>,
 	pub next_max_id: Option<String>,
 	pub find_query: Option<String>,
+	pub pending_find_next: bool,
 }
 
 impl Timeline {
@@ -277,6 +278,7 @@ impl Timeline {
 			last_load_attempt: None,
 			next_max_id: None,
 			find_query: None,
+			pending_find_next: false,
 		}
 	}
 
