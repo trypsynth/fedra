@@ -1338,8 +1338,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 
 				if dialog.show_modal() == ID_OK {
 					let selection = dialog.get_selection();
-					if selection >= 0 && (selection as usize) < urls.len() {
-						Some(urls[selection as usize].clone())
+					if let Ok(idx) = usize::try_from(selection)
+						&& idx < urls.len()
+					{
+						Some(urls[idx].clone())
 					} else {
 						None
 					}

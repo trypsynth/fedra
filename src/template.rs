@@ -1,8 +1,8 @@
 use minijinja::{Environment, context};
 
-pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{{ media }}{{ poll }} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
-pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{{ media }}{{ poll }}{% if quote_author %}, Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{{ quote_media }}{{ quote_poll }}{% endif %} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
-pub const DEFAULT_QUOTE_TEMPLATE: &str = "{{ author }}: {{ content }}, Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{{ quote_media }}{{ quote_poll }} - {{ relative_time }}, {{ visibility }}, {{ reply_count }}, {{ boost_count }}, {{ favorite_count }}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{{ media }}{{ poll }} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{{ media }}{{ poll }}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{{ quote_media }}{{ quote_poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_QUOTE_TEMPLATE: &str = "{{ author }}: {{ content }} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{{ quote_media }}{{ quote_poll }} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 
 pub struct PostTemplateVars {
 	pub author: String,

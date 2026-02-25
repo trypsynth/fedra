@@ -533,7 +533,13 @@ impl Status {
 }
 
 fn count_label(count: u64, singular: &str, plural: &str) -> String {
-	if count == 1 { format!("{count} {singular}") } else { format!("{count} {plural}") }
+	if count == 0 {
+		String::new()
+	} else if count == 1 {
+		format!("{count} {singular}")
+	} else {
+		format!("{count} {plural}")
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]
