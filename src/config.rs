@@ -54,6 +54,8 @@ pub struct Config {
 	#[serde(default)]
 	pub templates: PostTemplates,
 	#[serde(default)]
+	pub filters: TimelineFilters,
+	#[serde(default)]
 	pub find_loading_mode: FindLoadingMode,
 }
 
@@ -159,6 +161,64 @@ pub enum AutoloadMode {
 	AtBoundary,
 }
 
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimelineFilter {
+	#[serde(default = "default_true")]
+	pub original_posts: bool,
+	#[serde(default = "default_true")]
+	pub replies_to_others: bool,
+	#[serde(default = "default_true")]
+	pub replies_to_me: bool,
+	#[serde(default = "default_true")]
+	pub threads: bool,
+	#[serde(default = "default_true")]
+	pub boosts: bool,
+	#[serde(default = "default_true")]
+	pub quote_posts: bool,
+	#[serde(default = "default_true")]
+	pub media_posts: bool,
+	#[serde(default = "default_true")]
+	pub text_only_posts: bool,
+	#[serde(default = "default_true")]
+	pub your_posts: bool,
+	#[serde(default = "default_true")]
+	pub your_replies: bool,
+}
+
+impl Default for TimelineFilter {
+	fn default() -> Self {
+		Self {
+			original_posts: true,
+			replies_to_others: true,
+			replies_to_me: true,
+			threads: true,
+			boosts: true,
+			quote_posts: true,
+			media_posts: true,
+			text_only_posts: true,
+			your_posts: true,
+			your_replies: true,
+		}
+	}
+}
+
+const fn default_true() -> bool {
+	true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TimelineFilters {
+	#[serde(default)]
+	pub per_timeline: HashMap<String, TimelineFilter>,
+}
+
+impl TimelineFilters {
+	pub fn resolve(&self, key: &str) -> TimelineFilter {
+		self.per_timeline.get(key).cloned().unwrap_or_default()
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PostTemplates {
 	#[serde(default)]
@@ -261,6 +321,7 @@ impl Default for Config {
 			hotkey: HotkeyConfig::default(),
 			strip_tracking: true,
 			templates: PostTemplates::default(),
+			filters: TimelineFilters::default(),
 			find_loading_mode: FindLoadingMode::default(),
 		}
 	}

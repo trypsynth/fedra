@@ -881,6 +881,7 @@ pub struct OptionsDialogInput {
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
+	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
 }
 
@@ -902,6 +903,7 @@ pub struct OptionsDialogResult {
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
+	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
 }
 
@@ -925,6 +927,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		notification_preference,
 		hotkey,
 		templates,
+		filters,
 		find_loading_mode,
 	} = input;
 	let dialog = Dialog::builder(frame, "Options").with_size(500, 520).build();
@@ -1154,6 +1157,187 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	template_sizer.add_sizer(&template_button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	template_panel.set_sizer(template_sizer, true);
 	notebook.add_page(&template_panel, "Templates", false, None);
+
+	let filters_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
+	let filters_sizer = BoxSizer::builder(Orientation::Vertical).build();
+
+	let filter_timeline_keys: Vec<&str> =
+		vec!["Home", "Notifications", "Local", "Federated", "User Timelines", "Hashtag Timelines"];
+	let filter_timeline_key_strings: Vec<String> = filter_timeline_keys.iter().map(|s| (*s).to_string()).collect();
+	let filter_timeline_label = StaticText::builder(&filters_panel).with_label("&Timeline:").build();
+	let filter_timeline_choice = ComboBox::builder(&filters_panel)
+		.with_choices(filter_timeline_key_strings)
+		.with_style(ComboBoxStyle::ReadOnly)
+		.build();
+	filter_timeline_choice.set_selection(0);
+	let filter_timeline_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	filter_timeline_sizer.add(&filter_timeline_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	filter_timeline_sizer.add(&filter_timeline_choice, 1, SizerFlag::Expand, 0);
+	filters_sizer.add_sizer(&filter_timeline_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+	let what_to_filter_sizer =
+		StaticBoxSizerBuilder::new_with_label(Orientation::Vertical, &filters_panel, "What to filter").build();
+
+	let cb_original = CheckBox::builder(&filters_panel).with_label("Original posts (not replies or boosts)").build();
+	what_to_filter_sizer.add(
+		&cb_original,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_replies_others = CheckBox::builder(&filters_panel).with_label("Replies to others").build();
+	what_to_filter_sizer.add(
+		&cb_replies_others,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_replies_me = CheckBox::builder(&filters_panel).with_label("Replies to me").build();
+	what_to_filter_sizer.add(
+		&cb_replies_me,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_threads = CheckBox::builder(&filters_panel).with_label("Threads (self-replies)").build();
+	what_to_filter_sizer.add(
+		&cb_threads,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_boosts = CheckBox::builder(&filters_panel).with_label("Boosts").build();
+	what_to_filter_sizer.add(
+		&cb_boosts,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_quotes = CheckBox::builder(&filters_panel).with_label("Quote posts").build();
+	what_to_filter_sizer.add(
+		&cb_quotes,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_media = CheckBox::builder(&filters_panel).with_label("Posts with media").build();
+	what_to_filter_sizer.add(
+		&cb_media,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_no_media = CheckBox::builder(&filters_panel).with_label("Posts without media").build();
+	what_to_filter_sizer.add(
+		&cb_no_media,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_your_posts = CheckBox::builder(&filters_panel).with_label("Your posts").build();
+	what_to_filter_sizer.add(
+		&cb_your_posts,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	let cb_your_replies = CheckBox::builder(&filters_panel).with_label("Your replies").build();
+	what_to_filter_sizer.add(
+		&cb_your_replies,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom,
+		5,
+	);
+
+	filters_sizer.add_sizer(&what_to_filter_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+
+	filters_panel.set_sizer(filters_sizer, true);
+	notebook.add_page(&filters_panel, "Filters", false, None);
+
+	let filters_state = Rc::new(RefCell::new(filters));
+	let current_filter_key = Rc::new(RefCell::new("Home".to_string()));
+	{
+		let initial_filter = filters_state.borrow().resolve("Home");
+		cb_original.set_value(!initial_filter.original_posts);
+		cb_replies_others.set_value(!initial_filter.replies_to_others);
+		cb_replies_me.set_value(!initial_filter.replies_to_me);
+		cb_threads.set_value(!initial_filter.threads);
+		cb_boosts.set_value(!initial_filter.boosts);
+		cb_quotes.set_value(!initial_filter.quote_posts);
+		cb_media.set_value(!initial_filter.media_posts);
+		cb_no_media.set_value(!initial_filter.text_only_posts);
+		cb_your_posts.set_value(!initial_filter.your_posts);
+		cb_your_replies.set_value(!initial_filter.your_replies);
+	}
+	let update_filters_state = {
+		let filters_state = filters_state.clone();
+		let current_filter_key = current_filter_key.clone();
+		Rc::new(move || {
+			let key = current_filter_key.borrow().clone();
+			filters_state.borrow_mut().per_timeline.insert(
+				key,
+				crate::config::TimelineFilter {
+					original_posts: !cb_original.get_value(),
+					replies_to_others: !cb_replies_others.get_value(),
+					replies_to_me: !cb_replies_me.get_value(),
+					threads: !cb_threads.get_value(),
+					boosts: !cb_boosts.get_value(),
+					quote_posts: !cb_quotes.get_value(),
+					media_posts: !cb_media.get_value(),
+					text_only_posts: !cb_no_media.get_value(),
+					your_posts: !cb_your_posts.get_value(),
+					your_replies: !cb_your_replies.get_value(),
+				},
+			);
+		})
+	};
+	let filter_timeline_keys_clone = filter_timeline_keys.clone();
+	let fs_change_cb = filters_state.clone();
+	let cur_key_change = current_filter_key;
+	let ufs_change = update_filters_state.clone();
+	filter_timeline_choice.on_selection_changed(move |_| {
+		ufs_change();
+		let Some(new_index) = filter_timeline_choice.get_selection() else { return };
+		let new_index = new_index as usize;
+		let Some(new_key) = filter_timeline_keys_clone.get(new_index) else { return };
+		*cur_key_change.borrow_mut() = (*new_key).to_string();
+		let new_filter = fs_change_cb.borrow().resolve(new_key);
+		cb_original.set_value(!new_filter.original_posts);
+		cb_replies_others.set_value(!new_filter.replies_to_others);
+		cb_replies_me.set_value(!new_filter.replies_to_me);
+		cb_threads.set_value(!new_filter.threads);
+		cb_boosts.set_value(!new_filter.boosts);
+		cb_quotes.set_value(!new_filter.quote_posts);
+		cb_media.set_value(!new_filter.media_posts);
+		cb_no_media.set_value(!new_filter.text_only_posts);
+		cb_your_posts.set_value(!new_filter.your_posts);
+		cb_your_replies.set_value(!new_filter.your_replies);
+	});
+
+	let setup_cb_handler = |cb: &CheckBox, ufs: Rc<dyn Fn()>| {
+		cb.on_toggled(move |_| {
+			ufs();
+		});
+	};
+	setup_cb_handler(&cb_original, update_filters_state.clone());
+	setup_cb_handler(&cb_replies_others, update_filters_state.clone());
+	setup_cb_handler(&cb_replies_me, update_filters_state.clone());
+	setup_cb_handler(&cb_threads, update_filters_state.clone());
+	setup_cb_handler(&cb_boosts, update_filters_state.clone());
+	setup_cb_handler(&cb_quotes, update_filters_state.clone());
+	setup_cb_handler(&cb_media, update_filters_state.clone());
+	setup_cb_handler(&cb_no_media, update_filters_state.clone());
+	setup_cb_handler(&cb_your_posts, update_filters_state.clone());
+	setup_cb_handler(&cb_your_replies, update_filters_state);
 	// State for template editing: maps timeline key -> (post_template, boost_template, quote_template)
 	let template_state: Rc<RefCell<TemplateState>> = Rc::new(RefCell::new(HashMap::new()));
 	{
@@ -1314,6 +1498,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		notification_preference: new_notification_preference,
 		hotkey: current_hotkey.borrow().clone(),
 		templates: new_templates,
+		filters: filters_state.borrow().clone(),
 		find_loading_mode: new_find_loading_mode,
 	})
 }

@@ -82,6 +82,15 @@ pub fn process_stream_events(
 		let Some(handle) = &timeline.stream_handle else { continue };
 		let events = handle.drain();
 		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
+		let filter_context = timeline.timeline_type.filter_context();
+		let template_key = timeline.timeline_type.template_key();
+		let timeline_filter = state.config.filters.resolve(template_key);
+		let current_user_id_string = state
+			.config
+			.active_account_id
+			.as_deref()
+			.and_then(|id| state.config.accounts.iter().find(|a| a.id == id).and_then(|a| a.user_id.clone()));
+		let current_user_id = current_user_id_string.as_deref();
 		if is_active {
 			let effective_sort_order = if state.config.preserve_thread_order
 				&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
@@ -97,7 +106,8 @@ pub fn process_stream_events(
 				streaming::StreamEvent::Update { timeline_type, status } => {
 					status_snapshots.push((*status).clone());
 					if timeline.timeline_type == timeline_type
-						&& !status.should_hide(&timeline.timeline_type.filter_context())
+						&& !status.should_hide(&filter_context)
+						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
 						timeline.entries.insert(0, TimelineEntry::Status(*status));
 						if is_active {
@@ -136,10 +146,8 @@ pub fn process_stream_events(
 							}
 							processed_notification_ids.insert(notification.id.clone());
 						}
-						if notification
-							.status
-							.as_ref()
-							.is_none_or(|s| !s.should_hide(&timeline.timeline_type.filter_context()))
+						if notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
+							&& notification.matches_filter(&timeline_filter, current_user_id)
 						{
 							timeline.entries.insert(0, TimelineEntry::Notification(*notification));
 							if is_active {
@@ -151,7 +159,8 @@ pub fn process_stream_events(
 				streaming::StreamEvent::Conversation { timeline_type, conversation } => {
 					if timeline.timeline_type == timeline_type
 						&& let Some(status) = conversation.last_status
-						&& !status.should_hide(&timeline.timeline_type.filter_context())
+						&& !status.should_hide(&filter_context)
+						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
 						status_snapshots.push(status.clone());
 						timeline.entries.insert(0, TimelineEntry::Status(status));
@@ -257,11 +266,21 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
 					let filter_context = timeline_type.filter_context();
+					let template_key = timeline_type.template_key();
+					let timeline_filter = state.config.filters.resolve(template_key);
+					let current_user_id_string = state.config.active_account_id.as_deref().and_then(|id| {
+						state.config.accounts.iter().find(|a| a.id == id).and_then(|a| a.user_id.clone())
+					});
+					let current_user_id = current_user_id_string.as_deref();
+
 					let (new_entries, next_max_id): (Vec<TimelineEntry>, Option<String>) = match data {
 						TimelineData::Statuses(statuses, next) => (
 							statuses
 								.into_iter()
-								.filter(|s| !s.should_hide(&filter_context))
+								.filter(|s| {
+									!s.should_hide(&filter_context)
+										&& s.matches_filter(&timeline_filter, current_user_id)
+								})
 								.map(TimelineEntry::Status)
 								.collect(),
 							next,
@@ -269,7 +288,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						TimelineData::Notifications(notifications, next) => (
 							notifications
 								.into_iter()
-								.filter(|n| n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context)))
+								.filter(|n| {
+									n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
+										&& n.matches_filter(&timeline_filter, current_user_id)
+								})
 								.map(TimelineEntry::Notification)
 								.collect(),
 							next,
@@ -278,7 +300,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							conversations
 								.into_iter()
 								.filter_map(|c| {
-									c.last_status.filter(|s| !s.should_hide(&filter_context)).map(TimelineEntry::Status)
+									c.last_status
+										.filter(|s| {
+											!s.should_hide(&filter_context)
+												&& s.matches_filter(&timeline_filter, current_user_id)
+										})
+										.map(TimelineEntry::Status)
 								})
 								.collect(),
 							next,

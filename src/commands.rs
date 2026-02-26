@@ -617,6 +617,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					notification_preference: state.config.notification_preference,
 					hotkey: state.config.hotkey.clone(),
 					templates: state.config.templates.clone(),
+					filters: state.config.filters.clone(),
 					find_loading_mode: state.config.find_loading_mode,
 				},
 			) {
@@ -637,13 +638,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					notification_preference,
 					hotkey,
 					templates,
+					filters,
 					find_loading_mode,
 				} = options;
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.content_warning_display != content_warning_display
 					|| state.config.display_name_emoji_mode != display_name_emoji_mode
 					|| state.config.preserve_thread_order != preserve_thread_order
-					|| state.config.templates != templates;
+					|| state.config.templates != templates
+					|| state.config.filters != filters;
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
@@ -655,10 +658,13 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.fetch_limit = fetch_limit;
 				state.config.content_warning_display = content_warning_display;
 				state.config.display_name_emoji_mode = display_name_emoji_mode;
+				state.config.sort_order = sort_order;
+				state.config.preserve_thread_order = preserve_thread_order;
 				state.config.default_timelines = default_timelines;
 				state.config.notification_preference = notification_preference;
 				state.config.hotkey = hotkey;
 				state.config.templates = templates;
+				state.config.filters = filters;
 				state.config.find_loading_mode = find_loading_mode;
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();

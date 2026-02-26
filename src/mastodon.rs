@@ -316,6 +316,59 @@ impl Status {
 		self.filtered.iter().any(|f| f.filter.action == FilterAction::Hide && f.filter.context.contains(filter_ctx))
 	}
 
+	pub fn matches_filter(&self, filter: &crate::config::TimelineFilter, current_user_id: Option<&str>) -> bool {
+		let is_own_post = current_user_id.is_some_and(|uid| uid == self.account.id);
+		let is_reply = self.in_reply_to_id.is_some();
+		let is_boost = self.reblog.is_some();
+		let is_quote = self.quote.is_some();
+		let has_media = !self.media_attachments.is_empty();
+
+		if is_boost {
+			if !filter.boosts {
+				return false;
+			}
+		} else if is_own_post {
+			if is_reply {
+				if !filter.your_replies {
+					return false;
+				}
+			} else if !filter.your_posts {
+				return false;
+			}
+		} else if is_reply {
+			let replying_to_me = current_user_id.is_some_and(|uid| self.in_reply_to_account_id.as_deref() == Some(uid));
+			let is_thread = self.in_reply_to_account_id.as_deref() == Some(&self.account.id);
+
+			if replying_to_me {
+				if !filter.replies_to_me {
+					return false;
+				}
+			} else if is_thread {
+				if !filter.threads {
+					return false;
+				}
+			} else if !filter.replies_to_others {
+				return false;
+			}
+		} else if !filter.original_posts {
+			return false;
+		}
+
+		if is_quote && !filter.quote_posts {
+			return false;
+		}
+
+		if has_media {
+			if !filter.media_posts {
+				return false;
+			}
+		} else if !filter.text_only_posts {
+			return false;
+		}
+
+		true
+	}
+
 	fn filter_warning(&self, filter_ctx: &FilterContext) -> Option<String> {
 		self.filtered
 			.iter()
@@ -646,6 +699,16 @@ impl Notification {
 				|| format!("{} {}", actor, self.kind),
 				|text| format!("{} {}: {}", actor, self.kind, text),
 			),
+		}
+	}
+
+	pub fn matches_filter(&self, filter: &crate::config::TimelineFilter, current_user_id: Option<&str>) -> bool {
+		match self.kind.as_str() {
+			"mention" | "status" => {
+				self.status.as_ref().is_none_or(|status| status.matches_filter(filter, current_user_id))
+			}
+			"reblog" => filter.boosts,
+			_ => true,
 		}
 	}
 
