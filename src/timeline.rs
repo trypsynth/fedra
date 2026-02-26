@@ -100,7 +100,8 @@ impl TimelineType {
 
 	pub const fn template_key(&self) -> &str {
 		match self {
-			Self::Home | Self::List { .. } => "Home",
+			Self::Home => "Home",
+			Self::List { .. } => "List Timelines",
 			Self::Notifications => "Notifications",
 			Self::Direct => "Direct Messages",
 			Self::Local => "Local",
