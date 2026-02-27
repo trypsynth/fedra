@@ -85,6 +85,7 @@ pub fn bind_input_handlers(
 
 	let ui_tx_delete = ui_tx.clone();
 	let shutdown_delete = is_shutting_down.clone();
+	let quick_action_keys_selector = quick_action_keys_enabled.clone();
 	let timelines_selector_delete = parts.timelines_selector;
 	timelines_selector_delete.on_key_down(move |event| {
 		if shutdown_delete.get() {
@@ -103,18 +104,49 @@ pub fn bind_input_handlers(
 						event.skip(false);
 						return;
 					}
+					Some(k) if (49..=57).contains(&k) => {
+						// Ctrl+1-9
+						if let Ok(index) = usize::try_from(k - 49) {
+							let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
+						}
+						event.skip(false);
+						return;
+					}
 					_ => {}
 				}
 			}
-			if key_event.get_key_code() == Some(KEY_DELETE) {
-				let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
-				event.skip(false);
-			} else {
-				event.skip(true);
+			if !key_event.control_down() && !key_event.shift_down() && !key_event.alt_down() {
+				match key_event.get_key_code() {
+					Some(KEY_DELETE) => {
+						let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
+						event.skip(false);
+						return;
+					}
+					Some(314) => {
+						// Left Arrow
+						let _ = ui_tx_delete.send(UiCommand::SwitchPrevTimeline);
+						event.skip(false);
+						return;
+					}
+					Some(316) => {
+						// Right Arrow
+						let _ = ui_tx_delete.send(UiCommand::SwitchNextTimeline);
+						event.skip(false);
+						return;
+					}
+					Some(k) if (49..=57).contains(&k) && quick_action_keys_selector.get() => {
+						// 1-9 in quick keys mode
+						if let Ok(index) = usize::try_from(k - 49) {
+							let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
+						}
+						event.skip(false);
+						return;
+					}
+					_ => {}
+				}
 			}
-		} else {
-			event.skip(true);
 		}
+		event.skip(true);
 	});
 
 	let ui_tx_list = ui_tx.clone();
