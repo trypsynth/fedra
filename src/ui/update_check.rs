@@ -166,10 +166,37 @@ fn execute_update(handle_addr: usize, result: Result<std::path::PathBuf, UpdateE
 		Ok(path) => {
 			let path_str = path.to_string_lossy();
 			if path_str.ends_with(".exe") {
-				if let Err(e) = Command::new(&path).spawn() {
-					let dlg = MessageDialog::builder(&parent, &format!("Failed to launch installer: {e}"), "Error")
-						.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-						.build();
+				let current_exe = match std::env::current_exe() {
+					Ok(p) => p,
+					Err(e) => {
+						let dlg =
+							MessageDialog::builder(&parent, &format!("Failed to get current exe path: {e}"), "Error")
+								.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+								.build();
+						dlg.show_modal();
+						return;
+					}
+				};
+				let pid = std::process::id();
+				let script = format!(
+					"Start-Sleep -Seconds 1; Wait-Process -Id {} -ErrorAction SilentlyContinue; Start-Process -FilePath '{}' -ArgumentList '/silent' -Wait; Start-Process -FilePath '{}'",
+					pid,
+					path.display(),
+					current_exe.display()
+				);
+				if let Err(e) = Command::new("powershell.exe")
+					.arg("-NoProfile")
+					.arg("-ExecutionPolicy")
+					.arg("Bypass")
+					.arg("-Command")
+					.arg(&script)
+					.creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+					.spawn()
+				{
+					let dlg =
+						MessageDialog::builder(&parent, &format!("Failed to launch installer script: {e}"), "Error")
+							.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+							.build();
 					dlg.show_modal();
 					return;
 				}
