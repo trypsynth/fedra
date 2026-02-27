@@ -8,13 +8,20 @@ For a comprehensive user guide, including a full list of features and hotkeys, p
 
 ## Building
 
-To build Fedra, you will need Rust installed, along with a C++ compiler (MSVC), LLVM, and CMake for building the dependencies.
+To build, you'll need cargo, as well as CMake and Ninja for building wxDragon.
 
 ```batch
 cargo build --release
 ```
 
 This will generate the executable at `target/release/fedra.exe`.
+
+### Optional Tools
+
+The following tools aren't required to build a functioning Fedra on a basic level, but will help you make a complete release build.
+
+* `pandoc` on your `PATH` to generate the HTML readme.
+* InnoSetup installed to create the installer.
 
 ## License
 
