@@ -370,6 +370,8 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		reblogged: target.is_some_and(|t| t.reblogged),
 		bookmarked: target.is_some_and(|t| t.bookmarked),
 		is_direct: target.is_some_and(|t| t.visibility == "direct"),
+		is_own,
+		quick_action_keys: state.config.quick_action_keys,
 	});
 	if let Some(load_more_item) = menu_bar.find_item(ID_LOAD_MORE) {
 		let shortcut = if state.config.quick_action_keys { "." } else { "Ctrl+." };

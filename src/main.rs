@@ -65,6 +65,8 @@ pub struct ContextMenuState {
 	pub reblogged: bool,
 	pub bookmarked: bool,
 	pub is_direct: bool,
+	pub is_own: bool,
+	pub quick_action_keys: bool,
 }
 
 pub(crate) struct AppState {

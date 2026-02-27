@@ -483,41 +483,98 @@ pub fn bind_input_handlers(
 			return;
 		}
 		let cms = context_menu_state_ctx.get();
+		let q = cms.quick_action_keys;
 		let mut menu = Menu::builder().build();
-		menu.append(ID_REPLY, "&Reply...", "Reply to all mentioned users", ItemKind::Normal);
-		menu.append(ID_REPLY_AUTHOR, "Reply to &Author...", "Reply to author only", ItemKind::Normal);
-		menu.append(ID_QUOTE, "&Quote...", "Quote this post", ItemKind::Normal);
+		menu.append(
+			ID_REPLY,
+			if q { "&Reply...\tR" } else { "&Reply...\tCtrl+R" },
+			"Reply to all mentioned users",
+			ItemKind::Normal,
+		);
+		menu.append(
+			ID_REPLY_AUTHOR,
+			if q { "Reply to &Author...\tCtrl+R" } else { "Reply to &Author...\tCtrl+Shift+R" },
+			"Reply to author only",
+			ItemKind::Normal,
+		);
+		menu.append(
+			ID_QUOTE,
+			if q { "&Quote...\tQ" } else { "&Quote...\tCtrl+Q" },
+			"Quote this post",
+			ItemKind::Normal,
+		);
 		menu.append_separator();
-		let fav_label = if cms.favourited { "Un&favorite" } else { "&Favorite" };
+		let fav_label = match (cms.favourited, q) {
+			(true, true) => "Un&favorite\tF",
+			(true, false) => "Un&favorite\tCtrl+Shift+F",
+			(false, true) => "&Favorite\tF",
+			(false, false) => "&Favorite\tCtrl+Shift+F",
+		};
 		menu.append(ID_FAVORITE, fav_label, "Favorite or unfavorite selected post", ItemKind::Normal);
-		let bookmark_label = if cms.bookmarked { "Un&bookmark" } else { "&Bookmark" };
+		let bookmark_label = match (cms.bookmarked, q) {
+			(true, true) => "Un&bookmark\tK",
+			(true, false) => "Un&bookmark\tCtrl+Shift+K",
+			(false, true) => "&Bookmark\tK",
+			(false, false) => "&Bookmark\tCtrl+Shift+K",
+		};
 		menu.append(ID_BOOKMARK, bookmark_label, "Bookmark or unbookmark selected post", ItemKind::Normal);
 		if !cms.is_direct {
-			let boost_label = if cms.reblogged { "Un&boost" } else { "&Boost" };
+			let boost_label = match (cms.reblogged, q) {
+				(true, true) => "Un&boost\tB",
+				(true, false) => "Un&boost\tCtrl+Shift+B",
+				(false, true) => "&Boost\tB",
+				(false, false) => "&Boost\tCtrl+Shift+B",
+			};
 			menu.append(ID_BOOST, boost_label, "Boost or unboost selected post", ItemKind::Normal);
 		}
 		menu.append_separator();
-		menu.append(ID_VIEW_POST, "View &Post Details", "View post content in a dialog", ItemKind::Normal);
-		menu.append(ID_VIEW_THREAD, "View &Thread", "View conversation thread", ItemKind::Normal);
+		menu.append(ID_VIEW_POST, "View &Post Details\tShift+Enter", "View post content in a dialog", ItemKind::Normal);
+		menu.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread", ItemKind::Normal);
 		menu.append(
 			ID_VIEW_QUOTED_THREAD,
 			"View &Quoted Thread",
 			"View conversation thread for quoted post",
 			ItemKind::Normal,
 		);
-		menu.append(ID_OPEN_LINKS, "Open &Links", "Open links in selected post", ItemKind::Normal);
-		menu.append(ID_VIEW_IN_BROWSER, "&Open in Browser", "Open selected post in web browser", ItemKind::Normal);
-		menu.append(ID_COPY_POST, "&Copy Post", "Copy selected post text", ItemKind::Normal);
+		menu.append(ID_OPEN_LINKS, "Open &Links\tAlt+Enter", "Open links in selected post", ItemKind::Normal);
+		menu.append(
+			ID_VIEW_IN_BROWSER,
+			if q { "&Open in Browser\tO" } else { "&Open in Browser\tCtrl+Shift+O" },
+			"Open selected post in web browser",
+			ItemKind::Normal,
+		);
+		menu.append(ID_COPY_POST, "&Copy Post\tCtrl+Shift+C", "Copy selected post text", ItemKind::Normal);
 		menu.append_separator();
-		menu.append(ID_VIEW_PROFILE, "View &Profile", "View profile of selected post's author", ItemKind::Normal);
+		menu.append(
+			ID_VIEW_PROFILE,
+			if q { "View &Profile\tP" } else { "View &Profile\tCtrl+P" },
+			"View profile of selected post's author",
+			ItemKind::Normal,
+		);
 		menu.append(
 			ID_VIEW_USER_TIMELINE,
-			"&User Timeline",
+			if q { "&User Timeline\tT" } else { "&User Timeline\tCtrl+T" },
 			"Open timeline of selected post's author",
 			ItemKind::Normal,
 		);
-		menu.append(ID_VIEW_MENTIONS, "View &Mentions", "View mentions in selected post", ItemKind::Normal);
-		menu.append(ID_VIEW_HASHTAGS, "View &Hashtags", "View hashtags in selected post", ItemKind::Normal);
+		menu.append(
+			ID_VIEW_MENTIONS,
+			if q { "View &Mentions\tM" } else { "View &Mentions\tCtrl+M" },
+			"View mentions in selected post",
+			ItemKind::Normal,
+		);
+		menu.append(
+			ID_VIEW_HASHTAGS,
+			if q { "View &Hashtags\tH" } else { "View &Hashtags\tCtrl+H" },
+			"View hashtags in selected post",
+			ItemKind::Normal,
+		);
+		if cms.is_own {
+			menu.append_separator();
+			let edit_label = if q { "&Edit Post...\tE" } else { "&Edit Post...\tCtrl+E" };
+			menu.append(ID_EDIT_POST, edit_label, "Edit selected post", ItemKind::Normal);
+			menu.append(ID_DELETE_POST, "&Delete Post\tDel", "Delete selected post", ItemKind::Normal);
+		}
 		timeline_list_context.popup_menu(&mut menu, None);
 	});
 	let autoload_mode_selection = autoload_mode;
