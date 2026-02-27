@@ -11,8 +11,7 @@ use std::{
 	time::Duration,
 };
 
-use wxdragon::{prelude::*, window::WxWidget};
-use wxdragon_sys as ffi;
+use wxdragon::{ffi, prelude::*, window::WxWidget};
 
 use crate::{
 	ui::dialogs,
