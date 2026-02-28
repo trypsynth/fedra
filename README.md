@@ -8,7 +8,7 @@ For a comprehensive user guide, including a full list of features and hotkeys, p
 
 ## Building
 
-To build, you'll need cargo, as well as CMake and Ninja for building wxDragon.
+To build, you'll need cargo, as well as CMake and Ninja for building wxDragon. In addition, you also need LLVM, from LLVM.org. 
 
 ```batch
 cargo build --release
