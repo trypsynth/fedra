@@ -24,7 +24,6 @@ const LVS_EX_DOUBLEBUFFER: u32 = 0x0001_0000;
 
 // ListView messages (LVM_FIRST = 0x1000)
 const LVM_FIRST: u32 = 0x1000;
-const LVM_GETNEXTITEM: u32 = LVM_FIRST + 12;
 const LVM_ENSUREVISIBLE: u32 = LVM_FIRST + 19;
 const LVM_REDRAWITEMS: u32 = LVM_FIRST + 21;
 const LVM_SETCOLUMNWIDTH: u32 = LVM_FIRST + 30;
@@ -44,8 +43,6 @@ const LVIF_TEXT: u32 = 0x0001;
 const LVIF_STATE: u32 = 0x0008;
 const LVIS_FOCUSED: u32 = 0x0001;
 const LVIS_SELECTED: u32 = 0x0002;
-/// `LVNI_SELECTED`: search for selected item
-const LVNI_SELECTED: u32 = 0x0002;
 /// `LVSICF_NOINVALIDATEALL`: preserve existing item states when count changes
 const LVSICF_NOINVALIDATEALL: isize = 0x0001;
 
@@ -65,7 +62,7 @@ pub struct KeyInfo {
 struct Inner {
 	#[cfg(windows)]
 	listview_hwnd: windows::Win32::Foundation::HWND,
-	items: Vec<String>,
+	items: Vec<(String, Vec<u16>)>,
 	/// Mirrors the Win32 selection state so `get_selection()` is immune to
 	/// `WM_SETREDRAW` suppression and `LVM_SETITEMCOUNT` state resets.
 	selected_index: std::cell::Cell<Option<usize>>,
@@ -198,7 +195,9 @@ impl TimelinePanel {
 	/// Append an item to the end of the list.
 	pub fn append(&self, text: &str) {
 		let mut inner = self.inner.borrow_mut();
-		inner.items.push(text.to_string());
+		let mut wstr = text.encode_utf16().collect::<Vec<_>>();
+		wstr.push(0);
+		inner.items.push((text.to_string(), wstr));
 		let count = inner.items.len();
 		#[cfg(windows)]
 		unsafe {
@@ -213,10 +212,12 @@ impl TimelinePanel {
 	pub fn set_string(&self, index: usize, text: &str) {
 		let mut inner = self.inner.borrow_mut();
 		if let Some(slot) = inner.items.get_mut(index) {
-			if *slot == text {
+			if slot.0 == text {
 				return; // nothing to do
 			}
-			*slot = text.to_string();
+			let mut wstr = text.encode_utf16().collect::<Vec<_>>();
+			wstr.push(0);
+			*slot = (text.to_string(), wstr);
 		} else {
 			return;
 		}
@@ -236,7 +237,7 @@ impl TimelinePanel {
 
 	/// Return the text of item at `index`, or `None` if out of range.
 	pub fn get_string(&self, index: usize) -> Option<String> {
-		self.inner.borrow().items.get(index).cloned()
+		self.inner.borrow().items.get(index).map(|(s, _)| s.clone())
 	}
 
 	/// Return the number of items.
@@ -265,7 +266,11 @@ impl TimelinePanel {
 	pub fn replace_all(&self, items: impl IntoIterator<Item = String>) {
 		let mut inner = self.inner.borrow_mut();
 		inner.items.clear();
-		inner.items.extend(items);
+		inner.items.extend(items.into_iter().map(|s| {
+			let mut wstr = s.encode_utf16().collect::<Vec<_>>();
+			wstr.push(0);
+			(s, wstr)
+		}));
 		let count = inner.items.len();
 		// If the selected item is now out of range, clear the selection mirror.
 		if inner.selected_index.get().is_some_and(|s| s >= count) {
@@ -425,26 +430,14 @@ unsafe extern "system" fn panel_subclass_proc(
 			let code = nmhdr.code;
 
 			if code == LVN_GETDISPINFOW {
-				// The listview needs the text for an item.  We write directly into
-				// the pszText buffer that the control has already allocated.
 				let disp = &mut *(lparam.0 as *mut NMLVDISPINFOW);
-				if disp.item.mask.0 & LVIF_TEXT != 0 && !disp.item.pszText.0.is_null() {
+				if disp.item.mask.0 & LVIF_TEXT != 0 {
 					let item_index = disp.item.iItem as usize;
 					let inner = &*(ref_data as *const RefCell<Inner>);
 					if let Ok(borrow) = inner.try_borrow()
-						&& let Some(text) = borrow.items.get(item_index)
+						&& let Some((_, text_wstr)) = borrow.items.get(item_index)
 					{
-						let max_len = disp.item.cchTextMax as usize;
-						if max_len > 0 {
-							let dst =
-								std::slice::from_raw_parts_mut(disp.item.pszText.0, max_len);
-							let mut written = 0usize;
-							for (i, wc) in text.encode_utf16().take(max_len - 1).enumerate() {
-								dst[i] = wc;
-								written = i + 1;
-							}
-							dst[written] = 0; // null-terminate
-						}
+						disp.item.pszText = windows::core::PWSTR(text_wstr.as_ptr() as *mut u16);
 					}
 				}
 				return LRESULT(0);
@@ -463,6 +456,9 @@ unsafe extern "system" fn panel_subclass_proc(
 					// then call through it.  Safe because Inner is alive (Rc exists)
 					// and we're on the single UI thread with no concurrent mutation.
 					let inner = &*(ref_data as *const RefCell<Inner>);
+					if let Ok(borrow) = inner.try_borrow() {
+						borrow.selected_index.set(Some(item_index));
+					}
 					let cb_ptr: Option<*const dyn Fn(usize)> = inner
 						.try_borrow()
 						.ok()
