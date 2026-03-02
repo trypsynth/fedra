@@ -73,7 +73,7 @@ Open options with `Ctrl+,`.
 Customize how posts appear in each timeline using [Jinja2-style](https://jinja.palletsprojects.com/en/stable/templates/) templates.
 
 - Select a timeline from the dropdown (or **Global Default** to set the fallback used by all timelines without their own override).
-- Edit the **Post template** and **Boost template** text fields.
+- Edit the **Post template**, **Boost template**, and **Quote template** text fields.
 - Click **Reset to default** to restore the selected timeline's templates to the global default (or restore the global default to the built-in default).
 
 Templates are rendered per-entry each time a timeline is displayed. If a template contains a syntax error, the entry falls back to `author: content`.
@@ -96,6 +96,12 @@ Templates are rendered per-entry each time a timeline is displayed. If a templat
 | `{{ media }}` | Media attachment summary, or empty if none |
 | `{{ poll }}` | Poll summary, or empty if none |
 | `{{ booster }}` | Display name of the person who boosted (boost template only; empty for regular posts) |
+| `{{ booster_username }}` | `@acct` handle of the booster (boost template only) |
+| `{{ quote_author }}` | Display name of the quoted post's author (quote/boost templates) |
+| `{{ quote_username }}` | `@acct` handle of the quoted post's author (quote/boost templates) |
+| `{{ quote_content }}` | Text content of the quoted post (quote/boost templates) |
+| `{{ quote_media }}` | Media summary of the quoted post (quote/boost templates) |
+| `{{ quote_poll }}` | Poll summary of the quoted post (quote/boost templates) |
 
 #### Conditionals
 
@@ -104,6 +110,19 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 ```
 {% if client %}, via {{ client }}{% endif %}
 ```
+
+### Filters Tab
+Hide post types per timeline. Select a timeline from the dropdown, then check the types you want to hide:
+- Original posts (not replies or boosts)
+- Replies to others
+- Replies to me
+- Threads (self-replies)
+- Boosts
+- Quote posts
+- Posts with media
+- Posts without media
+- Your posts
+- Your replies
 
 ## Keyboard Shortcuts
 
@@ -133,6 +152,7 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 - `Ctrl+N`: New post
 - `Ctrl+R`: Reply to all mentioned users
 - `Ctrl+Shift+R`: Reply to author only
+- `Ctrl+Q`: Quote selected post
 - `Enter`: Open thread / context (or open selected search result)
 - `Shift+Enter`: View post details in Fedra
 - `Alt+Enter`: Open links in selected post
@@ -153,15 +173,18 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 - `Ctrl+Alt+A`: Manage accounts
 - `Ctrl+Shift+E`: Edit current profile
 - `Ctrl+,`: Open options
+- Options menu → **Manage Filters...**: View, add, edit, or delete server-side content filters
+- Options menu → **Manage Lists...**: Create and manage Mastodon lists; open a list timeline via Timelines → Open List...
 
 ### Quick Action Keys Mode
 - Enable with `Ctrl+Shift+Q`
-- Disable with `q`
+- Disable with `Shift+Q`
 - Single-key actions while enabled:
   - `Backspace`: Close current timeline
   - `c`: New post
   - `r`: Reply to all
   - `Ctrl+R`: Reply to author
+  - `q`: Quote post
   - `f`: Favorite/unfavorite
   - `k`: Bookmark/unbookmark
   - `b`: Boost/unboost
