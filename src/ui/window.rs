@@ -10,10 +10,7 @@ use crate::{
 	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD,
 	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
-	ui::{
-		menu::build_menu_bar,
-		timeline_panel::TimelinePanel,
-	},
+	ui::{menu::build_menu_bar, timeline_panel::TimelinePanel},
 	ui_wake::UiCommandSender,
 };
 
@@ -218,7 +215,8 @@ pub fn bind_input_handlers(
 				_ => {}
 			}
 
-			if autoload_mode_list.get() == AutoloadMode::AtBoundary {
+			let mode = autoload_mode_list.get();
+			if mode == AutoloadMode::AtBoundary || mode == AutoloadMode::AtEnd {
 				let sort_order = sort_order_list.get();
 				let selection = timeline_list_key.get_selection();
 				let count = timeline_list_key.get_count();
@@ -226,11 +224,14 @@ pub fn bind_input_handlers(
 					if k == 315 {
 						// Up
 						if sort_order == SortOrder::OldestToNewest && index == 0 {
-							let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+							let _ = ui_tx_list_key.send(UiCommand::ApplyPendingOrLoadMore);
 						}
 					} else if k == 317 {
 						// Down
-						if sort_order == SortOrder::NewestToOldest && index + 1 == count {
+						if mode == AutoloadMode::AtBoundary
+							&& sort_order == SortOrder::NewestToOldest
+							&& index + 1 == count
+						{
 							let _ = ui_tx_list_key.send(UiCommand::LoadMore);
 						}
 					}
@@ -525,11 +526,12 @@ pub fn bind_input_handlers(
 		if autoload_mode_selection.get() == AutoloadMode::AtEnd {
 			let count = timeline_list_sel.get_count();
 			let sort_order = sort_order_selection.get();
-			let at_load_position = match sort_order {
-				SortOrder::NewestToOldest => selection + 1 == count,
-				SortOrder::OldestToNewest => selection == 0,
-			};
-			if at_load_position {
+			let is_oldest = sort_order == SortOrder::OldestToNewest && selection == 0;
+			let is_newest = sort_order == SortOrder::NewestToOldest && selection + 1 == count;
+
+			if is_oldest {
+				let _ = ui_tx_list.send(UiCommand::LoadMoreBackground);
+			} else if is_newest {
 				let _ = ui_tx_list.send(UiCommand::LoadMore);
 			}
 		}

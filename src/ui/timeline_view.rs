@@ -95,7 +95,11 @@ pub const fn entry_index_to_list_index(entry_index: usize, entries_len: usize, s
 	}
 }
 
-pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: &TimelinePanel, sort_order: SortOrder) {
+pub fn sync_timeline_selection_from_list(
+	timeline: &mut Timeline,
+	timeline_list: &TimelinePanel,
+	sort_order: SortOrder,
+) {
 	let selection = timeline_list.get_selection();
 	timeline.selected_index = selection;
 	timeline.selected_id = selection

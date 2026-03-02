@@ -326,10 +326,19 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						if filtered.is_empty() {
 							live_region::announce(live_region, "No more posts");
 						} else {
-							timeline.entries.extend(filtered.clone());
+							if state.config.sort_order == SortOrder::OldestToNewest
+								&& timeline.loading_more_in_background
+							{
+								timeline.pending_older_entries.extend(filtered.clone());
+							} else {
+								timeline.entries.extend(filtered.clone());
+							}
 						}
 
-						if is_active {
+						if is_active
+							&& !(state.config.sort_order == SortOrder::OldestToNewest
+								&& timeline.loading_more_in_background)
+						{
 							if state.config.sort_order == SortOrder::NewestToOldest {
 								let entries_to_append = if filtered.is_empty() { &[][..] } else { &filtered };
 								for entry in entries_to_append {
@@ -360,6 +369,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					}
 					timeline.next_max_id = next_max_id;
 					timeline.loading_more = false;
+					timeline.loading_more_in_background = false;
 					if is_active && timeline.pending_find_next {
 						timeline.pending_find_next = false;
 						should_find_next = true;

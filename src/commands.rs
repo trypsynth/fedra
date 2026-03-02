@@ -103,6 +103,8 @@ pub enum UiCommand {
 	ViewQuotedThread,
 	Vote,
 	LoadMore,
+	LoadMoreBackground,
+	ApplyPendingOrLoadMore,
 	ToggleContentWarning,
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
@@ -438,6 +440,34 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::CloseTimeline => {
 			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
+		}
+		UiCommand::LoadMoreBackground => {
+			if let Some(active) = state.timeline_manager.active_mut() {
+				active.loading_more_in_background = true;
+			}
+			handle_ui_command(UiCommand::LoadMore, ctx);
+		}
+		UiCommand::ApplyPendingOrLoadMore => {
+			let has_pending =
+				state.timeline_manager.active().is_some_and(|active| !active.pending_older_entries.is_empty());
+			if has_pending {
+				let timeline_type = state.timeline_manager.active().unwrap().timeline_type.clone();
+				let view_options = state.timeline_view_options_for(&timeline_type);
+
+				let active = state.timeline_manager.active_mut().unwrap();
+				let new_entries = std::mem::take(&mut active.pending_older_entries);
+				let added_count = new_entries.len();
+				active.entries.extend(new_entries);
+
+				update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
+
+				let new_index = added_count.saturating_sub(1);
+				timeline_list.set_selection(new_index);
+
+				live_region::announce(live_region, &format!("Loaded {} older posts", added_count));
+			} else {
+				handle_ui_command(UiCommand::LoadMore, ctx);
+			}
 		}
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
