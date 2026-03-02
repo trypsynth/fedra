@@ -134,6 +134,7 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 - `Ctrl+R`: Reply to all mentioned users
 - `Ctrl+Shift+R`: Reply to author only
 - `Enter`: Open thread / context (or open selected search result)
+- `Shift+Enter`: View post details in Fedra
 - `Alt+Enter`: Open links in selected post
 - `Ctrl+P`: View profile
 - `Ctrl+M`: View mentions
