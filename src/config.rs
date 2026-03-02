@@ -25,6 +25,8 @@ pub struct Config {
 	pub enter_to_send: bool,
 	#[serde(default = "default_always_show_link_dialog")]
 	pub always_show_link_dialog: bool,
+	#[serde(default = "default_show_link_previews")]
+	pub show_link_previews: bool,
 	#[serde(default = "default_quick_action_keys")]
 	pub quick_action_keys: bool,
 	#[serde(default, deserialize_with = "deserialize_autoload_mode")]
@@ -257,6 +259,10 @@ const fn default_always_show_link_dialog() -> bool {
 	false
 }
 
+const fn default_show_link_previews() -> bool {
+	false
+}
+
 const fn default_quick_action_keys() -> bool {
 	false
 }
@@ -307,6 +313,7 @@ impl Default for Config {
 			active_account_id: None,
 			enter_to_send: true,
 			always_show_link_dialog: false,
+			show_link_previews: false,
 			quick_action_keys: false,
 			autoload: AutoloadMode::default(),
 			fetch_limit: default_fetch_limit(),

@@ -128,6 +128,7 @@ pub enum TimelineEntry {
 pub struct TimelineTextOptions {
 	pub cw_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub show_link_previews: bool,
 	pub post_template: String,
 	pub boost_template: String,
 	pub quote_template: String,
@@ -140,6 +141,7 @@ impl TimelineTextOptions {
 		Self {
 			cw_display: config.content_warning_display,
 			display_name_emoji_mode: config.display_name_emoji_mode,
+			show_link_previews: config.show_link_previews,
 			post_template: config.templates.resolve_post_template(key).to_string(),
 			boost_template: config.templates.resolve_boost_template(key).to_string(),
 			quote_template: config.templates.resolve_quote_template(key).to_string(),
@@ -151,6 +153,7 @@ impl TimelineTextOptions {
 		Self {
 			cw_display: config.content_warning_display,
 			display_name_emoji_mode: config.display_name_emoji_mode,
+			show_link_previews: config.show_link_previews,
 			post_template: DEFAULT_POST_TEMPLATE.to_string(),
 			boost_template: DEFAULT_BOOST_TEMPLATE.to_string(),
 			quote_template: DEFAULT_QUOTE_TEMPLATE.to_string(),

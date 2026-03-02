@@ -603,6 +603,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				dialogs::OptionsDialogInput {
 					enter_to_send: state.config.enter_to_send,
 					always_show_link_dialog: state.config.always_show_link_dialog,
+					show_link_previews: state.config.show_link_previews,
 					strip_tracking: state.config.strip_tracking,
 					quick_action_keys: state.config.quick_action_keys,
 					check_for_updates: state.config.check_for_updates_on_startup,
@@ -624,6 +625,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				let dialogs::OptionsDialogResult {
 					enter_to_send,
 					always_show_link_dialog,
+					show_link_previews,
 					strip_tracking,
 					quick_action_keys,
 					check_for_updates,
@@ -645,11 +647,13 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					|| state.config.content_warning_display != content_warning_display
 					|| state.config.display_name_emoji_mode != display_name_emoji_mode
 					|| state.config.preserve_thread_order != preserve_thread_order
+					|| state.config.show_link_previews != show_link_previews
 					|| state.config.templates != templates
 					|| state.config.filters != filters;
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
+				state.config.show_link_previews = show_link_previews;
 				state.config.strip_tracking = strip_tracking;
 				state.config.quick_action_keys = quick_action_keys;
 				state.config.check_for_updates_on_startup = check_for_updates;

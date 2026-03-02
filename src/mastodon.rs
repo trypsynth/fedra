@@ -82,6 +82,8 @@ pub struct Status {
 	pub tags: Vec<Tag>,
 	pub poll: Option<Poll>,
 	#[serde(default)]
+	pub card: Option<Card>,
+	#[serde(default)]
 	pub filtered: Vec<FilterResult>,
 }
 
@@ -202,6 +204,23 @@ pub struct PollOption {
 	pub title: String,
 	#[serde(default, deserialize_with = "deserialize_option_u64_or_zero")]
 	pub votes_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct Card {
+	#[serde(default)]
+	pub url: Option<String>,
+	#[serde(default)]
+	pub title: Option<String>,
+	#[serde(default)]
+	pub description: Option<String>,
+	#[serde(default)]
+	pub provider_name: Option<String>,
+	#[serde(default)]
+	pub author_name: Option<String>,
+	#[serde(default, rename = "type")]
+	pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -437,6 +456,14 @@ impl Status {
 		} else {
 			self.content_with_cw(options.cw_display, cw_expanded)
 		};
+		if options.show_link_previews
+			&& let Some(card) = self.card_summary()
+		{
+			if !content.is_empty() {
+				content.push(' ');
+			}
+			content.push_str(&card);
+		}
 
 		let relative_time = friendly_time(&self.created_at, TimestampFormat::Relative).unwrap_or_default();
 		let absolute_time = friendly_time(&self.created_at, TimestampFormat::Absolute).unwrap_or_default();
@@ -584,6 +611,20 @@ impl Status {
 			let options: Vec<String> = poll.options.iter().map(|opt| opt.title.clone()).collect();
 			Some(format!("[Poll: {}]", options.join(", ")))
 		}
+	}
+
+	fn card_summary(&self) -> Option<String> {
+		let card = self.card.as_ref()?;
+		let title = card.title.as_deref().map(str::trim).filter(|s| !s.is_empty()).unwrap_or("Link preview");
+		let mut summary = format!("[Preview: {title}");
+		if let Some(provider) = card.provider_name.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+			let _ = write!(summary, " ({provider})");
+		}
+		if let Some(description) = card.description.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+			let _ = write!(summary, " - {description}");
+		}
+		summary.push(']');
+		Some(summary)
 	}
 }
 
