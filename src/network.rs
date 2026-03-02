@@ -10,7 +10,10 @@ use chrono::DateTime;
 use url::Url;
 
 use crate::{
-	mastodon::{Account, Conversation, MastodonClient, Notification, SearchResults, SearchType, Status, StatusContext},
+	mastodon::{
+		Account, Conversation, MastodonClient, Notification, PostSubmission, SearchResults, SearchType, Status,
+		StatusContext,
+	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
 };
@@ -40,6 +43,7 @@ pub struct PostData {
 	pub media: Vec<MediaUpload>,
 	pub poll: Option<PollData>,
 	pub quoted_status_id: Option<String>,
+	pub scheduled_at: Option<String>,
 }
 
 #[derive(Debug)]
@@ -86,6 +90,7 @@ pub enum NetworkCommand {
 		language: Option<String>,
 		media: Vec<MediaUpload>,
 		poll: Option<PollData>,
+		scheduled_at: Option<String>,
 	},
 	FollowTag {
 		name: String,
@@ -247,7 +252,7 @@ pub enum NetworkResponse {
 		handle: String,
 		result: Result<Account>,
 	},
-	PostComplete(Result<Status>),
+	PostComplete(Result<PostSubmission>),
 	Favorited {
 		status_id: String,
 		result: Result<Status>,
@@ -272,7 +277,7 @@ pub enum NetworkResponse {
 		status_id: String,
 		result: Result<Status>,
 	},
-	Replied(Result<Status>),
+	Replied(Result<PostSubmission>),
 	StatusDeleted {
 		status_id: String,
 		result: Result<()>,
@@ -383,7 +388,8 @@ fn post_with_media(
 	poll: Option<&PollData>,
 	in_reply_to_id: Option<&str>,
 	quoted_status_id: Option<&str>,
-) -> Result<Status> {
+	scheduled_at: Option<&str>,
+) -> Result<PostSubmission> {
 	let mut media_ids = Vec::new();
 	let mut upload_failed = None;
 	for item in media {
@@ -409,6 +415,7 @@ fn post_with_media(
 		poll,
 		in_reply_to_id,
 		quoted_status_id,
+		scheduled_at,
 	)
 }
 
@@ -607,6 +614,7 @@ fn network_loop(
 					post.poll.as_ref(),
 					None,
 					post.quoted_status_id.as_deref(),
+					post.scheduled_at.as_deref(),
 				);
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
 			}
@@ -660,6 +668,7 @@ fn network_loop(
 				language,
 				media,
 				poll,
+				scheduled_at,
 			}) => {
 				let result = post_with_media(
 					client,
@@ -673,6 +682,7 @@ fn network_loop(
 					poll.as_ref(),
 					Some(&in_reply_to_id),
 					None,
+					scheduled_at.as_deref(),
 				);
 				send_response(responses, ui_waker, NetworkResponse::Replied(result));
 			}

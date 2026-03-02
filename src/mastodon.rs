@@ -46,6 +46,20 @@ pub struct QuoteApproval {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+pub struct ScheduledStatus {
+	pub id: String,
+	pub scheduled_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PostSubmission {
+	Published(Status),
+	Scheduled(ScheduledStatus),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Status {
 	pub id: String,
 	pub url: Option<String>,
@@ -918,6 +932,10 @@ fn friendly_time(iso_time: &str, format: TimestampFormat) -> Option<String> {
 	}
 }
 
+pub fn friendly_time_local(iso_time: &str) -> String {
+	friendly_time(iso_time, TimestampFormat::Absolute).unwrap_or_else(|| iso_time.to_string())
+}
+
 impl MastodonClient {
 	pub fn new(base_url: Url) -> Result<Self> {
 		let http = Client::builder().user_agent("Fedra/0.1").build().context("Failed to create HTTP client")?;
@@ -991,7 +1009,8 @@ impl MastodonClient {
 		poll: Option<&crate::network::PollData>,
 		in_reply_to_id: Option<&str>,
 		quote_id: Option<&str>,
-	) -> Result<Status> {
+		scheduled_at: Option<&str>,
+	) -> Result<PostSubmission> {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
 			vec![("status".to_string(), status.to_string()), ("visibility".to_string(), visibility.to_string())];
@@ -1020,6 +1039,11 @@ impl MastodonClient {
 		{
 			params.push(("quoted_status_id".to_string(), quote_id.to_string()));
 		}
+		if let Some(scheduled_at) = scheduled_at
+			&& !scheduled_at.trim().is_empty()
+		{
+			params.push(("scheduled_at".to_string(), scheduled_at.to_string()));
+		}
 		for media_id in media_ids {
 			params.push(("media_ids[]".to_string(), media_id.clone()));
 		}
@@ -1031,17 +1055,29 @@ impl MastodonClient {
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
 			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to post status")?
-			.error_for_status()
-			.context("Instance rejected status post")?;
-		let status: Status = response.json().context("Invalid status response")?;
-		Ok(status)
+		let response =
+			self.http.post(url).bearer_auth(access_token).form(&params).send().context("Failed to post status")?;
+		let status = response.status();
+		if !status.is_success() {
+			let body = response.text().unwrap_or_default();
+			let detail = serde_json::from_str::<Value>(&body)
+				.ok()
+				.and_then(|json| {
+					json.get("error")
+						.and_then(Value::as_str)
+						.or_else(|| json.get("error_description").and_then(Value::as_str))
+						.map(std::string::ToString::to_string)
+				})
+				.unwrap_or_else(|| body.trim().to_string());
+			let detail = if detail.is_empty() {
+				format!("HTTP status {status}")
+			} else {
+				format!("HTTP status {status}: {detail}")
+			};
+			anyhow::bail!("Instance rejected status post ({detail})");
+		}
+		let submission: PostSubmission = response.json().context("Invalid status response")?;
+		Ok(submission)
 	}
 
 	pub fn upload_media(&self, access_token: &str, path: &str, description: Option<&str>) -> Result<String> {

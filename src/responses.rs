@@ -454,12 +454,19 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					&format!("Failed to find user {handle}: {}", summarize_api_error(&err)),
 				);
 			}
-			NetworkResponse::PostComplete(Ok(status)) => {
+			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Published(status))) => {
 				live_region::announce(live_region, "Posted");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
 					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
 				}
+			}
+			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
+				state.pending_thread_continuation = false;
+				live_region::announce(
+					live_region,
+					&format!("Post scheduled for {}", crate::mastodon::friendly_time_local(&scheduled.scheduled_at)),
+				);
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
 				state.pending_thread_continuation = false;
@@ -544,12 +551,19 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to unboost", err));
 			}
-			NetworkResponse::Replied(Ok(status)) => {
+			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Published(status))) => {
 				live_region::announce(live_region, "Reply sent");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
 					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
 				}
+			}
+			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
+				state.pending_thread_continuation = false;
+				live_region::announce(
+					live_region,
+					&format!("Reply scheduled for {}", crate::mastodon::friendly_time_local(&scheduled.scheduled_at)),
+				);
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
 				state.pending_thread_continuation = false;

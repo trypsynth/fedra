@@ -46,6 +46,7 @@ fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: Option<Strin
 			hide_totals: poll.hide_totals,
 		}),
 		quoted_status_id,
+		scheduled_at: post.scheduled_at,
 	}
 }
 
@@ -239,6 +240,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					language: post_data.language,
 					media: post_data.media,
 					poll: post_data.poll,
+					scheduled_at: post_data.scheduled_at,
 				});
 			} else {
 				live_region::announce(live_region, "Network not available");
@@ -277,6 +279,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					language: post_data.language,
 					media: post_data.media,
 					poll: post_data.poll,
+					scheduled_at: post_data.scheduled_at,
 				});
 			} else {
 				live_region::announce(live_region, "Network not available");

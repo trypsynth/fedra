@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Write, path::Path, rc::Rc, sync::mpsc::Sender};
 
+use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use url::Url;
 use wxdragon::{
 	event::{WebViewEventData, WebViewEvents},
@@ -110,6 +111,7 @@ pub struct PostResult {
 	pub language: Option<String>,
 	pub media: Vec<PostMedia>,
 	pub poll: Option<PostPoll>,
+	pub scheduled_at: Option<String>,
 	pub continue_thread: bool,
 }
 
@@ -152,6 +154,7 @@ struct ComposeDialogConfig {
 	initial_language: Option<String>,
 	default_visibility: PostVisibility,
 	can_change_visibility: bool,
+	show_schedule_controls: bool,
 	show_thread_checkbox: bool,
 	initial_thread_mode: bool,
 	quoted_text: Option<String>,
@@ -863,6 +866,105 @@ fn normalize_language_code(input: &str) -> Option<String> {
 		return None;
 	}
 	Some(trimmed.to_ascii_lowercase())
+}
+
+fn schedule_button_label(scheduled_at: Option<&str>) -> String {
+	if let Some(iso) = scheduled_at
+		&& let Ok(dt) = DateTime::parse_from_rfc3339(iso)
+	{
+		let local = dt.with_timezone(&Local);
+		return format!("Edit schedule, currently {}", local.format("%Y-%m-%d %H:%M"));
+	}
+	"Schedule...".to_string()
+}
+
+fn parse_schedule_inputs(date_value: &str, time_value: &str) -> Option<DateTime<Utc>> {
+	let date = NaiveDate::parse_from_str(date_value.trim(), "%Y-%m-%d").ok()?;
+	let time_trimmed = time_value.trim();
+	let time = NaiveTime::parse_from_str(time_trimmed, "%H:%M")
+		.or_else(|_| NaiveTime::parse_from_str(time_trimmed, "%H:%M:%S"))
+		.or_else(|_| NaiveTime::parse_from_str(time_trimmed, "%I:%M %p"))
+		.ok()?;
+	let local_dt = date.and_time(time);
+	let resolved = match Local.from_local_datetime(&local_dt) {
+		LocalResult::Single(dt) => dt,
+		LocalResult::Ambiguous(early, _) => early,
+		LocalResult::None => return None,
+	};
+	Some(resolved.with_timezone(&Utc))
+}
+
+fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<Option<String>> {
+	const ID_CLEAR_SCHEDULE: i32 = 24_001;
+	let dialog = Dialog::builder(parent, "Schedule Post").with_size(360, 210).build();
+	let panel = Panel::builder(&dialog).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let date_label = StaticText::builder(&panel).with_label("Date (YYYY-MM-DD):").build();
+	let date_input = TextCtrl::builder(&panel).with_style(TextCtrlStyle::ProcessEnter).build();
+	let time_label = StaticText::builder(&panel).with_label("Time (HH:MM, 24-hour, local):").build();
+	let time_input = TextCtrl::builder(&panel).with_style(TextCtrlStyle::ProcessEnter).build();
+	let now_local = Local::now() + chrono::Duration::minutes(10);
+	date_input.set_value(&now_local.format("%Y-%m-%d").to_string());
+	time_input.set_value(&now_local.format("%H:%M").to_string());
+	if let Some(current) = current
+		&& let Ok(dt) = DateTime::parse_from_rfc3339(current)
+	{
+		let local = dt.with_timezone(&Local);
+		date_input.set_value(&local.format("%Y-%m-%d").to_string());
+		time_input.set_value(&local.format("%H:%M").to_string());
+	}
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let set_button = Button::builder(&panel).with_id(ID_OK).with_label("Set Schedule").build();
+	let clear_button = Button::builder(&panel).with_id(ID_CLEAR_SCHEDULE).with_label("Clear").build();
+	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
+	set_button.set_default();
+	button_sizer.add(&clear_button, 0, SizerFlag::Right, 8);
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&set_button, 0, SizerFlag::Right, 8);
+	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	main_sizer.add(&date_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&date_input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&time_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
+	main_sizer.add(&time_input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_CANCEL);
+	let dialog_enter = dialog;
+	time_input.on_key_down(move |event| {
+		if let WindowEventData::Keyboard(ref key_event) = event {
+			if key_event.get_key_code() == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down() {
+				dialog_enter.end_modal(ID_OK);
+				event.skip(false);
+			} else {
+				event.skip(true);
+			}
+		} else {
+			event.skip(true);
+		}
+	});
+	dialog.centre();
+	date_input.set_focus();
+	let result = dialog.show_modal();
+	if result == ID_CANCEL {
+		return None;
+	}
+	if result == ID_CLEAR_SCHEDULE {
+		return Some(None);
+	}
+	let Some(scheduled_utc) = parse_schedule_inputs(&date_input.get_value(), &time_input.get_value()) else {
+		show_warning_widget(parent, "Enter date as YYYY-MM-DD and time as HH:MM.", "Invalid Schedule");
+		return None;
+	};
+	let minimum = Utc::now() + chrono::Duration::minutes(5);
+	if scheduled_utc < minimum {
+		show_warning_widget(parent, "Scheduled time must be at least 5 minutes in the future.", "Invalid Schedule");
+		return None;
+	}
+	Some(Some(scheduled_utc.to_rfc3339_opts(SecondsFormat::Secs, true)))
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1602,7 +1704,10 @@ fn prompt_for_compose(
 	language_sizer.add(&language_combo, 1, SizerFlag::Expand, 0);
 	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
 	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
-	let thread_checkbox = CheckBox::builder(&panel).with_label("Thread mode (Send and Reply)").build();
+	let schedule_button = Button::builder(&panel).with_label("Schedule...").build();
+	let clear_schedule_button = Button::builder(&panel).with_label("Clear Schedule").build();
+	clear_schedule_button.enable(false);
+	let thread_checkbox = CheckBox::builder(&panel).with_label("Thread mode").build();
 	if !config.show_thread_checkbox {
 		thread_checkbox.show(false);
 	}
@@ -1626,6 +1731,18 @@ fn prompt_for_compose(
 	main_sizer.add_sizer(&language_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&media_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&poll_button, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	if config.show_schedule_controls {
+		let schedule_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+		schedule_sizer.add(&schedule_button, 0, SizerFlag::Right, 8);
+		schedule_sizer.add(&clear_schedule_button, 0, SizerFlag::Right, 8);
+		schedule_sizer.add_stretch_spacer(1);
+		main_sizer.add_sizer(
+			&schedule_sizer,
+			0,
+			SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+			8,
+		);
+	}
 	if config.show_thread_checkbox {
 		main_sizer.add(&thread_checkbox, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	}
@@ -1672,6 +1789,30 @@ fn prompt_for_compose(
 			None => {}
 		}
 	});
+	let scheduled_state: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+	if config.show_schedule_controls {
+		let scheduled_state_set = scheduled_state.clone();
+		let schedule_button_set = schedule_button;
+		let clear_schedule_button_set = clear_schedule_button;
+		let schedule_parent = dialog;
+		schedule_button.on_click(move |_| {
+			let current = scheduled_state_set.borrow().clone();
+			if let Some(updated) = prompt_for_schedule(&schedule_parent, current.as_deref()) {
+				*scheduled_state_set.borrow_mut() = updated;
+				let label = schedule_button_label(scheduled_state_set.borrow().as_deref());
+				schedule_button_set.set_label(&label);
+				clear_schedule_button_set.enable(scheduled_state_set.borrow().is_some());
+			}
+		});
+		let scheduled_state_clear = scheduled_state.clone();
+		let schedule_button_clear = schedule_button;
+		let clear_schedule_button_clear = clear_schedule_button;
+		clear_schedule_button.on_click(move |_| {
+			*scheduled_state_clear.borrow_mut() = None;
+			schedule_button_clear.set_label("Schedule...");
+			clear_schedule_button_clear.enable(false);
+		});
+	}
 	let cw_label_toggle = cw_label;
 	let cw_text_toggle = cw_text;
 	let panel_toggle = panel;
@@ -1713,6 +1854,9 @@ fn prompt_for_compose(
 		cw_label.show(true);
 		cw_text.show(true);
 		cw_text.set_value(cw);
+	}
+	if config.show_schedule_controls {
+		schedule_button.set_label(&schedule_button_label(scheduled_state.borrow().as_deref()));
 	}
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
@@ -1780,6 +1924,7 @@ fn prompt_for_compose(
 		language,
 		media,
 		poll,
+		scheduled_at: scheduled_state.borrow().clone(),
 		continue_thread: thread_checkbox.get_value(),
 	})
 }
@@ -1804,6 +1949,7 @@ pub fn prompt_for_post(
 			initial_language: None,
 			default_visibility: default_visibility.unwrap_or(PostVisibility::Public),
 			can_change_visibility: true,
+			show_schedule_controls: true,
 			show_thread_checkbox: true,
 			initial_thread_mode: false,
 			quoted_text: None,
@@ -1869,6 +2015,7 @@ pub fn prompt_for_reply(
 			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,
+			show_schedule_controls: true,
 			show_thread_checkbox: true,
 			initial_thread_mode,
 			quoted_text: None,
@@ -1917,6 +2064,7 @@ pub fn prompt_for_edit(
 			initial_language: status.language.clone(),
 			default_visibility,
 			can_change_visibility: false,
+			show_schedule_controls: false,
 			show_thread_checkbox: false,
 			initial_thread_mode: false,
 			quoted_text: None,
@@ -1955,6 +2103,7 @@ pub fn prompt_for_quote(
 			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,
+			show_schedule_controls: true,
 			show_thread_checkbox: false,
 			initial_thread_mode: false,
 			quoted_text: Some(quoted_text),
