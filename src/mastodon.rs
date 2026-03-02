@@ -272,6 +272,8 @@ pub struct Relationship {
 	pub muting: bool,
 	pub muting_notifications: bool,
 	pub requested: bool,
+	#[serde(default)]
+	pub requested_by: bool,
 	pub domain_blocking: bool,
 	pub endorsed: bool,
 	pub note: String,
@@ -1524,6 +1526,34 @@ impl MastodonClient {
 			.context("Failed to unfollow account")?
 			.error_for_status()
 			.context("Instance rejected unfollow request")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn authorize_follow_request(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/follow_requests/{account_id}/authorize"))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to authorize follow request")?
+			.error_for_status()
+			.context("Instance rejected follow request authorization")?;
+		let relationship: Relationship = response.json().context("Invalid relationship response")?;
+		Ok(relationship)
+	}
+
+	pub fn reject_follow_request(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/follow_requests/{account_id}/reject"))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to reject follow request")?
+			.error_for_status()
+			.context("Instance rejected follow request rejection")?;
 		let relationship: Relationship = response.json().context("Invalid relationship response")?;
 		Ok(relationship)
 	}

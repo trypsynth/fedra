@@ -141,6 +141,8 @@ const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
 const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
 const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
 const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
+const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
+const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
 
 struct ComposeDialogConfig {
 	title_prefix: String,
@@ -3238,6 +3240,41 @@ pub struct ProfileDialog {
 	account: Rc<RefCell<MastodonAccount>>,
 }
 
+fn append_relationship_text(text: &mut String, relationship: &crate::mastodon::Relationship) {
+	text.push_str("\r\n\r\nRelationship:\r\n");
+	let follow_status = match (relationship.following, relationship.followed_by) {
+		(true, true) => "You follow each other.",
+		(true, false) => "You follow this person.",
+		(false, true) => "This person follows you.",
+		(false, false) => "You do not follow each other.",
+	};
+	let _ = writeln!(text, "{follow_status}");
+
+	if relationship.requested {
+		text.push_str("You have requested to follow this person.\r\n");
+	}
+	if relationship.requested_by {
+		text.push_str("This person has requested to follow you.\r\n");
+	}
+	if relationship.blocking {
+		text.push_str("You have blocked this person.\r\n");
+	}
+	if relationship.muting {
+		text.push_str("You have muted this person.\r\n");
+	}
+	if relationship.domain_blocking {
+		text.push_str("You have blocked this person's domain.\r\n");
+	}
+
+	if !relationship.note.is_empty() {
+		let note = crate::html::strip_html(&relationship.note);
+		if !note.trim().is_empty() {
+			text.push_str("\r\nNote:\r\n");
+			text.push_str(&note);
+		}
+	}
+}
+
 impl ProfileDialog {
 	pub fn new<F, C>(
 		frame: &Frame,
@@ -3297,8 +3334,14 @@ impl ProfileDialog {
 						} else {
 							menu.append(ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
 						}
+					} else if r.requested {
+						menu.append(ID_ACTION_UNFOLLOW, "Cancel Follow Request", "", ItemKind::Normal);
 					} else {
 						menu.append(ID_ACTION_FOLLOW, "Follow", "", ItemKind::Normal);
+					}
+					if r.requested_by {
+						menu.append(ID_ACTION_ACCEPT_FOLLOW_REQUEST, "Accept Follow Request", "", ItemKind::Normal);
+						menu.append(ID_ACTION_REJECT_FOLLOW_REQUEST, "Reject Follow Request", "", ItemKind::Normal);
 					}
 					if r.muting {
 						menu.append(ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
@@ -3321,6 +3364,7 @@ impl ProfileDialog {
 		});
 
 		let account_handler = account_rc.clone();
+		let relationship_handler = relationship.clone();
 		let panel_handler = panel;
 		let net_tx_handler = net_tx;
 
@@ -3351,7 +3395,15 @@ impl ProfileDialog {
 					reblogs: true,
 					action: crate::network::RelationshipAction::Follow,
 				},
-				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount { account_id, target_name },
+				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
+					account_id,
+					target_name,
+					action: if relationship_handler.borrow().as_ref().is_some_and(|r| !r.following && r.requested) {
+						crate::network::RelationshipAction::CancelFollowRequest
+					} else {
+						crate::network::RelationshipAction::Unfollow
+					},
+				},
 				ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
 					account_id,
 					target_name,
@@ -3380,6 +3432,8 @@ impl ProfileDialog {
 				ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
 				ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
 				ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
+				ID_ACTION_ACCEPT_FOLLOW_REQUEST => NetworkCommand::AuthorizeFollowRequest { account_id, target_name },
+				ID_ACTION_REJECT_FOLLOW_REQUEST => NetworkCommand::RejectFollowRequest { account_id, target_name },
 				_ => return,
 			};
 			let _ = net_tx_handler.send(cmd);
@@ -3416,35 +3470,7 @@ impl ProfileDialog {
 		let mut text = account.profile_display();
 
 		if let Some(rel) = self.relationship.borrow().clone() {
-			text.push_str("\r\n\r\nRelationship:\r\n");
-			let follow_status = match (rel.following, rel.followed_by) {
-				(true, true) => "You follow each other.",
-				(true, false) => "You follow this person.",
-				(false, true) => "This person follows you.",
-				(false, false) => "You do not follow each other.",
-			};
-			let _ = writeln!(text, "{follow_status}");
-
-			if rel.requested {
-				text.push_str("You have requested to follow this person.\r\n");
-			}
-			if rel.blocking {
-				text.push_str("You have blocked this person.\r\n");
-			}
-			if rel.muting {
-				text.push_str("You have muted this person.\r\n");
-			}
-			if rel.domain_blocking {
-				text.push_str("You have blocked this person's domain.\r\n");
-			}
-
-			if !rel.note.is_empty() {
-				let note = crate::html::strip_html(&rel.note);
-				if !note.trim().is_empty() {
-					text.push_str("\r\nNote:\r\n");
-					text.push_str(&note);
-				}
-			}
+			append_relationship_text(&mut text, &rel);
 		}
 
 		self.profile_text.set_value(&text);
@@ -3454,36 +3480,7 @@ impl ProfileDialog {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
 		let account = self.account.borrow();
 		let mut text = account.profile_display();
-		text.push_str("\r\n\r\nRelationship:\r\n");
-
-		let follow_status = match (relationship.following, relationship.followed_by) {
-			(true, true) => "You follow each other.",
-			(true, false) => "You follow this person.",
-			(false, true) => "This person follows you.",
-			(false, false) => "You do not follow each other.",
-		};
-		let _ = writeln!(text, "{follow_status}");
-
-		if relationship.requested {
-			text.push_str("You have requested to follow this person.\r\n");
-		}
-		if relationship.blocking {
-			text.push_str("You have blocked this person.\r\n");
-		}
-		if relationship.muting {
-			text.push_str("You have muted this person.\r\n");
-		}
-		if relationship.domain_blocking {
-			text.push_str("You have blocked this person's domain.\r\n");
-		}
-
-		if !relationship.note.is_empty() {
-			let note = crate::html::strip_html(&relationship.note);
-			if !note.trim().is_empty() {
-				text.push_str("\r\nNote:\r\n");
-				text.push_str(&note);
-			}
-		}
+		append_relationship_text(&mut text, relationship);
 		self.profile_text.set_value(&text);
 	}
 }

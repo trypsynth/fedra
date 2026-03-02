@@ -19,6 +19,9 @@ use crate::{
 pub enum RelationshipAction {
 	Follow,
 	Unfollow,
+	CancelFollowRequest,
+	AcceptFollowRequest,
+	RejectFollowRequest,
 	Block,
 	Unblock,
 	Mute,
@@ -97,6 +100,15 @@ pub enum NetworkCommand {
 		action: RelationshipAction,
 	},
 	UnfollowAccount {
+		account_id: String,
+		target_name: String,
+		action: RelationshipAction,
+	},
+	AuthorizeFollowRequest {
+		account_id: String,
+		target_name: String,
+	},
+	RejectFollowRequest {
 		account_id: String,
 		target_name: String,
 	},
@@ -706,15 +718,36 @@ fn network_loop(
 					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
 				);
 			}
-			Ok(NetworkCommand::UnfollowAccount { account_id, target_name }) => {
+			Ok(NetworkCommand::UnfollowAccount { account_id, target_name, action }) => {
 				let result = client.unfollow_account(access_token, &account_id);
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
+				);
+			}
+			Ok(NetworkCommand::AuthorizeFollowRequest { account_id, target_name }) => {
+				let result = client.authorize_follow_request(access_token, &account_id);
 				send_response(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipUpdated {
 						_account_id: account_id,
 						target_name,
-						action: RelationshipAction::Unfollow,
+						action: RelationshipAction::AcceptFollowRequest,
+						result,
+					},
+				);
+			}
+			Ok(NetworkCommand::RejectFollowRequest { account_id, target_name }) => {
+				let result = client.reject_follow_request(access_token, &account_id);
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::RelationshipUpdated {
+						_account_id: account_id,
+						target_name,
+						action: RelationshipAction::RejectFollowRequest,
 						result,
 					},
 				);

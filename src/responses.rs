@@ -765,6 +765,15 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					let msg = match action {
 						crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
 						crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
+						crate::network::RelationshipAction::CancelFollowRequest => {
+							format!("Canceled follow request to {target_name}")
+						}
+						crate::network::RelationshipAction::AcceptFollowRequest => {
+							format!("Accepted follow request from {target_name}")
+						}
+						crate::network::RelationshipAction::RejectFollowRequest => {
+							format!("Rejected follow request from {target_name}")
+						}
 						crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
 						crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
 						crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),

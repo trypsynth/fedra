@@ -1413,6 +1413,35 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
 					}
 				}
+				TimelineEntry::Notification(notification) if notification.kind == "follow_request" => {
+					let Some(handle) = &state.network_handle else {
+						live_region::announce(live_region, "Network not available");
+						return;
+					};
+					let actor = notification.account.display_name_or_username().to_string();
+					let prompt = format!(
+						"{} (@{}) requested to follow you.\r\n\r\nYes: Accept\r\nNo: Reject\r\nCancel: Keep pending",
+						actor, notification.account.acct
+					);
+					let dialog = MessageDialog::builder(frame, &prompt, "Follow Request")
+						.with_style(
+							MessageDialogStyle::YesNo | MessageDialogStyle::Cancel | MessageDialogStyle::IconQuestion,
+						)
+						.build();
+					match dialog.show_modal() {
+						ID_YES => handle.send(NetworkCommand::AuthorizeFollowRequest {
+							account_id: notification.account.id.clone(),
+							target_name: actor,
+						}),
+						ID_NO => handle.send(NetworkCommand::RejectFollowRequest {
+							account_id: notification.account.id.clone(),
+							target_name: actor,
+						}),
+						_ => {
+							live_region::announce(live_region, "Follow request unchanged");
+						}
+					}
+				}
 				TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
 					let Some(status) = entry.as_status() else {
 						live_region::announce(live_region, "No post to view");
