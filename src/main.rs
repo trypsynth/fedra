@@ -188,7 +188,7 @@ fn main() {
 		let window_parts = build_main_window();
 		let frame = window_parts.frame;
 		let timelines_selector = window_parts.timelines_selector;
-		let timeline_list = window_parts.timeline_list;
+		let timeline_list = window_parts.timeline_list.clone();
 		let live_region_label = window_parts.live_region_label;
 		let (ui_tx_raw, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
@@ -222,7 +222,7 @@ fn main() {
 			&mut state,
 			&frame,
 			timelines_selector,
-			timeline_list,
+			&timeline_list,
 			&suppress_selection,
 			live_region_label,
 			false,
@@ -268,7 +268,7 @@ fn main() {
 					state: &mut state,
 					frame: &frame_wake,
 					timelines_selector: timelines_selector_wake,
-					timeline_list: timeline_list_wake,
+					timeline_list: timeline_list_wake.clone(),
 					suppress_selection: &suppress_wake,
 					live_region: live_region_wake,
 					quick_action_keys_enabled: &quick_action_keys_drain,
@@ -279,13 +279,13 @@ fn main() {
 				};
 				drain_ui_commands(&ui_rx, &mut ui_ctx);
 			}
-			process_stream_events(&mut state, timeline_list_wake, &suppress_wake, &frame_wake);
+			process_stream_events(&mut state, &timeline_list_wake, &suppress_wake, &frame_wake);
 			{
 				let mut network_ctx = NetworkResponseContext {
 					frame: &frame_wake,
 					state: &mut state,
 					timelines_selector: timelines_selector_wake,
-					timeline_list: timeline_list_wake,
+					timeline_list: timeline_list_wake.clone(),
 					suppress_selection: &suppress_wake,
 					live_region: live_region_wake,
 					quick_action_keys_enabled: &quick_action_keys_drain,
@@ -303,7 +303,7 @@ fn main() {
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
 					update_active_timeline_ui(
-						timeline_list_wake,
+						&timeline_list_wake,
 						active,
 						&suppress_wake,
 						&view_options,
@@ -338,7 +338,7 @@ fn main() {
 			ui_tx.clone(),
 			is_shutting_down.clone(),
 			suppress_selection.clone(),
-			quick_action_keys_enabled,
+			&quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,
 			context_menu_state_for_handlers,

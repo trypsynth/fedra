@@ -18,6 +18,7 @@ use crate::{
 	ui::{
 		app_shell, dialogs,
 		menu::update_menu_labels,
+		timeline_panel::TimelinePanel,
 		timeline_view::{
 			list_index_to_entry_index, sync_timeline_selection_from_list, update_active_timeline_ui,
 			with_suppressed_selection,
@@ -145,7 +146,7 @@ pub struct UiCommandContext<'a> {
 	pub state: &'a mut AppState,
 	pub frame: &'a Frame,
 	pub timelines_selector: ListBox,
-	pub timeline_list: ListBox,
+	pub timeline_list: TimelinePanel,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
@@ -161,7 +162,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = ctx.timeline_list;
+	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let live_region = ctx.live_region;
 	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
@@ -519,7 +520,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 			let is_expanded = state.cw_expanded.contains(entry_id);
 			let text = entry.display_text(&text_options, is_expanded);
-			timeline_list.set_string(u32::try_from(list_index).unwrap(), &text);
+			timeline_list.set_string(list_index, &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
 			app_shell::toggle_window_visibility(frame, tray_hidden);
@@ -1707,9 +1708,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						active.entries.len(),
 						state.config.sort_order,
 					);
-					if let Some(idx) = list_index
-						&& let Ok(idx_u32) = u32::try_from(idx)
-					{
+					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
 						let effective_sort_order = if state.config.preserve_thread_order
 							&& matches!(active.timeline_type, TimelineType::Thread { .. })
@@ -1724,7 +1723,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx_u32, true);
+						timeline_list.set_selection(idx);
 						live_region::announce(live_region, "Found");
 					}
 				} else {
@@ -1746,9 +1745,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						active.entries.len(),
 						state.config.sort_order,
 					);
-					if let Some(idx) = list_index
-						&& let Ok(idx_u32) = u32::try_from(idx)
-					{
+					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
 						let effective_sort_order = if state.config.preserve_thread_order
 							&& matches!(active.timeline_type, TimelineType::Thread { .. })
@@ -1764,7 +1761,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 
-						timeline_list.set_selection(idx_u32, true);
+						timeline_list.set_selection(idx);
 						live_region::announce(live_region, "Found next");
 					}
 				} else {
@@ -1778,9 +1775,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									active.entries.len(),
 									state.config.sort_order,
 								);
-								if let Some(idx) = list_index
-									&& let Ok(idx_u32) = u32::try_from(idx)
-								{
+								if let Some(idx) = list_index {
 									active.selected_index = Some(idx);
 									let effective_sort_order = if state.config.preserve_thread_order
 										&& matches!(active.timeline_type, TimelineType::Thread { .. })
@@ -1796,7 +1791,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									)
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
-									timeline_list.set_selection(idx_u32, true);
+									timeline_list.set_selection(idx);
 									live_region::announce(live_region, "Wrapped to top");
 								}
 							} else {
@@ -1828,9 +1823,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						active.entries.len(),
 						state.config.sort_order,
 					);
-					if let Some(idx) = list_index
-						&& let Ok(idx_u32) = u32::try_from(idx)
-					{
+					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
 						let effective_sort_order = if state.config.preserve_thread_order
 							&& matches!(active.timeline_type, TimelineType::Thread { .. })
@@ -1845,7 +1838,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx_u32, true);
+						timeline_list.set_selection(idx);
 						live_region::announce(live_region, "Found previous");
 					}
 				} else {
@@ -1967,7 +1960,7 @@ fn do_boost(state: &AppState, live_region: StaticText) {
 fn open_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: ListBox,
+	timeline_list: &TimelinePanel,
 	timeline_type: &TimelineType,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
@@ -2033,7 +2026,7 @@ fn open_timeline(
 fn close_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: ListBox,
+	timeline_list: &TimelinePanel,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	use_history: bool,

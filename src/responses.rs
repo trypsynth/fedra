@@ -12,6 +12,7 @@ use crate::{
 	ui::{
 		dialogs::{self, UserLookupAction},
 		menu::update_menu_labels,
+		timeline_panel::TimelinePanel,
 		timeline_view::{sync_timeline_selection_from_list, update_active_timeline_ui},
 	},
 	ui_wake::UiCommandSender,
@@ -69,7 +70,7 @@ fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
 /// Processes streaming events from WebSocket connections.
 pub fn process_stream_events(
 	state: &mut AppState,
-	timeline_list: ListBox,
+	timeline_list: &TimelinePanel,
 	suppress_selection: &Cell<bool>,
 	frame: &Frame,
 ) {
@@ -202,7 +203,7 @@ pub struct NetworkResponseContext<'a> {
 	pub frame: &'a Frame,
 	pub state: &'a mut AppState,
 	pub timelines_selector: ListBox,
-	pub timeline_list: ListBox,
+	pub timeline_list: TimelinePanel,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
@@ -218,7 +219,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	let frame = ctx.frame;
 	let state = &mut *ctx.state;
 	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = ctx.timeline_list;
+	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let live_region = ctx.live_region;
 	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
@@ -234,7 +235,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				state,
 				frame,
 				timelines_selector,
-				timeline_list,
+				timeline_list: timeline_list.clone(),
 				suppress_selection,
 				live_region,
 				quick_action_keys_enabled,
