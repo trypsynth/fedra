@@ -104,7 +104,8 @@ pub enum UiCommand {
 	Vote,
 	LoadMore,
 	LoadMoreBackground,
-	ApplyPendingOrLoadMore,
+	ApplyPending(Option<usize>),
+	HomePressed,
 	ToggleContentWarning,
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
@@ -447,7 +448,16 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 			handle_ui_command(UiCommand::LoadMore, ctx);
 		}
-		UiCommand::ApplyPendingOrLoadMore => {
+		UiCommand::HomePressed => {
+			let has_pending =
+				state.timeline_manager.active().is_some_and(|active| !active.pending_older_entries.is_empty());
+			if has_pending {
+				handle_ui_command(UiCommand::ApplyPending(Some(0)), ctx);
+			} else if timeline_list.get_selection() != Some(0) {
+				timeline_list.set_selection(0);
+			}
+		}
+		UiCommand::ApplyPending(target_index) => {
 			let has_pending =
 				state.timeline_manager.active().is_some_and(|active| !active.pending_older_entries.is_empty());
 			if has_pending {
@@ -459,12 +469,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				let added_count = new_entries.len();
 				active.entries.extend(new_entries);
 
+				let current_selection = timeline_list.get_selection();
+
 				update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
 
-				let new_index = added_count.saturating_sub(1);
-				timeline_list.set_selection(new_index);
-
-				live_region::announce(live_region, &format!("Loaded {} older posts", added_count));
+				if let Some(explicit_target) = target_index {
+					timeline_list.set_selection(explicit_target);
+				} else if let Some(current) = current_selection {
+					// We were at 'current'. Now there are 'added_count' new items at the top.
+					if current == 0 {
+						// If we were at the top boundary, act like Up Arrow (slide them into the new chunk's bottom)
+						timeline_list.set_selection(added_count.saturating_sub(1));
+					} else {
+						// We want to visually stay exactly where we were, so our new index is current + added_count.
+						timeline_list.set_selection(current + added_count);
+					}
+				}
 			} else {
 				handle_ui_command(UiCommand::LoadMore, ctx);
 			}
@@ -472,9 +492,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
 				&& !active.entries.is_empty()
-				&& !active.loading_more
 				&& active.timeline_type.supports_paging()
 			{
+				if active.loading_more {
+					if active.loading_more_in_background {
+						active.loading_more_in_background = false;
+					}
+					return;
+				}
+
+				if state.config.sort_order == SortOrder::OldestToNewest {
+					active.loading_more_in_background = true;
+				}
+
 				let now = Instant::now();
 				let can_load =
 					active.last_load_attempt.is_none_or(|last| now.duration_since(last) > Duration::from_secs(1));

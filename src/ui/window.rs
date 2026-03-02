@@ -193,6 +193,13 @@ pub fn bind_input_handlers(
 					}
 					return true;
 				}
+				313 => {
+					// Home
+					if sort_order_list.get() == SortOrder::OldestToNewest {
+						let _ = ui_tx_list_key.send(UiCommand::HomePressed);
+						return true;
+					}
+				}
 				314 => {
 					// Left Arrow
 					let _ = ui_tx_list_key.send(UiCommand::SwitchPrevTimeline);
@@ -224,7 +231,8 @@ pub fn bind_input_handlers(
 					if k == 315 {
 						// Up
 						if sort_order == SortOrder::OldestToNewest && index == 0 {
-							let _ = ui_tx_list_key.send(UiCommand::ApplyPendingOrLoadMore);
+							let _ = ui_tx_list_key.send(UiCommand::ApplyPending(None));
+							return true;
 						}
 					} else if k == 317 {
 						// Down
@@ -233,6 +241,7 @@ pub fn bind_input_handlers(
 							&& index + 1 == count
 						{
 							let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+							return true;
 						}
 					}
 				}

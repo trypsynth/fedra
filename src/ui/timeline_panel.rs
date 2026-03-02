@@ -105,12 +105,12 @@ impl TimelinePanel {
 			use windows::Win32::{
 				Foundation::{HWND, LPARAM, WPARAM},
 				UI::{
-					Controls::{LVCOLUMNW, LVCF_WIDTH},
-					WindowsAndMessaging::{
-						CreateWindowExW, SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE,
-						WS_CHILD, WS_TABSTOP, WS_VISIBLE, SWP_NOACTIVATE, SWP_NOZORDER,
-					},
+					Controls::{LVCF_WIDTH, LVCOLUMNW},
 					Shell::SetWindowSubclass,
+					WindowsAndMessaging::{
+						CreateWindowExW, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, WINDOW_EX_STYLE,
+						WINDOW_STYLE, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+					},
 				},
 			};
 
@@ -119,12 +119,9 @@ impl TimelinePanel {
 			// Create the SysListView32 child window in virtual/owner-data mode.
 			let lv_style = WINDOW_STYLE(
 				WS_CHILD.0
-					| WS_VISIBLE.0
-					| WS_TABSTOP.0
-					| LVS_REPORT
-					| LVS_NOCOLUMNHEADER
-					| LVS_OWNERDATA
-					| LVS_SINGLESEL
+					| WS_VISIBLE.0 | WS_TABSTOP.0
+					| LVS_REPORT | LVS_NOCOLUMNHEADER
+					| LVS_OWNERDATA | LVS_SINGLESEL
 					| LVS_SHOWSELALWAYS,
 			);
 			let listview_hwnd = unsafe {
@@ -171,8 +168,7 @@ impl TimelinePanel {
 
 			// Make the listview fill the panel whenever it resizes.
 			unsafe {
-				SetWindowPos(listview_hwnd, None, 0, 0, 100, 100, SWP_NOZORDER | SWP_NOACTIVATE)
-					.unwrap_or(());
+				SetWindowPos(listview_hwnd, None, 0, 0, 100, 100, SWP_NOZORDER | SWP_NOACTIVATE).unwrap_or(());
 			}
 
 			// Subclass the panel to handle WM_NOTIFY and WM_SIZE.
@@ -201,8 +197,10 @@ impl TimelinePanel {
 		let count = inner.items.len();
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::WindowsAndMessaging::SendMessageW,
+			};
 			SendMessageW(inner.listview_hwnd, LVM_SETITEMCOUNT, Some(WPARAM(count)), Some(LPARAM(0)));
 		}
 	}
@@ -223,15 +221,12 @@ impl TimelinePanel {
 		}
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::WindowsAndMessaging::SendMessageW,
+			};
 			// LVM_REDRAWITEMS repaints items without firing NAMECHANGE.
-			SendMessageW(
-				inner.listview_hwnd,
-				LVM_REDRAWITEMS,
-				Some(WPARAM(index)),
-				Some(LPARAM(index as isize)),
-			);
+			SendMessageW(inner.listview_hwnd, LVM_REDRAWITEMS, Some(WPARAM(index)), Some(LPARAM(index as isize)));
 		}
 	}
 
@@ -252,9 +247,11 @@ impl TimelinePanel {
 		inner.selected_index.set(None);
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::Graphics::Gdi::InvalidateRect;
-			use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				Graphics::Gdi::InvalidateRect,
+				UI::WindowsAndMessaging::SendMessageW,
+			};
 			SendMessageW(inner.listview_hwnd, LVM_SETITEMCOUNT, Some(WPARAM(0)), Some(LPARAM(0)));
 			let _ = InvalidateRect(Some(inner.listview_hwnd), None, true);
 		}
@@ -278,11 +275,18 @@ impl TimelinePanel {
 		}
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::Graphics::Gdi::InvalidateRect;
-			use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				Graphics::Gdi::InvalidateRect,
+				UI::WindowsAndMessaging::SendMessageW,
+			};
 			// LVSICF_NOINVALIDATEALL preserves selection state for existing items.
-			SendMessageW(inner.listview_hwnd, LVM_SETITEMCOUNT, Some(WPARAM(count)), Some(LPARAM(LVSICF_NOINVALIDATEALL)));
+			SendMessageW(
+				inner.listview_hwnd,
+				LVM_SETITEMCOUNT,
+				Some(WPARAM(count)),
+				Some(LPARAM(LVSICF_NOINVALIDATEALL)),
+			);
 			let _ = InvalidateRect(Some(inner.listview_hwnd), None, true);
 		}
 	}
@@ -300,23 +304,18 @@ impl TimelinePanel {
 	pub fn set_selection(&self, index: usize) {
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::UI::Controls::{LVITEMW, LIST_VIEW_ITEM_FLAGS, LIST_VIEW_ITEM_STATE_FLAGS};
-			use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::{
+					Controls::{LIST_VIEW_ITEM_FLAGS, LIST_VIEW_ITEM_STATE_FLAGS, LVITEMW},
+					WindowsAndMessaging::SendMessageW,
+				},
+			};
 			let inner = self.inner.borrow();
 			inner.selected_index.set(Some(index));
 			let lv = inner.listview_hwnd;
 
-			// Deselect all items first.
-			let desel = LVITEMW {
-				stateMask: LIST_VIEW_ITEM_STATE_FLAGS(LVIS_SELECTED | LVIS_FOCUSED),
-				state: LIST_VIEW_ITEM_STATE_FLAGS(0),
-				mask: LIST_VIEW_ITEM_FLAGS(LVIF_STATE),
-				..Default::default()
-			};
-			SendMessageW(lv, LVM_SETITEMSTATE, Some(WPARAM(usize::MAX)), Some(LPARAM(std::ptr::addr_of!(desel) as isize)));
-
-			// Select + focus the requested item.
+			// Select + focus the requested item. LVS_SINGLESEL handles deselecting automatically.
 			let sel = LVITEMW {
 				stateMask: LIST_VIEW_ITEM_STATE_FLAGS(LVIS_SELECTED | LVIS_FOCUSED),
 				state: LIST_VIEW_ITEM_STATE_FLAGS(LVIS_SELECTED | LVIS_FOCUSED),
@@ -336,8 +335,10 @@ impl TimelinePanel {
 	pub fn freeze(&self) {
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETREDRAW};
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::WindowsAndMessaging::{SendMessageW, WM_SETREDRAW},
+			};
 			let lv = self.inner.borrow().listview_hwnd;
 			SendMessageW(lv, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
 		}
@@ -347,9 +348,11 @@ impl TimelinePanel {
 	pub fn thaw(&self) {
 		#[cfg(windows)]
 		unsafe {
-			use windows::Win32::Foundation::{LPARAM, WPARAM};
-			use windows::Win32::Graphics::Gdi::InvalidateRect;
-			use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETREDRAW};
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				Graphics::Gdi::InvalidateRect,
+				UI::WindowsAndMessaging::{SendMessageW, WM_SETREDRAW},
+			};
 			let lv = self.inner.borrow().listview_hwnd;
 			SendMessageW(lv, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
 			let _ = InvalidateRect(Some(lv), None, true);
@@ -387,18 +390,19 @@ impl TimelinePanel {
 #[cfg(windows)]
 const fn vk_to_wx_key(vk: usize) -> Option<i32> {
 	match vk {
-		0x08 => Some(8),           // VK_BACK → Backspace
-		0x0D => Some(13),          // VK_RETURN → Enter
-		0x25 => Some(314),         // VK_LEFT
-		0x26 => Some(315),         // VK_UP
-		0x27 => Some(316),         // VK_RIGHT
-		0x28 => Some(317),         // VK_DOWN
-		0x2E => Some(127),         // VK_DELETE → KEY_DELETE
-		0x72 => Some(342),         // VK_F3
-		0xBE => Some(46),          // VK_OEM_PERIOD → '.'
-		0xBF => Some(191),         // VK_OEM_2 → '/'
-		0xDB => Some(91),          // VK_OEM_4 → '['
-		0xDD => Some(93),          // VK_OEM_6 → ']'
+		0x08 => Some(8),                              // VK_BACK → Backspace
+		0x0D => Some(13),                             // VK_RETURN → Enter
+		0x24 => Some(313),                            // VK_HOME
+		0x25 => Some(314),                            // VK_LEFT
+		0x26 => Some(315),                            // VK_UP
+		0x27 => Some(316),                            // VK_RIGHT
+		0x28 => Some(317),                            // VK_DOWN
+		0x2E => Some(127),                            // VK_DELETE → KEY_DELETE
+		0x72 => Some(342),                            // VK_F3
+		0xBE => Some(46),                             // VK_OEM_PERIOD → '.'
+		0xBF => Some(191),                            // VK_OEM_2 → '/'
+		0xDB => Some(91),                             // VK_OEM_4 → '['
+		0xDD => Some(93),                             // VK_OEM_6 → ']'
 		0x30..=0x39 | 0x41..=0x5A => Some(vk as i32), // 0–9 and A–Z
 		_ => None,
 	}
@@ -415,12 +419,14 @@ unsafe extern "system" fn panel_subclass_proc(
 	ref_data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
 	use windows::Win32::{
-		Foundation::{LRESULT, LPARAM, WPARAM},
+		Foundation::{LPARAM, LRESULT, WPARAM},
 		UI::{
-			Controls::{NMLVDISPINFOW, NMLISTVIEW},
+			Controls::{NMLISTVIEW, NMLVDISPINFOW},
 			Input::KeyboardAndMouse::SetFocus,
 			Shell::DefSubclassProc,
-			WindowsAndMessaging::{SendMessageW, SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER, WM_NOTIFY, WM_SETFOCUS, WM_SIZE},
+			WindowsAndMessaging::{
+				SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, WM_NOTIFY, WM_SETFOCUS, WM_SIZE,
+			},
 		},
 	};
 
@@ -447,10 +453,7 @@ unsafe extern "system" fn panel_subclass_proc(
 				let nmlv = &*(lparam.0 as *const NMLISTVIEW);
 				// Fire on_selection_changed only when an item *gains* selection.
 				// uChanged is LIST_VIEW_ITEM_FLAGS, uNewState is plain u32.
-				if nmlv.uChanged.0 & LVIF_STATE != 0
-					&& nmlv.uNewState & LVIS_SELECTED != 0
-					&& nmlv.iItem >= 0
-				{
+				if nmlv.uChanged.0 & LVIF_STATE != 0 && nmlv.uNewState & LVIS_SELECTED != 0 && nmlv.iItem >= 0 {
 					let item_index = nmlv.iItem as usize;
 					// Get a raw pointer to the callback *before* releasing the borrow,
 					// then call through it.  Safe because Inner is alive (Rc exists)
@@ -481,15 +484,9 @@ unsafe extern "system" fn panel_subclass_proc(
 			let inner = &*(ref_data as *const RefCell<Inner>);
 			if let Ok(borrow) = inner.try_borrow() {
 				let lv = borrow.listview_hwnd;
-				SetWindowPos(lv, None, 0, 0, width, height, SWP_NOZORDER | SWP_NOACTIVATE)
-					.unwrap_or(());
+				SetWindowPos(lv, None, 0, 0, width, height, SWP_NOZORDER | SWP_NOACTIVATE).unwrap_or(());
 				// Stretch the single column to the full width.
-				SendMessageW(
-					lv,
-					LVM_SETCOLUMNWIDTH,
-					Some(WPARAM(0)),
-					Some(LPARAM(width as isize)),
-				);
+				SendMessageW(lv, LVM_SETCOLUMNWIDTH, Some(WPARAM(0)), Some(LPARAM(width as isize)));
 			}
 			DefSubclassProc(hwnd, msg, wparam, lparam)
 		}
@@ -521,8 +518,8 @@ unsafe extern "system" fn listview_subclass_proc(
 	use windows::Win32::{
 		Foundation::LRESULT,
 		UI::{
-			Shell::DefSubclassProc,
 			Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT},
+			Shell::DefSubclassProc,
 			WindowsAndMessaging::{WM_CONTEXTMENU, WM_KEYDOWN},
 		},
 	};

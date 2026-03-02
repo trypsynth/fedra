@@ -326,19 +326,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						if filtered.is_empty() {
 							live_region::announce(live_region, "No more posts");
 						} else {
-							if state.config.sort_order == SortOrder::OldestToNewest
-								&& timeline.loading_more_in_background
-							{
+							if state.config.sort_order == SortOrder::OldestToNewest {
 								timeline.pending_older_entries.extend(filtered.clone());
 							} else {
 								timeline.entries.extend(filtered.clone());
 							}
 						}
 
-						if is_active
-							&& !(state.config.sort_order == SortOrder::OldestToNewest
-								&& timeline.loading_more_in_background)
-						{
+						if is_active && state.config.sort_order != SortOrder::OldestToNewest {
 							if state.config.sort_order == SortOrder::NewestToOldest {
 								let entries_to_append = if filtered.is_empty() { &[][..] } else { &filtered };
 								for entry in entries_to_append {
