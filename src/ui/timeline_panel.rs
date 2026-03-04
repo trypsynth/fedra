@@ -37,12 +37,15 @@ const LVM_INSERTCOLUMNW: u32 = LVM_FIRST + 97;
 const LVN_ITEMCHANGED: u32 = (-101_i32) as u32;
 /// `LVN_GETDISPINFOW` = –177
 const LVN_GETDISPINFOW: u32 = (-177_i32) as u32;
+const LVN_ODFINDITEMW: u32 = (-179_i32) as u32;
 
 // Item / column flag bits
 const LVIF_TEXT: u32 = 0x0001;
 const LVIF_STATE: u32 = 0x0008;
 const LVIS_FOCUSED: u32 = 0x0001;
 const LVIS_SELECTED: u32 = 0x0002;
+const LVFI_STRING: u32 = 0x0002;
+const LVFI_WRAP: u32 = 0x0020;
 /// `LVSICF_NOINVALIDATEALL`: preserve existing item states when count changes
 const LVSICF_NOINVALIDATEALL: isize = 0x0001;
 
@@ -448,7 +451,46 @@ unsafe extern "system" fn panel_subclass_proc(
 				}
 				return LRESULT(0);
 			}
-
+			if code == LVN_ODFINDITEMW {
+				let find = &*(lparam.0 as *const windows::Win32::UI::Controls::NMLVFINDITEMW);
+				let flags = find.lvfi.flags.0;
+				if flags & LVFI_STRING != 0 {
+					let inner = &*(ref_data as *const RefCell<Inner>);
+					if let Ok(borrow) = inner.try_borrow() {
+						let count = borrow.items.len();
+						if count == 0 {
+							return LRESULT(-1);
+						}
+						let needle = read_wide_string(find.lvfi.psz.0);
+						if needle.is_empty() {
+							return LRESULT(-1);
+						}
+						let start = usize::try_from(find.iStart).ok().map_or(0, |i| i.min(count - 1));
+						let wraps = flags & LVFI_WRAP != 0;
+						let needle_lower = needle.to_lowercase();
+						let mut found = None;
+						// Search starts *after* iStart and may wrap depending on LVFI_WRAP.
+						for offset in 1..=count {
+							let idx = start + offset;
+							let candidate = if idx < count {
+								idx
+							} else if wraps {
+								idx - count
+							} else {
+								break;
+							};
+							if let Some((text, _)) = borrow.items.get(candidate)
+								&& text.to_lowercase().starts_with(&needle_lower)
+							{
+								found = Some(candidate);
+								break;
+							}
+						}
+						return LRESULT(found.map_or(-1, |idx| idx as isize));
+					}
+				}
+				return LRESULT(-1);
+			}
 			if code == LVN_ITEMCHANGED {
 				let nmlv = &*(lparam.0 as *const NMLISTVIEW);
 				// Fire on_selection_changed only when an item *gains* selection.
@@ -503,6 +545,23 @@ unsafe extern "system" fn panel_subclass_proc(
 
 		_ => DefSubclassProc(hwnd, msg, wparam, lparam),
 	}
+}
+
+#[cfg(windows)]
+unsafe fn read_wide_string(mut ptr: *const u16) -> String {
+	if ptr.is_null() {
+		return String::new();
+	}
+	let mut out = Vec::new();
+	loop {
+		let ch = *ptr;
+		if ch == 0 {
+			break;
+		}
+		out.push(ch);
+		ptr = ptr.add(1);
+	}
+	String::from_utf16_lossy(&out)
 }
 
 /// Subclass proc for the **listview** — handles `WM_KEYDOWN` and `WM_CONTEXTMENU`.

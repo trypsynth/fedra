@@ -251,7 +251,8 @@ pub fn bind_input_handlers(
 		if key.ctrl && key.shift {
 			match k {
 				81 => {
-					let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(true));
+					let _ = ui_tx_list_key
+						.send(UiCommand::SetQuickActionKeysEnabled(!quick_action_keys_list.get()));
 					return true;
 				}
 				70 => {
@@ -327,11 +328,6 @@ pub fn bind_input_handlers(
 				}
 				_ => {}
 			}
-		}
-
-		if quick_action_keys_list.get() && key.shift && !key.ctrl && k == 81 {
-			let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(false));
-			return true;
 		}
 
 		if quick_action_keys_list.get() && !key.ctrl && !key.shift && !key.alt {
