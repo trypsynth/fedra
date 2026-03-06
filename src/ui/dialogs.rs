@@ -4379,20 +4379,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 	web_view.set_page(&html, "");
 
 	let web_view_for_load = web_view;
-	let timer = Rc::new(Timer::new(&dialog));
-	let timer_copy = Rc::clone(&timer);
 	web_view.on_loaded(move |_| {
-		let web_view_for_timer = web_view_for_load;
-		timer_copy.on_tick(move |_| {
-			let pos = web_view_for_timer.client_to_screen(Point::new(0, 0));
-			let size = web_view_for_timer.get_size();
-			let x = pos.x + size.width / 2;
-			let y = pos.y + size.height / 2;
-			let sim = UIActionSimulator::new();
-			sim.mouse_move(x, y);
-			sim.mouse_click(MouseButton::Left);
-		});
-		timer_copy.start(100, true);
 		web_view_for_load.run_script(
 			"function addEvent(elem, event, handler) { \
 				if (elem.addEventListener) { \
