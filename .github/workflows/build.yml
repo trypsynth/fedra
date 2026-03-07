@@ -27,8 +27,11 @@ jobs:
     - name: Install CMake, Ninja, and Pandoc
       run: |
         choco install cmake ninja pandoc -y
+    - name: Clone wxWidgets
+      run: git clone --recurse-submodules https://github.com/wxWidgets/wxWidgets.git
     - name: Build
       run: |
+        $env:WXWIDGETS_DIR = "${{ github.workspace }}\wxWidgets"
         cargo release
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
