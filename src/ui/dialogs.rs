@@ -1062,9 +1062,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	quick_action_checkbox.set_value(quick_action_keys);
 	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
 	update_checkbox.set_value(check_for_updates);
-	let restore_timelines_checkbox =
-		CheckBox::builder(&general_panel).with_label("&Restore open timelines on startup").build();
-	restore_timelines_checkbox.set_value(restore_open_timelines);
 
 	let channel_label = StaticText::builder(&general_panel).with_label("Update Channel:").build();
 	let channel_choices = vec!["Stable".to_string(), "Dev".to_string()];
@@ -1101,7 +1098,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&strip_tracking_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	general_sizer.add(&restore_timelines_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let hotkey_button = Button::builder(&general_panel).with_label("Customize Window Hotkey...").build();
@@ -1120,6 +1116,9 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	notebook.add_page(&general_panel, "General", true, None);
 	let timeline_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let timeline_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let restore_timelines_checkbox =
+		CheckBox::builder(&timeline_panel).with_label("&Restore open timelines on startup").build();
+	restore_timelines_checkbox.set_value(restore_open_timelines);
 	let autoload_label = StaticText::builder(&timeline_panel).with_label("&Autoload posts:").build();
 	let autoload_choices =
 		vec!["Never".to_string(), "When reaching the end".to_string(), "When navigating past the end".to_string()];
@@ -1184,6 +1183,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&thread_order_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&find_load_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&restore_timelines_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let customize_button = Button::builder(&timeline_panel).with_label("Customize Default Timelines...").build();
 	let current_defaults = Rc::new(RefCell::new(default_timelines_val));
 	let defaults_clone = current_defaults.clone();
