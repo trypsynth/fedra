@@ -110,7 +110,7 @@ pub fn process_stream_events(
 						&& !status.should_hide(&filter_context)
 						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
-						timeline.entries.insert(0, TimelineEntry::Status(*status));
+						timeline.entries.insert(0, TimelineEntry::Status(Box::new(*status)));
 						if is_active {
 							active_needs_update = true;
 						}
@@ -150,7 +150,7 @@ pub fn process_stream_events(
 						if notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
 							&& notification.matches_filter(&timeline_filter, current_user_id)
 						{
-							timeline.entries.insert(0, TimelineEntry::Notification(*notification));
+							timeline.entries.insert(0, TimelineEntry::Notification(Box::new(*notification)));
 							if is_active {
 								active_needs_update = true;
 							}
@@ -164,7 +164,7 @@ pub fn process_stream_events(
 						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
 						status_snapshots.push(status.clone());
-						timeline.entries.insert(0, TimelineEntry::Status(status));
+						timeline.entries.insert(0, TimelineEntry::Status(Box::new(status)));
 						if is_active {
 							active_needs_update = true;
 						}
@@ -282,7 +282,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 									!s.should_hide(&filter_context)
 										&& s.matches_filter(&timeline_filter, current_user_id)
 								})
-								.map(TimelineEntry::Status)
+								.map(|s| TimelineEntry::Status(Box::new(s)))
 								.collect(),
 							next,
 						),
@@ -293,7 +293,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 									n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
 										&& n.matches_filter(&timeline_filter, current_user_id)
 								})
-								.map(TimelineEntry::Notification)
+								.map(|n| TimelineEntry::Notification(Box::new(n)))
 								.collect(),
 							next,
 						),
@@ -306,7 +306,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 											!s.should_hide(&filter_context)
 												&& s.matches_filter(&timeline_filter, current_user_id)
 										})
-										.map(TimelineEntry::Status)
+										.map(|s| TimelineEntry::Status(Box::new(s)))
 								})
 								.collect(),
 							next,
@@ -325,12 +325,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
 						if filtered.is_empty() {
 							live_region::announce(live_region, "No more posts");
+						} else if state.config.sort_order == SortOrder::OldestToNewest {
+							timeline.pending_older_entries.extend(filtered.clone());
 						} else {
-							if state.config.sort_order == SortOrder::OldestToNewest {
-								timeline.pending_older_entries.extend(filtered.clone());
-							} else {
-								timeline.entries.extend(filtered.clone());
-							}
+							timeline.entries.extend(filtered.clone());
 						}
 
 						if is_active && state.config.sort_order != SortOrder::OldestToNewest {
@@ -458,7 +456,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Posted");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
-					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
+					dispatch_ui_command!(UiCommand::ContinueThread(status));
 				}
 			}
 			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
@@ -555,7 +553,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region::announce(live_region, "Reply sent");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
-					dispatch_ui_command!(UiCommand::ContinueThread(Box::new(status)));
+					dispatch_ui_command!(UiCommand::ContinueThread(status));
 				}
 			}
 			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
@@ -913,7 +911,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						new_entries.push(TimelineEntry::Hashtag(hashtag));
 					}
 					for status in results.statuses {
-						new_entries.push(TimelineEntry::Status(status));
+						new_entries.push(TimelineEntry::Status(Box::new(status)));
 					}
 					for entry in &new_entries {
 						if let Some(status) = entry.as_status() {

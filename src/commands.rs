@@ -878,7 +878,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					} else if new_index > 0 && new_index < display_names.len() - 1 {
 						format!("Moved between {} and {}", display_names[new_index - 1], display_names[new_index + 1])
 					} else {
-						format!("Moved {}", name)
+						format!("Moved {name}")
 					};
 					live_region::announce(live_region, &msg);
 				}
@@ -904,7 +904,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					} else if new_index > 0 && new_index < display_names.len() - 1 {
 						format!("Moved between {} and {}", display_names[new_index - 1], display_names[new_index + 1])
 					} else {
-						format!("Moved {}", name)
+						format!("Moved {name}")
 					};
 					live_region::announce(live_region, &msg);
 				}

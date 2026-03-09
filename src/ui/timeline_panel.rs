@@ -446,7 +446,7 @@ unsafe extern "system" fn panel_subclass_proc(
 					if let Ok(borrow) = inner.try_borrow()
 						&& let Some((_, text_wstr)) = borrow.items.get(item_index)
 					{
-						disp.item.pszText = windows::core::PWSTR(text_wstr.as_ptr() as *mut u16);
+						disp.item.pszText = windows::core::PWSTR(text_wstr.as_ptr().cast_mut());
 					}
 				}
 				return LRESULT(0);

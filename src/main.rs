@@ -348,9 +348,11 @@ fn main() {
 		let shutdown_close = is_shutting_down;
 		let frame_close = frame;
 		let ui_tx_close = ui_tx.clone();
-		let ui_waker_close = ui_waker.clone();
+		let ui_waker_close = ui_waker;
 		frame.on_close(move |event| {
-			if !shutdown_close.get() {
+			if shutdown_close.get() {
+				event.skip(true); // Actually close
+			} else {
 				shutdown_close.set(true);
 				let _ = ui_tx_close.send(UiCommand::AppClosing);
 				ui_waker_close.wake();
@@ -359,8 +361,6 @@ fn main() {
 				frame_close.show(false);
 				app_shell_close.cleanup();
 				event.skip(false); // Wait for AppClosing command to be processed
-			} else {
-				event.skip(true); // Actually close
 			}
 		});
 		frame.show(true);

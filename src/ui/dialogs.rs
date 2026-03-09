@@ -146,6 +146,7 @@ const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
 const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
 
+#[allow(clippy::struct_excessive_bools)]
 struct ComposeDialogConfig {
 	title_prefix: String,
 	ok_label: String,
@@ -894,6 +895,7 @@ fn parse_schedule_inputs(date_value: &str, time_value: &str) -> Option<DateTime<
 	Some(resolved.with_timezone(&Utc))
 }
 
+#[allow(clippy::option_option)]
 fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<Option<String>> {
 	const ID_CLEAR_SCHEDULE: i32 = 24_001;
 	let dialog = Dialog::builder(parent, "Schedule Post").with_size(360, 210).build();

@@ -167,10 +167,10 @@ pub fn switch_to_account(
 			let saved = std::mem::take(&mut state.config.saved_timelines);
 			for t in saved {
 				if !state.config.restore_open_timelines {
-					let mut is_default = false;
-					if t == TimelineType::Home || t == TimelineType::Notifications {
-						is_default = true;
+					let is_default = if t == TimelineType::Home || t == TimelineType::Notifications {
+						true
 					} else {
+						let mut found = false;
 						for dt in &default_timelines {
 							let dt_type = match dt {
 								crate::config::DefaultTimeline::Local => TimelineType::Local,
@@ -180,11 +180,12 @@ pub fn switch_to_account(
 								crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
 							};
 							if t == dt_type {
-								is_default = true;
+								found = true;
 								break;
 							}
 						}
-					}
+						found
+					};
 					if !is_default {
 						continue;
 					}
@@ -226,10 +227,10 @@ pub fn switch_to_account(
 			}
 
 			for t in types_to_load {
-				if state.timeline_manager.open(t.clone()) {
-					if let Some(handle) = &state.network_handle {
-						handle.send(NetworkCommand::FetchTimeline { timeline_type: t, limit: Some(40), max_id: None });
-					}
+				if state.timeline_manager.open(t.clone())
+					&& let Some(handle) = &state.network_handle
+				{
+					handle.send(NetworkCommand::FetchTimeline { timeline_type: t, limit: Some(40), max_id: None });
 				}
 			}
 		}

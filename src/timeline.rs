@@ -120,8 +120,8 @@ impl TimelineType {
 
 #[derive(Debug, Clone)]
 pub enum TimelineEntry {
-	Status(Status),
-	Notification(Notification),
+	Status(Box<Status>),
+	Notification(Box<Notification>),
 	Account(Account),
 	Hashtag(Tag),
 }

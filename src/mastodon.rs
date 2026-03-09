@@ -54,7 +54,7 @@ pub struct ScheduledStatus {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum PostSubmission {
-	Published(Status),
+	Published(Box<Status>),
 	Scheduled(ScheduledStatus),
 }
 
