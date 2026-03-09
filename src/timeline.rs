@@ -475,6 +475,24 @@ impl TimelineManager {
 		self.active_index
 	}
 
+	pub fn move_active_left(&mut self) -> Option<usize> {
+		if self.timelines.len() < 2 || self.active_index == 0 {
+			return None;
+		}
+		self.timelines.swap(self.active_index, self.active_index - 1);
+		self.active_index -= 1;
+		Some(self.active_index)
+	}
+
+	pub fn move_active_right(&mut self) -> Option<usize> {
+		if self.timelines.len() < 2 || self.active_index >= self.timelines.len() - 1 {
+			return None;
+		}
+		self.timelines.swap(self.active_index, self.active_index + 1);
+		self.active_index += 1;
+		Some(self.active_index)
+	}
+
 	pub const fn len(&self) -> usize {
 		self.timelines.len()
 	}

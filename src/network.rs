@@ -57,6 +57,10 @@ pub enum NetworkCommand {
 		timeline_type: TimelineType,
 		focus: Box<Status>,
 	},
+	FetchThreadById {
+		timeline_type: TimelineType,
+		status_id: String,
+	},
 	LookupAccount {
 		handle: String,
 	},
@@ -591,6 +595,20 @@ fn network_loop(
 				let result = client
 					.get_status_context(access_token, &focus.id)
 					.map(|context| prepare_thread_timeline(*focus, context));
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None },
+				);
+			}
+			Ok(NetworkCommand::FetchThreadById { timeline_type, status_id }) => {
+				let result = match client.get_status(access_token, &status_id) {
+					Ok(focus) => match client.get_status_context(access_token, &status_id) {
+						Ok(context) => Ok(prepare_thread_timeline(focus, context)),
+						Err(e) => Err(e),
+					},
+					Err(e) => Err(e),
+				};
 				send_response(
 					responses,
 					ui_waker,

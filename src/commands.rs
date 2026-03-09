@@ -90,6 +90,8 @@ pub enum UiCommand {
 	SwitchPrevAccount,
 	SwitchNextTimeline,
 	SwitchPrevTimeline,
+	MoveTimelineLeft,
+	MoveTimelineRight,
 	RemoveAccount(String),
 	ViewProfile,
 	ViewMentions,
@@ -857,6 +859,58 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				live_region::announce(live_region, name);
 			}
 			handle_ui_command(UiCommand::TimelineSelectionChanged(prev), ctx);
+		}
+		UiCommand::MoveTimelineLeft => {
+			if let Some(new_index) = state.timeline_manager.move_active_left() {
+				timelines_selector.clear();
+				let display_names = state.timeline_manager.display_names();
+				for name in &display_names {
+					timelines_selector.append(name);
+				}
+				with_suppressed_selection(suppress_selection, || {
+					timelines_selector.set_selection(u32::try_from(new_index).unwrap(), true);
+				});
+				if let Some(name) = display_names.get(new_index) {
+					let msg = if new_index == 0 && display_names.len() > 1 {
+						format!("Moved before {}", display_names[1])
+					} else if new_index == display_names.len() - 1 && display_names.len() > 1 {
+						format!("Moved after {}", display_names[new_index - 1])
+					} else if new_index > 0 && new_index < display_names.len() - 1 {
+						format!("Moved between {} and {}", display_names[new_index - 1], display_names[new_index + 1])
+					} else {
+						format!("Moved {}", name)
+					};
+					live_region::announce(live_region, &msg);
+				}
+			} else {
+				live_region::announce(live_region, "Cannot move left");
+			}
+		}
+		UiCommand::MoveTimelineRight => {
+			if let Some(new_index) = state.timeline_manager.move_active_right() {
+				timelines_selector.clear();
+				let display_names = state.timeline_manager.display_names();
+				for name in &display_names {
+					timelines_selector.append(name);
+				}
+				with_suppressed_selection(suppress_selection, || {
+					timelines_selector.set_selection(u32::try_from(new_index).unwrap(), true);
+				});
+				if let Some(name) = display_names.get(new_index) {
+					let msg = if new_index == 0 && display_names.len() > 1 {
+						format!("Moved before {}", display_names[1])
+					} else if new_index == display_names.len() - 1 && display_names.len() > 1 {
+						format!("Moved after {}", display_names[new_index - 1])
+					} else if new_index > 0 && new_index < display_names.len() - 1 {
+						format!("Moved between {} and {}", display_names[new_index - 1], display_names[new_index + 1])
+					} else {
+						format!("Moved {}", name)
+					};
+					live_region::announce(live_region, &msg);
+				}
+			} else {
+				live_region::announce(live_region, "Cannot move right");
+			}
 		}
 		UiCommand::RemoveAccount(id) => {
 			let is_active = state.config.active_account_id.as_ref() == Some(&id);
@@ -1916,10 +1970,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::AppClosing => {
-			if state.config.restore_open_timelines {
-				state.config.saved_timelines = state.timeline_manager.open_timeline_types();
-				let _ = config::ConfigStore::new().save(&state.config);
-			}
+			state.config.saved_timelines = state.timeline_manager.open_timeline_types();
+			let _ = config::ConfigStore::new().save(&state.config);
 			ctx.frame.destroy();
 		}
 	}

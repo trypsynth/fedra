@@ -115,6 +115,23 @@ pub fn bind_input_handlers(
 					_ => {}
 				}
 			}
+			if !key_event.control_down() && key_event.shift_down() && key_event.alt_down() {
+				match key_event.get_key_code() {
+					Some(314) => {
+						// Left Arrow
+						let _ = ui_tx_delete.send(UiCommand::MoveTimelineLeft);
+						event.skip(false);
+						return;
+					}
+					Some(316) => {
+						// Right Arrow
+						let _ = ui_tx_delete.send(UiCommand::MoveTimelineRight);
+						event.skip(false);
+						return;
+					}
+					_ => {}
+				}
+			}
 			if !key_event.control_down() && !key_event.shift_down() && !key_event.alt_down() {
 				match key_event.get_key_code() {
 					Some(KEY_DELETE) => {
@@ -176,6 +193,22 @@ pub fn bind_input_handlers(
 			if !key.ctrl && !key.alt {
 				let _ = ui_tx_list_key.send(UiCommand::ViewThread);
 				return true;
+			}
+		}
+
+		if !key.ctrl && key.shift && key.alt {
+			match k {
+				314 => {
+					// Left Arrow
+					let _ = ui_tx_list_key.send(UiCommand::MoveTimelineLeft);
+					return true;
+				}
+				316 => {
+					// Right Arrow
+					let _ = ui_tx_list_key.send(UiCommand::MoveTimelineRight);
+					return true;
+				}
+				_ => {}
 			}
 		}
 

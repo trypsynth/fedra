@@ -161,23 +161,59 @@ pub fn switch_to_account(
 
 	if state.timeline_manager.len() == 0 {
 		let mut loaded_saved = false;
-		if state.config.restore_open_timelines && !state.config.saved_timelines.is_empty() {
+		let default_timelines = state.config.default_timelines.clone();
+
+		if !state.config.saved_timelines.is_empty() {
 			let saved = std::mem::take(&mut state.config.saved_timelines);
 			for t in saved {
+				if !state.config.restore_open_timelines {
+					let mut is_default = false;
+					if t == TimelineType::Home || t == TimelineType::Notifications {
+						is_default = true;
+					} else {
+						for dt in &default_timelines {
+							let dt_type = match dt {
+								crate::config::DefaultTimeline::Local => TimelineType::Local,
+								crate::config::DefaultTimeline::Federated => TimelineType::Federated,
+								crate::config::DefaultTimeline::Direct => TimelineType::Direct,
+								crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
+								crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+							};
+							if t == dt_type {
+								is_default = true;
+								break;
+							}
+						}
+					}
+					if !is_default {
+						continue;
+					}
+				}
+
 				state.timeline_manager.open(t.clone());
 				if let Some(handle) = &state.network_handle {
-					if !matches!(t, TimelineType::Thread { .. } | TimelineType::Search { .. }) {
-						handle.send(NetworkCommand::FetchTimeline { timeline_type: t, limit: Some(40), max_id: None });
+					match t.clone() {
+						TimelineType::Thread { id, .. } => {
+							handle.send(NetworkCommand::FetchThreadById { timeline_type: t, status_id: id });
+						}
+						TimelineType::Search { query, search_type } => {
+							handle.send(NetworkCommand::Search { query, search_type, limit: Some(40), offset: None });
+						}
+						_ => {
+							handle.send(NetworkCommand::FetchTimeline {
+								timeline_type: t,
+								limit: Some(40),
+								max_id: None,
+							});
+						}
 					}
 				}
 			}
-			loaded_saved = true;
+			loaded_saved = state.config.restore_open_timelines;
 		}
 
 		if !loaded_saved {
-			state.timeline_manager.open(TimelineType::Home);
-			state.timeline_manager.open(TimelineType::Notifications);
-			let default_timelines = state.config.default_timelines.clone();
+			let mut types_to_load = vec![TimelineType::Home, TimelineType::Notifications];
 			for default in &default_timelines {
 				let timeline_type = match default {
 					crate::config::DefaultTimeline::Local => TimelineType::Local,
@@ -186,29 +222,14 @@ pub fn switch_to_account(
 					crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 					crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
 				};
-				state.timeline_manager.open(timeline_type);
+				types_to_load.push(timeline_type);
 			}
 
-			if let Some(handle) = &state.network_handle {
-				handle.send(NetworkCommand::FetchTimeline {
-					timeline_type: TimelineType::Home,
-					limit: Some(40),
-					max_id: None,
-				});
-				handle.send(NetworkCommand::FetchTimeline {
-					timeline_type: TimelineType::Notifications,
-					limit: Some(40),
-					max_id: None,
-				});
-				for default in &default_timelines {
-					let timeline_type = match default {
-						crate::config::DefaultTimeline::Local => TimelineType::Local,
-						crate::config::DefaultTimeline::Federated => TimelineType::Federated,
-						crate::config::DefaultTimeline::Direct => TimelineType::Direct,
-						crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
-						crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
-					};
-					handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+			for t in types_to_load {
+				if state.timeline_manager.open(t.clone()) {
+					if let Some(handle) = &state.network_handle {
+						handle.send(NetworkCommand::FetchTimeline { timeline_type: t, limit: Some(40), max_id: None });
+					}
 				}
 			}
 		}
