@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode, SortOrder},
 	mastodon::{Account, FilterContext, Notification, SearchType, Status, Tag},
@@ -7,7 +9,7 @@ use crate::{
 	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimelineType {
 	Home,
 	Notifications,
@@ -463,6 +465,10 @@ impl TimelineManager {
 
 	pub fn display_names(&self) -> Vec<String> {
 		self.timelines.iter().map(|t| t.timeline_type.display_name()).collect()
+	}
+
+	pub fn open_timeline_types(&self) -> Vec<TimelineType> {
+		self.timelines.iter().map(|t| t.timeline_type.clone()).collect()
 	}
 
 	pub const fn active_index(&self) -> usize {

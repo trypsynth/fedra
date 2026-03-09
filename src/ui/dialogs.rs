@@ -983,6 +983,7 @@ pub struct OptionsDialogInput {
 	pub sort_order: SortOrder,
 	pub preserve_thread_order: bool,
 	pub default_timelines: Vec<DefaultTimeline>,
+	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
@@ -1006,6 +1007,7 @@ pub struct OptionsDialogResult {
 	pub sort_order: SortOrder,
 	pub preserve_thread_order: bool,
 	pub default_timelines: Vec<DefaultTimeline>,
+	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
 	pub templates: PostTemplates,
@@ -1031,6 +1033,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		sort_order,
 		preserve_thread_order,
 		default_timelines: default_timelines_val,
+		restore_open_timelines,
 		notification_preference,
 		hotkey,
 		templates,
@@ -1057,6 +1060,9 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	quick_action_checkbox.set_value(quick_action_keys);
 	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
 	update_checkbox.set_value(check_for_updates);
+	let restore_timelines_checkbox =
+		CheckBox::builder(&general_panel).with_label("&Restore open timelines on startup").build();
+	restore_timelines_checkbox.set_value(restore_open_timelines);
 
 	let channel_label = StaticText::builder(&general_panel).with_label("Update Channel:").build();
 	let channel_choices = vec!["Stable".to_string(), "Dev".to_string()];
@@ -1093,6 +1099,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&strip_tracking_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&restore_timelines_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let hotkey_button = Button::builder(&general_panel).with_label("Customize Window Hotkey...").build();
@@ -1598,6 +1605,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		strip_tracking: strip_tracking_checkbox.get_value(),
 		quick_action_keys: quick_action_checkbox.get_value(),
 		check_for_updates: update_checkbox.get_value(),
+		restore_open_timelines: restore_timelines_checkbox.get_value(),
 		update_channel: new_update_channel,
 		autoload: new_autoload,
 		fetch_limit: new_fetch_limit,

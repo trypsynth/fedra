@@ -7,7 +7,7 @@ use reqwest::{
 	StatusCode, Url,
 	blocking::{Client, multipart},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
@@ -272,7 +272,7 @@ pub struct SearchResults {
 	pub hashtags: Vec<Tag>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SearchType {
 	#[default]
 	All,

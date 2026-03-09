@@ -59,6 +59,14 @@ pub struct Config {
 	pub filters: TimelineFilters,
 	#[serde(default)]
 	pub find_loading_mode: FindLoadingMode,
+	#[serde(default = "default_restore_open_timelines")]
+	pub restore_open_timelines: bool,
+	#[serde(default)]
+	pub saved_timelines: Vec<crate::timeline::TimelineType>,
+}
+
+const fn default_restore_open_timelines() -> bool {
+	false
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -330,6 +338,8 @@ impl Default for Config {
 			templates: PostTemplates::default(),
 			filters: TimelineFilters::default(),
 			find_loading_mode: FindLoadingMode::default(),
+			restore_open_timelines: default_restore_open_timelines(),
+			saved_timelines: Vec::new(),
 		}
 	}
 }

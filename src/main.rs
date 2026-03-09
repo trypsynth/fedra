@@ -254,9 +254,7 @@ fn main() {
 		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = Instant::now();
 		frame.bind_with_id_internal(EventType::MENU, ID_UI_WAKE, move |_| {
-			if shutdown_wake.get() {
-				return;
-			}
+			let is_shutting_down = shutdown_wake.get();
 			if busy_wake.get() {
 				reschedule_wake.set(true);
 				return;
@@ -278,6 +276,10 @@ fn main() {
 					ui_tx: &ui_tx_timer,
 				};
 				drain_ui_commands(&ui_rx, &mut ui_ctx);
+			}
+			if is_shutting_down {
+				busy_wake.set(false);
+				return;
 			}
 			process_stream_events(&mut state, &timeline_list_wake, &suppress_wake, &frame_wake);
 			{
@@ -321,7 +323,7 @@ fn main() {
 		});
 
 		let refresh_timer = Rc::new(Timer::new(&frame));
-		let refresh_waker = ui_waker;
+		let refresh_waker = ui_waker.clone();
 		refresh_timer.on_tick(move |_| {
 			refresh_waker.wake();
 		});
@@ -345,15 +347,21 @@ fn main() {
 		);
 		let shutdown_close = is_shutting_down;
 		let frame_close = frame;
+		let ui_tx_close = ui_tx.clone();
+		let ui_waker_close = ui_waker.clone();
 		frame.on_close(move |event| {
 			if !shutdown_close.get() {
 				shutdown_close.set(true);
+				let _ = ui_tx_close.send(UiCommand::AppClosing);
+				ui_waker_close.wake();
+				// Hide the window and clean up the tray icon before destruction begins,
+				// so the screen reader doesn't announce the window during teardown.
+				frame_close.show(false);
+				app_shell_close.cleanup();
+				event.skip(false); // Wait for AppClosing command to be processed
+			} else {
+				event.skip(true); // Actually close
 			}
-			// Hide the window and clean up the tray icon before destruction begins,
-			// so the screen reader doesn't announce the window during teardown.
-			frame_close.show(false);
-			app_shell_close.cleanup();
-			event.skip(true);
 		});
 		frame.show(true);
 		frame.centre();

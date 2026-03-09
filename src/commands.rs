@@ -127,6 +127,7 @@ pub enum UiCommand {
 	Find(String),
 	FindNext,
 	FindPrev,
+	AppClosing,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -679,6 +680,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					sort_order: state.config.sort_order,
 					preserve_thread_order: state.config.preserve_thread_order,
 					default_timelines: state.config.default_timelines.clone(),
+					restore_open_timelines: state.config.restore_open_timelines,
 					notification_preference: state.config.notification_preference,
 					hotkey: state.config.hotkey.clone(),
 					templates: state.config.templates.clone(),
@@ -701,6 +703,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					sort_order,
 					preserve_thread_order,
 					default_timelines,
+					restore_open_timelines,
 					notification_preference,
 					hotkey,
 					templates,
@@ -729,6 +732,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.sort_order = sort_order;
 				state.config.preserve_thread_order = preserve_thread_order;
 				state.config.default_timelines = default_timelines;
+				state.config.restore_open_timelines = restore_open_timelines;
 				state.config.notification_preference = notification_preference;
 				state.config.hotkey = hotkey;
 				state.config.templates = templates;
@@ -1910,6 +1914,13 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			} else {
 				live_region::announce(live_region, "No active search");
 			}
+		}
+		UiCommand::AppClosing => {
+			if state.config.restore_open_timelines {
+				state.config.saved_timelines = state.timeline_manager.open_timeline_types();
+				let _ = config::ConfigStore::new().save(&state.config);
+			}
+			ctx.frame.destroy();
 		}
 	}
 }
