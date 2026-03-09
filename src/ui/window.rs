@@ -251,8 +251,7 @@ pub fn bind_input_handlers(
 		if key.ctrl && key.shift {
 			match k {
 				81 => {
-					let _ = ui_tx_list_key
-						.send(UiCommand::SetQuickActionKeysEnabled(!quick_action_keys_list.get()));
+					let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(!quick_action_keys_list.get()));
 					return true;
 				}
 				70 => {

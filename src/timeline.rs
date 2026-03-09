@@ -74,13 +74,13 @@ impl TimelineType {
 		}
 	}
 
-	pub fn stream_params(&self) -> Option<String> {
+	pub fn stream_params(&self) -> Option<Vec<(&'static str, String)>> {
 		match self {
-			Self::Home | Self::Notifications => Some("user".to_string()),
-			Self::Direct => Some("direct".to_string()),
-			Self::Local => Some("public:local".to_string()),
-			Self::Federated => Some("public".to_string()),
-			Self::List { id, .. } => Some(format!("list:{id}")),
+			Self::Home | Self::Notifications => Some(vec![("stream", "user".to_string())]),
+			Self::Direct => Some(vec![("stream", "direct".to_string())]),
+			Self::Local => Some(vec![("stream", "public:local".to_string())]),
+			Self::Federated => Some(vec![("stream", "public".to_string())]),
+			Self::List { id, .. } => Some(vec![("stream", "list".to_string()), ("list", id.clone())]),
 			Self::Bookmarks
 			| Self::Favorites
 			| Self::User { .. }
