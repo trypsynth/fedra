@@ -86,6 +86,8 @@ pub struct Status {
 	pub reblogged: bool,
 	#[serde(default)]
 	pub bookmarked: bool,
+	#[serde(default)]
+	pub conversation_id: Option<String>,
 	pub in_reply_to_id: Option<String>,
 	pub in_reply_to_account_id: Option<String>,
 	#[serde(default)]

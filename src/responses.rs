@@ -159,11 +159,21 @@ pub fn process_stream_events(
 				}
 				streaming::StreamEvent::Conversation { timeline_type, conversation } => {
 					if timeline.timeline_type == timeline_type
-						&& let Some(status) = conversation.last_status
+						&& let Some(mut status) = conversation.last_status
 						&& !status.should_hide(&filter_context)
 						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
+						status.conversation_id = Some(conversation.id);
 						status_snapshots.push(status.clone());
+						if let Some(conv_id) = &status.conversation_id {
+							timeline.entries.retain(|entry| {
+								if let TimelineEntry::Status(s) = entry {
+									s.conversation_id.as_deref() != Some(conv_id)
+								} else {
+									true
+								}
+							});
+						}
 						timeline.entries.insert(0, TimelineEntry::Status(Box::new(status)));
 						if is_active {
 							active_needs_update = true;
@@ -306,7 +316,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 											!s.should_hide(&filter_context)
 												&& s.matches_filter(&timeline_filter, current_user_id)
 										})
-										.map(|s| TimelineEntry::Status(Box::new(s)))
+										.map(|mut s| {
+											s.conversation_id = Some(c.id);
+											TimelineEntry::Status(Box::new(s))
+										})
 								})
 								.collect(),
 							next,
