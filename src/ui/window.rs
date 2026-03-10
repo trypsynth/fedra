@@ -115,7 +115,7 @@ pub fn bind_input_handlers(
 					_ => {}
 				}
 			}
-			if !key_event.control_down() && key_event.shift_down() && key_event.alt_down() {
+			if key_event.control_down() && key_event.shift_down() && !key_event.alt_down() {
 				match key_event.get_key_code() {
 					Some(314) => {
 						// Left Arrow
@@ -196,7 +196,7 @@ pub fn bind_input_handlers(
 			}
 		}
 
-		if !key.ctrl && key.shift && key.alt {
+		if key.ctrl && key.shift && !key.alt {
 			match k {
 				314 => {
 					// Left Arrow
