@@ -2215,8 +2215,8 @@ pub fn prompt_for_user_lookup(
 	Some((trimmed.to_string(), action))
 }
 
-pub fn show_error(frame: &Frame, err: &anyhow::Error) {
-	let dialog = MessageDialog::builder(frame, &err.to_string(), "Fedra")
+pub fn show_error(parent: &dyn WxWidget, err: &anyhow::Error) {
+	let dialog = MessageDialog::builder(parent, &err.to_string(), "Fedra")
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
 		.build();
 	dialog.show_modal();
@@ -2568,6 +2568,10 @@ impl ManageListsDialog {
 	pub fn get_list_title(&self, list_id: &str) -> Option<String> {
 		self.lists.borrow().iter().find(|l| l.id == list_id).map(|l| l.title.clone())
 	}
+
+	pub fn get_dialog(&self) -> &Dialog {
+		&self.dialog
+	}
 }
 
 pub fn prompt_list_edit(
@@ -2664,7 +2668,7 @@ pub struct ManageListMembersDialog {
 
 impl ManageListMembersDialog {
 	pub fn new<F>(
-		frame: &Frame,
+		parent: &dyn WxWidget,
 		list_id: String,
 		list_title: &str,
 		members: Vec<crate::mastodon::Account>,
@@ -2674,7 +2678,7 @@ impl ManageListMembersDialog {
 	where
 		F: Fn() + 'static + Clone,
 	{
-		let dialog = Dialog::builder(frame, &format!("Manage Members: {list_title}")).with_size(450, 400).build();
+		let dialog = Dialog::builder(parent, &format!("Manage Members: {list_title}")).with_size(450, 400).build();
 		let panel = Panel::builder(&dialog).build();
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
@@ -2801,6 +2805,10 @@ impl ManageListMembersDialog {
 
 	pub fn get_list_id(&self) -> &str {
 		&self.list_id
+	}
+
+	pub fn get_dialog(&self) -> &Dialog {
+		&self.dialog
 	}
 }
 
@@ -3931,11 +3939,11 @@ pub fn prompt_for_account_selection(
 }
 
 pub fn prompt_for_account_choice(
-	frame: &Frame,
+	parent: &dyn WxWidget,
 	accounts: &[&MastodonAccount],
 	labels: &[&str],
 ) -> Option<MastodonAccount> {
-	let dialog = Dialog::builder(frame, "Select User").with_size(400, 150).build();
+	let dialog = Dialog::builder(parent, "Select User").with_size(400, 150).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let list_label = StaticText::builder(&panel).with_label("User:").build();

@@ -889,7 +889,8 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
 					let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
 
-					if let Some(account) = dialogs::prompt_for_account_choice(frame, &accounts_ref, &label_refs)
+					if let Some(account) =
+						dialogs::prompt_for_account_choice(dlg.get_dialog(), &accounts_ref, &label_refs)
 						&& let Some(handle) = &state.network_handle
 					{
 						handle.send(NetworkCommand::AddListAccount {
@@ -1017,7 +1018,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
 			| NetworkResponse::ListAccountAdded { result: Err(err), .. }
 			| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => {
-				dialogs::show_error(frame, &err);
+				let parent: &dyn WxWidget = if let Some(dlg) = &state.manage_list_members_dialog {
+					dlg.get_dialog()
+				} else if let Some(dlg) = &state.manage_lists_dialog {
+					dlg.get_dialog()
+				} else {
+					frame
+				};
+				dialogs::show_error(parent, &err);
 			}
 			NetworkResponse::ListUpdated { result: Ok(list) } => {
 				live_region::announce(live_region, &format!("List '{}' updated", list.title));
@@ -1034,13 +1042,19 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 
 			NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
+				if let Some(dlg) = &state.manage_list_members_dialog {
+					if dlg.get_list_id() == list_id {
+						dlg.update_members(members);
+						return;
+					}
+				}
 				if let Some(dlg) = &state.manage_lists_dialog {
 					let list_title = dlg.get_list_title(&list_id).unwrap_or_default();
 					if let Some(handle) = &state.network_handle {
 						let net_tx = handle.command_tx.clone();
 						let ui_tx_dlg = ui_tx.clone();
 						let members_dlg = dialogs::ManageListMembersDialog::new(
-							frame,
+							dlg.get_dialog(),
 							list_id,
 							&list_title,
 							members,
