@@ -74,6 +74,8 @@ pub struct Status {
 	pub media_attachments: Vec<MediaAttachment>,
 	pub application: Option<Application>,
 	pub visibility: String,
+	#[serde(default)]
+	pub pinned: bool,
 	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub reblogs_count: u64,
 	#[serde(deserialize_with = "deserialize_u64_or_zero")]
@@ -422,7 +424,7 @@ impl Status {
 		quote_template: &str,
 		filter_ctx: &FilterContext,
 	) -> String {
-		self.reblog.as_ref().map_or_else(
+		let text = self.reblog.as_ref().map_or_else(
 			|| {
 				let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
 				if self.quote.as_ref().is_some_and(|q| q.quoted_status.is_some()) {
@@ -437,7 +439,8 @@ impl Status {
 				vars.booster_username = format!("@{}", self.account.acct);
 				render_template(boost_template, &vars)
 			},
-		)
+		);
+		if self.pinned { format!("Pinned: {text}") } else { text }
 	}
 
 	pub(crate) fn base_display(
@@ -1178,6 +1181,22 @@ impl MastodonClient {
 
 		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
 		Ok((statuses, next_max_id))
+	}
+
+	pub fn get_pinned_statuses(&self, access_token: &str, account_id: &str) -> Result<Vec<Status>> {
+		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/statuses"))?;
+		url.query_pairs_mut().append_pair("pinned", "true");
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch pinned statuses")?
+			.error_for_status()
+			.context("Instance rejected pinned statuses request")?;
+
+		let statuses: Vec<Status> = response.json().context("Invalid pinned statuses response")?;
+		Ok(statuses)
 	}
 
 	pub fn get_notifications(

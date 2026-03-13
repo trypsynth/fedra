@@ -585,9 +585,44 @@ fn network_loop(
 						},
 						Err(e) => Err(e),
 					},
-					_ => client
-						.get_timeline(access_token, &timeline_type, limit, max_id.as_deref())
-						.map(|(s, next)| TimelineData::Statuses(s, next)),
+					_ => {
+						let mut statuses = Vec::new();
+
+						if let TimelineType::User { ref id, .. } = timeline_type {
+							if max_id.is_none() {
+								if let Ok(mut pinned) = client.get_pinned_statuses(access_token, id) {
+									for p in &mut pinned {
+										p.pinned = true;
+									}
+									statuses.extend(pinned);
+								}
+							}
+						}
+
+						let res = client.get_timeline(access_token, &timeline_type, limit, max_id.as_deref());
+						match res {
+							Ok((s, n)) => {
+								let mut seen = std::collections::HashSet::new();
+								for st in &statuses {
+									seen.insert(st.id.clone());
+								}
+								for st in s {
+									if !seen.contains(&st.id) {
+										seen.insert(st.id.clone());
+										statuses.push(st);
+									}
+								}
+								Ok(TimelineData::Statuses(statuses, n))
+							}
+							Err(e) => {
+								if statuses.is_empty() {
+									Err(e)
+								} else {
+									Ok(TimelineData::Statuses(statuses, None))
+								}
+							}
+						}
+					}
 				};
 				send_response(responses, ui_waker, NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}
