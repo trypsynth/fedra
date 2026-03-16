@@ -76,6 +76,7 @@ pub enum UiCommand {
 	Favorite,
 	Bookmark,
 	Boost,
+	Pin,
 	Refresh,
 	OpenTimeline(TimelineType),
 	OpenUserTimeline,
@@ -430,6 +431,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::Boost => {
 			do_boost(state, live_region);
+		}
+		UiCommand::Pin => {
+			do_pin(state, live_region);
 		}
 		UiCommand::Refresh => {
 			refresh_timeline(state, live_region);
@@ -2058,6 +2062,28 @@ fn acct_from_mention_link(display_text: &str, url: &str) -> String {
 		}
 	}
 	text.to_string()
+}
+
+fn do_pin(state: &AppState, live_region: StaticText) {
+	let Some(status) = get_selected_status(state) else {
+		live_region::announce(live_region, "No post selected");
+		return;
+	};
+	let Some(handle) = &state.network_handle else {
+		live_region::announce(live_region, "Network not available");
+		return;
+	};
+	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+	if Some(&target.account.id) != state.current_user_id.as_ref() {
+		live_region::announce(live_region, "You can only pin your own posts");
+		return;
+	}
+	let status_id = target.id.clone();
+	if target.pinned {
+		handle.send(NetworkCommand::Unpin { status_id });
+	} else {
+		handle.send(NetworkCommand::Pin { status_id });
+	}
 }
 
 fn do_boost(state: &AppState, live_region: StaticText) {

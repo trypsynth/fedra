@@ -1376,6 +1376,34 @@ impl MastodonClient {
 		Ok(status)
 	}
 
+	pub fn pin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/pin"))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to pin status")?
+			.error_for_status()
+			.context("Instance rejected pin request")?;
+		let status: Status = response.json().context("Invalid pin response")?;
+		Ok(status)
+	}
+
+	pub fn unpin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unpin"))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to unpin status")?
+			.error_for_status()
+			.context("Instance rejected unpin request")?;
+		let status: Status = response.json().context("Invalid unpin response")?;
+		Ok(status)
+	}
+
 	pub fn reblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblog"))?;
 		let response = self

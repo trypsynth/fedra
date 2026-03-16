@@ -6,9 +6,9 @@ use crate::{
 	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
-	ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
-	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
+	ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES,
+	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE,
+	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	ui::{menu::build_menu_bar, timeline_panel::TimelinePanel},
 	ui_wake::UiCommandSender,
@@ -541,6 +541,8 @@ pub fn bind_input_handlers(
 			let edit_label = if q { "&Edit Post...\tE" } else { "&Edit Post...\tCtrl+E" };
 			menu.append(ID_EDIT_POST, edit_label, "Edit selected post", ItemKind::Normal);
 			menu.append(ID_DELETE_POST, "&Delete Post\tDel", "Delete selected post", ItemKind::Normal);
+			let pin_label = if cms.pinned { "&Unpin Post" } else { "&Pin Post" };
+			menu.append(ID_PIN_POST, pin_label, "Pin or unpin this post on your profile", ItemKind::Normal);
 		}
 		timeline_list_ctx.popup_menu(&mut menu, None);
 	});
@@ -693,6 +695,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::EditPost);
+		}
+		ID_PIN_POST => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::Pin);
 		}
 		ID_REFRESH => {
 			if shutdown_menu.get() {

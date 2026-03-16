@@ -533,6 +533,30 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to unbookmark", err));
 			}
+			NetworkResponse::Pinned { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.pinned = status.pinned;
+				});
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
+				live_region::announce(live_region, "Post pinned");
+			}
+			NetworkResponse::Pinned { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &spoken_failure("Failed to pin post", err));
+			}
+			NetworkResponse::Unpinned { status_id, result: Ok(status) } => {
+				update_status_in_timelines(state, &status_id, |s| {
+					s.pinned = status.pinned;
+				});
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
+				}
+				live_region::announce(live_region, "Post unpinned");
+			}
+			NetworkResponse::Unpinned { result: Err(ref err), .. } => {
+				live_region::announce(live_region, &spoken_failure("Failed to unpin post", err));
+			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
 				if let Some(inner) = &status.reblog {

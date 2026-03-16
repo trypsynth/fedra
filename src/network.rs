@@ -79,6 +79,12 @@ pub enum NetworkCommand {
 	Unbookmark {
 		status_id: String,
 	},
+	Pin {
+		status_id: String,
+	},
+	Unpin {
+		status_id: String,
+	},
 	Boost {
 		status_id: String,
 	},
@@ -270,6 +276,14 @@ pub enum NetworkResponse {
 		result: Result<Status>,
 	},
 	Unbookmarked {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Pinned {
+		status_id: String,
+		result: Result<Status>,
+	},
+	Unpinned {
 		status_id: String,
 		result: Result<Status>,
 	},
@@ -703,6 +717,14 @@ fn network_loop(
 			Ok(NetworkCommand::Unbookmark { status_id }) => {
 				let result = client.unbookmark(access_token, &status_id);
 				send_response(responses, ui_waker, NetworkResponse::Unbookmarked { status_id, result });
+			}
+			Ok(NetworkCommand::Pin { status_id }) => {
+				let result = client.pin_status(access_token, &status_id);
+				send_response(responses, ui_waker, NetworkResponse::Pinned { status_id, result });
+			}
+			Ok(NetworkCommand::Unpin { status_id }) => {
+				let result = client.unpin_status(access_token, &status_id);
+				send_response(responses, ui_waker, NetworkResponse::Unpinned { status_id, result });
 			}
 			Ok(NetworkCommand::Boost { status_id }) => {
 				let result = client.reblog(access_token, &status_id);

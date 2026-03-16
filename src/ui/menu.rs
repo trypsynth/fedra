@@ -4,9 +4,9 @@ use crate::{
 	AppState, ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST,
 	ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
 	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
-	ID_OPTIONS, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES,
-	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
+	ID_OPTIONS, ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS,
+	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
+	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -338,6 +338,38 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				let label = "&Delete Post".to_string();
 				item.set_label(&label);
 			}
+
+			let pin_exists = post_menu.find_item(ID_PIN_POST).is_some();
+			if is_own {
+				let is_pinned = target.is_some_and(|t| t.pinned);
+				let pin_label = if is_pinned { "&Unpin Post" } else { "&Pin Post" };
+				if !pin_exists {
+					// Find where Delete ended up and insert Pin after it
+					let mut delete_pos = None;
+					for i in 0..post_menu.get_item_count() {
+						if let Some(item) = post_menu.find_item_by_position(i)
+							&& item.get_id() == ID_DELETE_POST
+						{
+							delete_pos = Some(i);
+							break;
+						}
+					}
+					if let Some(dp) = delete_pos {
+						post_menu.insert(
+							dp + 1,
+							ID_PIN_POST,
+							pin_label,
+							"Pin or unpin this post on your profile",
+							ItemKind::Normal,
+						);
+					}
+				} else if let Some(item) = post_menu.find_item(ID_PIN_POST) {
+					item.set_label(pin_label);
+				}
+			} else if pin_exists {
+				post_menu.delete(ID_PIN_POST);
+			}
+
 			let mut fav_pos = None;
 			for i in 0..post_menu.get_item_count() {
 				if let Some(item) = post_menu.find_item_by_position(i)
@@ -377,6 +409,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		favourited: target.is_some_and(|t| t.favourited),
 		reblogged: target.is_some_and(|t| t.reblogged),
 		bookmarked: target.is_some_and(|t| t.bookmarked),
+		pinned: target.is_some_and(|t| t.pinned),
 		is_direct: target.is_some_and(|t| t.visibility == "direct"),
 		is_own,
 		quick_action_keys: state.config.quick_action_keys,
