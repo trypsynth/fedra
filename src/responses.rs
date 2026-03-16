@@ -38,6 +38,21 @@ fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
 	format!("{prefix}: {}", summarize_api_error(err))
 }
 
+/// Re-fetches all open user timelines belonging to the current account so that
+/// pinned-post ordering reflects the latest pin state.
+fn refresh_own_user_timelines(state: &AppState) {
+	let Some(current_user_id) = &state.current_user_id else { return };
+	let Some(handle) = &state.network_handle else { return };
+	let types = state.timeline_manager.open_timeline_types();
+	for tt in types {
+		if let crate::timeline::TimelineType::User { ref id, .. } = tt
+			&& id == current_user_id
+		{
+			handle.send(NetworkCommand::FetchTimeline { timeline_type: tt, limit: Some(40), max_id: None });
+		}
+	}
+}
+
 fn merge_status_snapshot_by_id(state: &mut AppState, status_id: &str, snapshot: &Status) -> bool {
 	let mut updated = false;
 	for timeline in state.timeline_manager.iter_mut() {
@@ -537,6 +552,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.pinned = status.pinned;
 				});
+				refresh_own_user_timelines(state);
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
@@ -549,6 +565,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				update_status_in_timelines(state, &status_id, |s| {
 					s.pinned = status.pinned;
 				});
+				refresh_own_user_timelines(state);
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
