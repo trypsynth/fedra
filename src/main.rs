@@ -17,6 +17,7 @@ mod template;
 mod text;
 mod timeline;
 mod ui;
+
 mod ui_wake;
 mod update;
 

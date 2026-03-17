@@ -436,6 +436,7 @@ dependencies = [
  "tungstenite",
  "url",
  "windows",
+ "windows-core",
  "winres",
  "wxdragon",
 ]
