@@ -10,6 +10,8 @@ use wxdragon::prelude::*;
 const LVS_REPORT: u32 = 0x0001;
 /// `LVS_NOCOLUMNHEADER`: hide the column header
 const LVS_NOCOLUMNHEADER: u32 = 0x4000;
+/// `LVS_OWNERDATA`: virtual / owner-data mode — control stores no item text
+const LVS_OWNERDATA: u32 = 0x1000;
 /// `LVS_SINGLESEL`: single selection only
 const LVS_SINGLESEL: u32 = 0x0004;
 /// `LVS_SHOWSELALWAYS`: keep selection highlighted even when not focused
@@ -22,13 +24,12 @@ const LVS_EX_DOUBLEBUFFER: u32 = 0x0001_0000;
 
 // ListView messages (LVM_FIRST = 0x1000)
 const LVM_FIRST: u32 = 0x1000;
-const LVM_DELETEALLITEMS: u32 = LVM_FIRST + 9;
 const LVM_ENSUREVISIBLE: u32 = LVM_FIRST + 19;
 const LVM_REDRAWITEMS: u32 = LVM_FIRST + 21;
 const LVM_SETCOLUMNWIDTH: u32 = LVM_FIRST + 30;
 const LVM_SETITEMSTATE: u32 = LVM_FIRST + 43;
+const LVM_SETITEMCOUNT: u32 = LVM_FIRST + 47;
 const LVM_SETEXTENDEDLISTVIEWSTYLE: u32 = LVM_FIRST + 54;
-const LVM_INSERTITEMW: u32 = LVM_FIRST + 77;
 const LVM_INSERTCOLUMNW: u32 = LVM_FIRST + 97;
 
 // ListView notification codes (LVN_FIRST = –100)
@@ -36,12 +37,18 @@ const LVM_INSERTCOLUMNW: u32 = LVM_FIRST + 97;
 const LVN_ITEMCHANGED: u32 = (-101_i32) as u32;
 /// `LVN_GETDISPINFOW` = –177
 const LVN_GETDISPINFOW: u32 = (-177_i32) as u32;
+const LVN_ODFINDITEMW: u32 = (-179_i32) as u32;
 
 // Item / column flag bits
 const LVIF_TEXT: u32 = 0x0001;
 const LVIF_STATE: u32 = 0x0008;
 const LVIS_FOCUSED: u32 = 0x0001;
 const LVIS_SELECTED: u32 = 0x0002;
+const LVFI_STRING: u32 = 0x0002;
+const LVFI_WRAP: u32 = 0x0020;
+/// `LVSICF_NOINVALIDATEALL`: preserve existing item states when count changes
+const LVSICF_NOINVALIDATEALL: isize = 0x0001;
+
 // ── Public types ─────────────────────────────────────────────────────────────
 
 /// Keyboard event info passed to `on_key_down` callbacks.
@@ -112,12 +119,13 @@ impl TimelinePanel {
 
 			let panel_hwnd = HWND(panel.get_handle());
 
-			// Create the SysListView32 child window in standard mode.
+			// Create the SysListView32 child window in virtual/owner-data mode.
 			let lv_style = WINDOW_STYLE(
 				WS_CHILD.0
 					| WS_VISIBLE.0 | WS_TABSTOP.0
 					| LVS_REPORT | LVS_NOCOLUMNHEADER
-					| LVS_SINGLESEL | LVS_SHOWSELALWAYS,
+					| LVS_OWNERDATA | LVS_SINGLESEL
+					| LVS_SHOWSELALWAYS,
 			);
 			let listview_hwnd = unsafe {
 				CreateWindowExW(
@@ -188,72 +196,20 @@ impl TimelinePanel {
 		let mut inner = self.inner.borrow_mut();
 		let mut wstr = text.encode_utf16().collect::<Vec<_>>();
 		wstr.push(0);
-		let index = inner.items.len();
-		inner.items.push((text.to_string(), wstr.clone()));
+		inner.items.push((text.to_string(), wstr));
+		let count = inner.items.len();
 		#[cfg(windows)]
 		unsafe {
 			use windows::Win32::{
 				Foundation::{LPARAM, WPARAM},
-				UI::{
-					Controls::{LVIF_TEXT, LVITEMW},
-					WindowsAndMessaging::SendMessageW,
-				},
+				UI::WindowsAndMessaging::SendMessageW,
 			};
-
-			let mut item = LVITEMW {
-				mask: LVIF_TEXT,
-				iItem: index as i32,
-				iSubItem: 0,
-				pszText: windows::core::PWSTR(-1_isize as usize as *mut u16), // LPSTR_TEXTCALLBACKW
-				..Default::default()
-			};
-			SendMessageW(
-				inner.listview_hwnd,
-				LVM_INSERTITEMW,
-				Some(WPARAM(0)),
-				Some(LPARAM(std::ptr::addr_of_mut!(item) as isize)),
-			);
+			SendMessageW(inner.listview_hwnd, LVM_SETITEMCOUNT, Some(WPARAM(count)), Some(LPARAM(0)));
 		}
 	}
 
-	/// Insert an item at the specified index.
-	pub fn insert(&self, index: usize, text: &str) {
-		let mut inner = self.inner.borrow_mut();
-		let mut wstr = text.encode_utf16().collect::<Vec<_>>();
-		wstr.push(0);
-		inner.items.insert(index, (text.to_string(), wstr.clone()));
-		// Shift selection down if we inserted before the selected item.
-		if let Some(sel) = inner.selected_index.get() {
-			if sel >= index {
-				inner.selected_index.set(Some(sel + 1));
-			}
-		}
-		#[cfg(windows)]
-		unsafe {
-			use windows::Win32::{
-				Foundation::{LPARAM, WPARAM},
-				UI::{
-					Controls::{LVIF_TEXT, LVITEMW},
-					WindowsAndMessaging::SendMessageW,
-				},
-			};
-
-			let mut item = LVITEMW {
-				mask: LVIF_TEXT,
-				iItem: index as i32,
-				iSubItem: 0,
-				pszText: windows::core::PWSTR(-1_isize as usize as *mut u16), // LPSTR_TEXTCALLBACKW
-				..Default::default()
-			};
-			SendMessageW(
-				inner.listview_hwnd,
-				LVM_INSERTITEMW,
-				Some(WPARAM(0)),
-				Some(LPARAM(std::ptr::addr_of_mut!(item) as isize)),
-			);
-		}
-	}
-	/// Replace the text of an existing item.
+	/// Replace the text of an existing item. Does NOT fire any Win32
+	/// accessibility event — that is the whole point of this widget.
 	pub fn set_string(&self, index: usize, text: &str) {
 		let mut inner = self.inner.borrow_mut();
 		if let Some(slot) = inner.items.get_mut(index) {
@@ -262,15 +218,18 @@ impl TimelinePanel {
 			}
 			let mut wstr = text.encode_utf16().collect::<Vec<_>>();
 			wstr.push(0);
-			*slot = (text.to_string(), wstr.clone());
-			#[cfg(windows)]
-			unsafe {
-				use windows::Win32::{
-					Foundation::{LPARAM, WPARAM},
-					UI::WindowsAndMessaging::SendMessageW,
-				};
-				SendMessageW(inner.listview_hwnd, LVM_REDRAWITEMS, Some(WPARAM(index)), Some(LPARAM(index as isize)));
-			}
+			*slot = (text.to_string(), wstr);
+		} else {
+			return;
+		}
+		#[cfg(windows)]
+		unsafe {
+			use windows::Win32::{
+				Foundation::{LPARAM, WPARAM},
+				UI::WindowsAndMessaging::SendMessageW,
+			};
+			// LVM_REDRAWITEMS repaints items without firing NAMECHANGE.
+			SendMessageW(inner.listview_hwnd, LVM_REDRAWITEMS, Some(WPARAM(index)), Some(LPARAM(index as isize)));
 		}
 	}
 
@@ -292,9 +251,11 @@ impl TimelinePanel {
 		#[cfg(windows)]
 		unsafe {
 			use windows::Win32::{
-				Foundation::WPARAM, Graphics::Gdi::InvalidateRect, UI::WindowsAndMessaging::SendMessageW,
+				Foundation::{LPARAM, WPARAM},
+				Graphics::Gdi::InvalidateRect,
+				UI::WindowsAndMessaging::SendMessageW,
 			};
-			SendMessageW(inner.listview_hwnd, LVM_DELETEALLITEMS, Some(WPARAM(0)), None);
+			SendMessageW(inner.listview_hwnd, LVM_SETITEMCOUNT, Some(WPARAM(0)), Some(LPARAM(0)));
 			let _ = InvalidateRect(Some(inner.listview_hwnd), None, true);
 		}
 	}
@@ -320,32 +281,16 @@ impl TimelinePanel {
 			use windows::Win32::{
 				Foundation::{LPARAM, WPARAM},
 				Graphics::Gdi::InvalidateRect,
-				UI::{
-					Controls::{LVIF_TEXT, LVITEMW},
-					WindowsAndMessaging::{SendMessageW, WM_SETREDRAW},
-				},
+				UI::WindowsAndMessaging::SendMessageW,
 			};
-			let hwnd = inner.listview_hwnd;
-			SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), None);
-			SendMessageW(hwnd, LVM_DELETEALLITEMS, Some(WPARAM(0)), None);
-			// For a standard listview, we must actually insert the items
-			for (i, (_, wstr)) in inner.items.iter_mut().enumerate() {
-				let mut item = LVITEMW {
-					mask: LVIF_TEXT,
-					iItem: i as i32,
-					iSubItem: 0,
-					pszText: windows::core::PWSTR(wstr.as_mut_ptr()),
-					..Default::default()
-				};
-				SendMessageW(
-					hwnd,
-					LVM_INSERTITEMW,
-					Some(WPARAM(0)),
-					Some(LPARAM(std::ptr::addr_of_mut!(item) as isize)),
-				);
-			}
-			SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), None);
-			let _ = InvalidateRect(Some(hwnd), None, true);
+			// LVSICF_NOINVALIDATEALL preserves selection state for existing items.
+			SendMessageW(
+				inner.listview_hwnd,
+				LVM_SETITEMCOUNT,
+				Some(WPARAM(count)),
+				Some(LPARAM(LVSICF_NOINVALIDATEALL)),
+			);
+			let _ = InvalidateRect(Some(inner.listview_hwnd), None, true);
 		}
 	}
 
@@ -498,15 +443,54 @@ unsafe extern "system" fn panel_subclass_proc(
 				if disp.item.mask.0 & LVIF_TEXT != 0 {
 					let item_index = disp.item.iItem as usize;
 					let inner = &*(ref_data as *const RefCell<Inner>);
-					if let Ok(borrow) = inner.try_borrow() {
-						if let Some((_, text_wstr)) = borrow.items.get(item_index) {
-							disp.item.pszText = windows::core::PWSTR(text_wstr.as_ptr() as *mut _);
-						}
+					if let Ok(borrow) = inner.try_borrow()
+						&& let Some((_, text_wstr)) = borrow.items.get(item_index)
+					{
+						disp.item.pszText = windows::core::PWSTR(text_wstr.as_ptr().cast_mut());
 					}
 				}
 				return LRESULT(0);
 			}
-
+			if code == LVN_ODFINDITEMW {
+				let find = &*(lparam.0 as *const windows::Win32::UI::Controls::NMLVFINDITEMW);
+				let flags = find.lvfi.flags.0;
+				if flags & LVFI_STRING != 0 {
+					let inner = &*(ref_data as *const RefCell<Inner>);
+					if let Ok(borrow) = inner.try_borrow() {
+						let count = borrow.items.len();
+						if count == 0 {
+							return LRESULT(-1);
+						}
+						let needle = read_wide_string(find.lvfi.psz.0);
+						if needle.is_empty() {
+							return LRESULT(-1);
+						}
+						let start = usize::try_from(find.iStart).ok().map_or(0, |i| i.min(count - 1));
+						let wraps = flags & LVFI_WRAP != 0;
+						let needle_lower = needle.to_lowercase();
+						let mut found = None;
+						// Search starts *after* iStart and may wrap depending on LVFI_WRAP.
+						for offset in 1..=count {
+							let idx = start + offset;
+							let candidate = if idx < count {
+								idx
+							} else if wraps {
+								idx - count
+							} else {
+								break;
+							};
+							if let Some((text, _)) = borrow.items.get(candidate)
+								&& text.to_lowercase().starts_with(&needle_lower)
+							{
+								found = Some(candidate);
+								break;
+							}
+						}
+						return LRESULT(found.map_or(-1, |idx| idx as isize));
+					}
+				}
+				return LRESULT(-1);
+			}
 			if code == LVN_ITEMCHANGED {
 				let nmlv = &*(lparam.0 as *const NMLISTVIEW);
 				// Fire on_selection_changed only when an item *gains* selection.
@@ -561,6 +545,23 @@ unsafe extern "system" fn panel_subclass_proc(
 
 		_ => DefSubclassProc(hwnd, msg, wparam, lparam),
 	}
+}
+
+#[cfg(windows)]
+unsafe fn read_wide_string(mut ptr: *const u16) -> String {
+	if ptr.is_null() {
+		return String::new();
+	}
+	let mut out = Vec::new();
+	loop {
+		let ch = *ptr;
+		if ch == 0 {
+			break;
+		}
+		out.push(ch);
+		ptr = ptr.add(1);
+	}
+	String::from_utf16_lossy(&out)
 }
 
 /// Subclass proc for the **listview** — handles `WM_KEYDOWN` and `WM_CONTEXTMENU`.

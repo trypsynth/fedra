@@ -48,25 +48,6 @@ pub fn update_timeline_ui(
 				timeline_list.set_string(i, &text);
 			}
 		}
-	} else if entries.len() > count && count > 0 {
-		let diff = entries.len() - count;
-		// Instead of replacing all, we can see if the existing items match
-		let items_to_add: Vec<String> = iter
-			.map(|entry| {
-				let is_expanded = cw_expanded.contains(entry.id());
-				entry.display_text(text_options, is_expanded)
-			})
-			.collect();
-
-		let existing_matches = true; // In a robust version we check suffix matching.
-
-		if existing_matches {
-			for i in (0..diff).rev() {
-				timeline_list.insert(0, &items_to_add[i]);
-			}
-		} else {
-			timeline_list.replace_all(items_to_add);
-		}
 	} else {
 		timeline_list.replace_all(iter.map(|entry| {
 			let is_expanded = cw_expanded.contains(entry.id());
