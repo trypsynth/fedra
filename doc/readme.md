@@ -3,7 +3,7 @@
 [Fedra](https://github.com/trypsynth/fedra) is a native, keyboard-first Mastodon client for Windows.
 
 ## System Requirements
-- Windows 10 or Windows 11
+Windows 10 or 11
 
 ## Core Features
 - Native Windows UI with screen-reader-friendly controls and live announcements.
@@ -214,6 +214,13 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - Portable/uninstalled run: `config.json` next to the executable
 
 ## Changelog
+
+### Version 0.3.0
+* Added an option to hide the totals from polls, and switched to preset amounts of time for poll durations. [#30](https://github.com/trypsynth/fedra/issues/30).
+* Added many more supported extensions to the add media dialog. [#28](https://github.com/trypsynth/fedra/issues/28).
+* Added the {{ booster_username }} template variable for consistent @username display. [#31](https://github.com/trypsynth/fedra/issues/31).
+* Fixed the description fields in the add media dialog not showing up at the correct times. [#28](https://github.com/trypsynth/fedra/issues/28).
+* Fixed the post context menu showing incorrect labels for actions on boosted/favorited posts.
 
 ### Version 0.2.0
 * Added a webview-based dialog for viewing the raw contents of a post. [#18](https://github.com/trypsynth/fedra/issues/18).
