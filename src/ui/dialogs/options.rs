@@ -4,7 +4,7 @@ use wxdragon::prelude::*;
 
 use crate::{
 	config::{
-		AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
+		AutoloadMode, PerTimelineTemplates, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
 		NotificationPreference, PostTemplates, SortOrder,
 	},
 	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},

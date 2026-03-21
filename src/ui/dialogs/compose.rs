@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Write, path::Path, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use wxdragon::prelude::*;
@@ -6,7 +6,7 @@ use wxdragon::prelude::*;
 use super::common::{KEY_RETURN, show_warning_widget};
 use crate::{
 	config::ContentWarningDisplay,
-	mastodon::{Mention, PollLimits, Status},
+	mastodon::{PollLimits, Status},
 };
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
@@ -70,8 +70,6 @@ pub struct PostPoll {
 	pub hide_totals: bool,
 }
 
-const DEFAULT_MAX_POST_CHARS: usize = 500;
-const KEY_RETURN: i32 = 13;
 const ID_ACTION_FOLLOW: i32 = 6001;
 const ID_ACTION_UNFOLLOW: i32 = 6002;
 const ID_ACTION_BLOCK: i32 = 6003;

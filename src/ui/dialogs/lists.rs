@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
-use crate::network::NetworkCommand;
+use crate::{ui::dialogs::prompt_for_account_search, network::NetworkCommand};
 
 pub fn prompt_for_list_selection(frame: &Frame, lists: &[crate::mastodon::List]) -> Option<crate::mastodon::List> {
 	let dialog = Dialog::builder(frame, "Open List").with_size(300, 400).build();
