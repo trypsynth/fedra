@@ -136,4 +136,3 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 	dialog.show_modal();
 	result.borrow().clone()
 }
-

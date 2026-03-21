@@ -464,5 +464,3 @@ impl ManageListMembersDialog {
 		&self.dialog
 	}
 }
-
-#[derive(Clone)]

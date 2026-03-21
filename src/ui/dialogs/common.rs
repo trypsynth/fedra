@@ -232,7 +232,6 @@ pub fn prompt_for_account_search(parent: &dyn WxWidget) -> Option<String> {
 	Some(trimmed.to_string())
 }
 
-
 pub fn prompt_for_link_selection(frame: &Frame, links: &[Link]) -> Option<String> {
 	let dialog = Dialog::builder(frame, "Select Link").with_size(500, 300).build();
 	let panel = Panel::builder(&dialog).build();
@@ -546,7 +545,6 @@ pub fn prompt_for_account_choice(
 	}
 	combo.get_selection().and_then(|sel| accounts.get(sel as usize).copied()).cloned()
 }
-
 
 pub fn show_update_dialog(parent: &dyn WxWidget, new_version: &str, changelog: &str) -> bool {
 	let padding = 10;

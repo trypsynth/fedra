@@ -2,9 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
-use crate::mastodon::{Filter, FilterAction, FilterContext};
-
 use super::common::KEY_RETURN;
+use crate::mastodon::{Filter, FilterAction, FilterContext};
 
 pub enum ManageFiltersResult {
 	Add,
@@ -465,5 +464,3 @@ pub fn prompt_filter_edit(frame: &Frame, existing: Option<&Filter>) -> Option<Fi
 
 	Some(FilterDialogResult { title, contexts, action, keywords: final_keywords, expires_in })
 }
-
-#[derive(Clone)]

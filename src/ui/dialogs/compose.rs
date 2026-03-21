@@ -3,12 +3,11 @@ use std::{cell::RefCell, fmt::Write, path::Path, rc::Rc};
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use wxdragon::prelude::*;
 
+use super::common::{KEY_RETURN, show_warning_widget};
 use crate::{
 	config::ContentWarningDisplay,
 	mastodon::{Mention, PollLimits, Status},
 };
-
-use super::common::{show_warning_widget, KEY_RETURN};
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
 
@@ -671,6 +670,7 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	}
 
 	Some(selected_indices)
+}
 
 fn normalize_language_code(input: &str) -> Option<String> {
 	let trimmed = input.trim();

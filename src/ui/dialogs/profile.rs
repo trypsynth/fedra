@@ -2,12 +2,11 @@ use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
+use super::common::KEY_RETURN;
 use crate::{
 	mastodon::{Account as MastodonAccount, Tag},
 	network::{NetworkCommand, ProfileUpdate},
 };
-
-use super::common::KEY_RETURN;
 
 const ID_ACTION_FOLLOW: i32 = 6001;
 const ID_ACTION_UNFOLLOW: i32 = 6002;
@@ -919,4 +918,3 @@ pub fn prompt_for_profile_edit(frame: &Frame, current: &MastodonAccount) -> Opti
 		source,
 	})
 }
-
