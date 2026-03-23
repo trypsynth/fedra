@@ -5,6 +5,7 @@ use wxdragon::prelude::*;
 
 use crate::config::Account;
 
+#[derive(Clone)]
 pub enum ManageAccountsResult {
 	Add,
 	Remove(String),
@@ -134,5 +135,5 @@ pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Op
 	});
 	dialog.centre();
 	dialog.show_modal();
-	result.borrow().clone()
+	(*result.borrow()).clone()
 }

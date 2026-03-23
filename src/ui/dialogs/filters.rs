@@ -5,6 +5,7 @@ use wxdragon::prelude::*;
 use super::common::KEY_RETURN;
 use crate::mastodon::{Filter, FilterAction, FilterContext};
 
+#[derive(Clone)]
 pub enum ManageFiltersResult {
 	Add,
 	Edit(String),
@@ -98,7 +99,7 @@ pub fn prompt_manage_filters(frame: &Frame, filters: &[Filter]) -> ManageFilters
 	});
 	dialog.centre();
 	dialog.show_modal();
-	result.borrow().clone()
+	(*result.borrow()).clone()
 }
 
 pub struct FilterDialogResult {
