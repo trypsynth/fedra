@@ -15,7 +15,7 @@ clearurls = "0.0.4"
 ego-tree = "0.10.0"
 live-region = "0.1.4"
 minijinja = { version = "2.18.0", default-features = false, features = ["macros", "serde"] }
-pulldown-cmark = { version = "0.13.1", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.3", default-features = false, features = ["html"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "form", "json", "multipart", "rustls"] }
 scraper = { version = "0.25.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.228", features = ["derive"] }
