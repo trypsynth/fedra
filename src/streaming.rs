@@ -1,11 +1,12 @@
 use std::{
+	net::{TcpStream, ToSocketAddrs},
 	sync::mpsc::{self, Receiver, Sender},
 	thread::{self, JoinHandle},
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use serde::Deserialize;
-use tungstenite::{Message, connect};
+use tungstenite::{Message, client::IntoClientRequest, client_tls_with_config, http::Uri};
 use url::Url;
 
 use crate::{
@@ -28,6 +29,11 @@ pub struct StreamHandle {
 	receiver: Receiver<StreamEvent>,
 	_thread: JoinHandle<()>,
 }
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const READ_TIMEOUT: Duration = Duration::from_secs(15);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
+const IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 
 impl StreamHandle {
 	pub fn try_recv(&self) -> Option<StreamEvent> {
@@ -101,13 +107,24 @@ fn connect_and_stream(
 	sender: &Sender<StreamEvent>,
 	ui_waker: &UiWaker,
 ) -> Result<(), String> {
-	let (mut socket, _response) = connect(url.as_str()).map_err(|e| format!("WebSocket connection failed: {e}"))?;
+	let request = url.as_str().into_client_request().map_err(|e| format!("WebSocket request failed: {e}"))?;
+	let uri = request.uri().clone();
+	let tcp = connect_tcp_stream(&uri)?;
+	let (mut socket, _response) =
+		client_tls_with_config(request, tcp, None, None).map_err(|e| format!("WebSocket connection failed: {e}"))?;
+	let mut last_message_at = Instant::now();
+	let mut last_ping_at = Instant::now() - HEARTBEAT_INTERVAL;
 	if !send_event(sender, ui_waker, StreamEvent::Connected(timeline_type.clone())) {
 		return Ok(());
 	}
 	loop {
+		if last_ping_at.elapsed() >= HEARTBEAT_INTERVAL {
+			socket.send(Message::Ping(Vec::new().into())).map_err(|e| format!("WebSocket ping failed: {e}"))?;
+			last_ping_at = Instant::now();
+		}
 		match socket.read() {
 			Ok(Message::Text(text)) => {
+				last_message_at = Instant::now();
 				if let Some(event) = parse_stream_message(&text, timeline_type)
 					&& !send_event(sender, ui_waker, event)
 				{
@@ -115,20 +132,61 @@ fn connect_and_stream(
 				}
 			}
 			Ok(Message::Ping(data)) => {
+				last_message_at = Instant::now();
 				let _ = socket.send(Message::Pong(data));
+			}
+			Ok(Message::Pong(_)) => {
+				last_message_at = Instant::now();
 			}
 			Ok(Message::Close(_)) => {
 				return Err("WebSocket closed".to_string());
 			}
 			Ok(_) => {
+				last_message_at = Instant::now();
 				// Ignore other message types (Binary, Pong, Frame)
 			}
-			Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+			Err(tungstenite::Error::Io(e))
+				if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) =>
+			{
+				if last_message_at.elapsed() >= IDLE_TIMEOUT {
+					return Err(format!(
+						"WebSocket heartbeat timed out after {} seconds of inactivity",
+						IDLE_TIMEOUT.as_secs()
+					));
+				}
+			}
 			Err(e) => {
 				return Err(format!("WebSocket error: {e}"));
 			}
 		}
 	}
+}
+
+fn connect_tcp_stream(uri: &Uri) -> Result<TcpStream, String> {
+	let host = uri.host().ok_or_else(|| "WebSocket URL missing host".to_string())?;
+	let host = if host.starts_with('[') { &host[1..host.len() - 1] } else { host };
+	let port = uri.port_u16().unwrap_or_else(|| if uri.scheme_str() == Some("wss") { 443 } else { 80 });
+	let addrs = (host, port).to_socket_addrs().map_err(|e| format!("Failed to resolve WebSocket host: {e}"))?;
+	let mut last_err = None;
+	for addr in addrs {
+		match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
+			Ok(stream) => {
+				configure_tcp_timeouts(&stream).map_err(|e| format!("Failed to configure WebSocket timeouts: {e}"))?;
+				return Ok(stream);
+			}
+			Err(err) => last_err = Some(err),
+		}
+	}
+	match last_err {
+		Some(err) => Err(format!("Timed out connecting to WebSocket endpoint: {err}")),
+		None => Err("WebSocket host resolved to no socket addresses".to_string()),
+	}
+}
+
+fn configure_tcp_timeouts(stream: &TcpStream) -> std::io::Result<()> {
+	stream.set_read_timeout(Some(READ_TIMEOUT))?;
+	stream.set_write_timeout(Some(READ_TIMEOUT))?;
+	Ok(())
 }
 
 #[derive(Debug, Deserialize)]
