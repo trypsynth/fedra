@@ -240,7 +240,7 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 * Removed the buggy global template system for now. There are plans to rewrite it in a much more stable way in the future.
 * The default templates now hide the reply/boost/favorite counts if they're zero.
 * The post details webview will now come up much faster and smoother.
-* The timeline switching hotkeys now work in the list of timeoines as well as the timeline list.
+* The timeline switching hotkeys now work in the list of timelines as well as the timeline list.
 * You can now pin/unpin posts.
 
 ### Version 0.2.0
