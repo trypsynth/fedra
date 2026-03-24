@@ -216,31 +216,52 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 ## Changelog
 
 ### Version 0.3.0
-* Added an option to hide the totals from polls, and switched to preset amounts of time for poll durations. [#30](https://github.com/trypsynth/fedra/issues/30).
-* Added many more supported extensions to the add media dialog. [#28](https://github.com/trypsynth/fedra/issues/28).
-* Added the {{ booster_username }} template variable for consistent @username display. [#31](https://github.com/trypsynth/fedra/issues/31).
-* Fixed the description fields in the add media dialog not showing up at the correct times. [#28](https://github.com/trypsynth/fedra/issues/28).
+* Added an option to hide the totals from polls, and switched to preset amounts of time for poll durations.
+* Added an option to restore previously opened timelines on startup.
+* Added an option to show link previews in the timeline.
+* Added many more supported extensions to the add media dialog.
+* Added support for managing and opening list timelines.
+* Added support for reading and writing quote posts.
+* Added a new timeline filters tab to the options dialog, allowing you to filter your timelines on the client side.
+* Added the ability to schedule posts.
+* Added the {{ booster_username }} template variable for consistent @username display.
+* Added a thread mode check box to the new post dialog. When checked, every time you hit post, you'll get the dialog again, and be replying to your previous post.
+* Fedra will now respect the account-wide default post visibility in the new post dialog.
+* Fixed message duplication in the direct messages timeline.
+* Fixed the description fields in the add media dialog not showing up.
+* Fixed the post context menu not showing hotkeys and post-specific actions such as edit or delete.
 * Fixed the post context menu showing incorrect labels for actions on boosted/favorited posts.
+* It is now possible to interact with follower requests.
+* It is now possible to reorder your timelines with ctrl+shift+left/right arrow.
+* It is now possible to search your timelines with ctrl+f and f3/shift+f3.
+* List timelines now stream.
+* Opening the select user dialog is now much more responsive.
+* Pinned posts are now shown at the top of user timelines.
+* Removed the buggy global template system for now. There are plans to rewrite it in a much more stable way in the future.
+* The default templates now hide the reply/boost/favorite counts if they're zero.
+* The post details webview will now come up much faster and smoother.
+* The timeline switching hotkeys now work in the list of timeoines as well as the timeline list.
+* You can now pin/unpin posts.
 
 ### Version 0.2.0
-* Added a webview-based dialog for viewing the raw contents of a post. [#18](https://github.com/trypsynth/fedra/issues/18).
+* Added a webview-based dialog for viewing the raw contents of a post.
 * Added a new option, checked by default, to remove tracking parameters from URLs.
 * Added an option to check for development builds upon update, not new stable releases.
 * Added timeline templates, allowing you to customize everything about how Fedra's timeline entries are displayed. The relative/absolute time check box has also been removed from the options dialog, and is now settable per-template. See the templates section of the readme for more details.
 * Filters are now respected in the timeline, and you can manage them in a super basic sense. This capability will be expanded in a future version.
 * Fixed attaching media, so more than teeny tiny files work now.
 * Fixed the handling of JSON responses from certain servers.
-* Hopefully fixed a rare but annoying crash in the new post dialog. [#14](https://github.com/trypsynth/fedra/issues/14).
+* Hopefully fixed a rare but annoying crash in the new post dialog.
 * It is now possible to type past the character limit once again, but you will get a warning sound when you do so.
 * Post statistics are now properly pluralized, so you will now hear "1 reply" instead of "1 replies".
-* pressing shift+f10 or the context menu key on a post will now bring up a menu of post actions. [#16](https://github.com/trypsynth/fedra/issues/16).
+* pressing shift+f10 or the context menu key on a post will now bring up a menu of post actions.
 * Replies are properly grouped in threads now.
 * The  mentions dialog will now include users who haven't fedrated with your instance yet.
-* The open user dialog will now be automatically prepopulated with all of the usernames that appear in your current timeline. [#9](https://github.com/trypsynth/fedra/issues/9).
+* The open user dialog will now be automatically prepopulated with all of the usernames that appear in your current timeline.
 * When closing a timeline, the name of the newly focused one will now be spoken before the timeline contents, as intended.
 
 ### Version 0.1.1
-* Added the ability for you to set the language of your posts! [#17](https://github.com/trypsynth/fedra/issues/17).
+* Added the ability for you to set the language of your posts!
 * API errors are now included in error output in a brief form.
 * Fixed Delete not closing timelines when the list had keyboard focus.
 * Improved default configuration values for new Fedra installs.
