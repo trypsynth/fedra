@@ -70,19 +70,6 @@ pub struct PostPoll {
 	pub hide_totals: bool,
 }
 
-const ID_ACTION_FOLLOW: i32 = 6001;
-const ID_ACTION_UNFOLLOW: i32 = 6002;
-const ID_ACTION_BLOCK: i32 = 6003;
-const ID_ACTION_UNBLOCK: i32 = 6004;
-const ID_ACTION_MUTE: i32 = 6005;
-const ID_ACTION_UNMUTE: i32 = 6006;
-const ID_ACTION_OPEN_BROWSER: i32 = 6007;
-const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
-const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
-const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
-const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
-const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
-const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
 
 #[allow(clippy::struct_excessive_bools)]
 struct ComposeDialogConfig {
