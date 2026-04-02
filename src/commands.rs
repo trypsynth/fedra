@@ -18,7 +18,6 @@ use crate::{
 	ui::{
 		app_shell, dialogs,
 		menu::update_menu_labels,
-		timeline_panel::TimelinePanel,
 		timeline_view::{
 			list_index_to_entry_index, sync_timeline_selection_from_list, update_active_timeline_ui,
 			with_suppressed_selection,
@@ -154,7 +153,7 @@ pub struct UiCommandContext<'a> {
 	pub state: &'a mut AppState,
 	pub frame: &'a Frame,
 	pub timelines_selector: ListBox,
-	pub timeline_list: TimelinePanel,
+	pub timeline_list: ListBox,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
@@ -464,7 +463,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if has_pending {
 				handle_ui_command(UiCommand::ApplyPending(Some(0)), ctx);
 			} else if timeline_list.get_selection() != Some(0) {
-				timeline_list.set_selection(0);
+				timeline_list.set_selection(0, true);
 			}
 		}
 		UiCommand::ApplyPending(target_index) => {
@@ -484,15 +483,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
 
 				if let Some(explicit_target) = target_index {
-					timeline_list.set_selection(explicit_target);
+					timeline_list.set_selection(explicit_target as u32, true);
 				} else if let Some(current) = current_selection {
 					// We were at 'current'. Now there are 'added_count' new items at the top.
 					if current == 0 {
 						// If we were at the top boundary, act like Up Arrow (slide them into the new chunk's bottom)
-						timeline_list.set_selection(added_count.saturating_sub(1));
+						timeline_list.set_selection(added_count.saturating_sub(1) as u32, true);
 					} else {
 						// We want to visually stay exactly where we were, so our new index is current + added_count.
-						timeline_list.set_selection(current + added_count);
+						timeline_list.set_selection(current.saturating_add(added_count as u32), true);
 					}
 				}
 			} else {
@@ -590,7 +589,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 			let is_expanded = state.cw_expanded.contains(entry_id);
 			let text = entry.display_text(&text_options, is_expanded);
-			timeline_list.set_string(list_index, &text);
+			timeline_list.set_string(list_index as u32, &text);
 		}
 		UiCommand::ToggleWindowVisibility => {
 			app_shell::toggle_window_visibility(frame, tray_hidden);
@@ -1848,7 +1847,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx);
+						timeline_list.set_selection(idx as u32, true);
 						live_region::announce(live_region, "Found");
 					}
 				} else {
@@ -1886,7 +1885,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 
-						timeline_list.set_selection(idx);
+						timeline_list.set_selection(idx as u32, true);
 						live_region::announce(live_region, "Found next");
 					}
 				} else {
@@ -1916,7 +1915,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									)
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
-									timeline_list.set_selection(idx);
+									timeline_list.set_selection(idx as u32, true);
 									live_region::announce(live_region, "Wrapped to top");
 								}
 							} else {
@@ -1963,7 +1962,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx);
+						timeline_list.set_selection(idx as u32, true);
 						live_region::announce(live_region, "Found previous");
 					}
 				} else {
@@ -2112,7 +2111,7 @@ fn do_boost(state: &AppState, live_region: StaticText) {
 fn open_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	timeline_type: &TimelineType,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
@@ -2178,7 +2177,7 @@ fn open_timeline(
 fn close_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	use_history: bool,

@@ -70,7 +70,6 @@ pub struct PostPoll {
 	pub hide_totals: bool,
 }
 
-
 #[allow(clippy::struct_excessive_bools)]
 struct ComposeDialogConfig {
 	title_prefix: String,

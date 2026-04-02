@@ -1,4 +1,5 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
+
 use wxdragon::{
 	event::{WebViewEventData, WebViewEvents},
 	prelude::*,

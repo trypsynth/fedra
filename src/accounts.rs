@@ -13,7 +13,6 @@ use crate::{
 	ui::{
 		dialogs,
 		menu::update_menu_labels,
-		timeline_panel::TimelinePanel,
 		timeline_view::{update_active_timeline_ui, with_suppressed_selection},
 	},
 	ui_wake::UiCommandSender,
@@ -92,7 +91,7 @@ pub fn switch_to_account(
 	state: &mut AppState,
 	frame: &Frame,
 	timelines_selector: ListBox,
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	should_announce: bool,

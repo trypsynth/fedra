@@ -1,9 +1,10 @@
 use std::{cell::Cell, collections::HashSet};
 
+use wxdragon::prelude::*;
+
 use crate::{
 	config::{Config, SortOrder},
 	timeline::{Timeline, TimelineEntry, TimelineTextOptions, TimelineType},
-	ui::timeline_panel::TimelinePanel,
 };
 
 #[derive(Debug, Clone)]
@@ -24,7 +25,7 @@ impl TimelineViewOptions {
 }
 
 pub fn update_timeline_ui(
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
 	text_options: &TimelineTextOptions,
@@ -35,24 +36,25 @@ pub fn update_timeline_ui(
 		SortOrder::OldestToNewest => Box::new(entries.iter().rev()),
 	};
 
-	let count = timeline_list.get_count();
+	let count = timeline_list.get_count() as usize;
 	if count == entries.len() {
 		for (i, entry) in iter.enumerate() {
 			let is_expanded = cw_expanded.contains(entry.id());
 			let text = entry.display_text(text_options, is_expanded);
-			if let Some(current) = timeline_list.get_string(i) {
+			if let Some(current) = timeline_list.get_string(i as u32) {
 				if current != text {
-					timeline_list.set_string(i, &text);
+					timeline_list.set_string(i as u32, &text);
 				}
 			} else {
-				timeline_list.set_string(i, &text);
+				timeline_list.set_string(i as u32, &text);
 			}
 		}
 	} else {
-		timeline_list.replace_all(iter.map(|entry| {
+		timeline_list.clear();
+		for entry in iter {
 			let is_expanded = cw_expanded.contains(entry.id());
-			entry.display_text(text_options, is_expanded)
-		}));
+			timeline_list.append(&entry.display_text(text_options, is_expanded));
+		}
 	}
 }
 
@@ -63,16 +65,11 @@ pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnO
 	result
 }
 
-pub fn with_frozen_listbox<T>(listbox: &TimelinePanel, f: impl FnOnce() -> T) -> T {
-	struct ThawOnDrop(TimelinePanel);
-	impl Drop for ThawOnDrop {
-		fn drop(&mut self) {
-			self.0.thaw();
-		}
-	}
+pub fn with_frozen_listbox<T>(listbox: &ListBox, f: impl FnOnce() -> T) -> T {
 	listbox.freeze();
-	let _guard = ThawOnDrop(listbox.clone());
-	f()
+	let result = f();
+	listbox.thaw();
+	result
 }
 
 pub const fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
@@ -95,19 +92,15 @@ pub const fn entry_index_to_list_index(entry_index: usize, entries_len: usize, s
 	}
 }
 
-pub fn sync_timeline_selection_from_list(
-	timeline: &mut Timeline,
-	timeline_list: &TimelinePanel,
-	sort_order: SortOrder,
-) {
-	let selection = timeline_list.get_selection();
+pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: &ListBox, sort_order: SortOrder) {
+	let selection = timeline_list.get_selection().map(|s| s as usize);
 	timeline.selected_index = selection;
 	timeline.selected_id = selection
 		.and_then(|list_index| list_index_to_entry_index(list_index, timeline.entries.len(), sort_order))
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 }
 
-pub fn apply_timeline_selection(timeline_list: &TimelinePanel, timeline: &mut Timeline, sort_order: SortOrder) {
+pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline, sort_order: SortOrder) {
 	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
 		timeline.selected_id = None;
@@ -128,7 +121,6 @@ pub fn apply_timeline_selection(timeline_list: &TimelinePanel, timeline: &mut Ti
 		.or_else(|| timeline.selected_index.filter(|&sel| sel < entries_len))
 		.unwrap_or_else(|| {
 			if is_thread {
-				// For threads, select the first (oldest) post so users can read sequentially
 				match sort_order {
 					SortOrder::NewestToOldest => entries_len - 1,
 					SortOrder::OldestToNewest => 0,
@@ -144,14 +136,14 @@ pub fn apply_timeline_selection(timeline_list: &TimelinePanel, timeline: &mut Ti
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 
-	let current_ui_sel = timeline_list.get_selection();
+	let current_ui_sel = timeline_list.get_selection().map(|s| s as usize);
 	if current_ui_sel != Some(selection) {
-		timeline_list.set_selection(selection);
+		timeline_list.set_selection(selection as u32, true);
 	}
 }
 
 pub fn update_active_timeline_ui(
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
 	options: &TimelineViewOptions,

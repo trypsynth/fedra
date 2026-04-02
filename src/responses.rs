@@ -12,7 +12,6 @@ use crate::{
 	ui::{
 		dialogs::{self, UserLookupAction},
 		menu::update_menu_labels,
-		timeline_panel::TimelinePanel,
 		timeline_view::{sync_timeline_selection_from_list, update_active_timeline_ui},
 	},
 	ui_wake::UiCommandSender,
@@ -85,7 +84,7 @@ fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
 /// Processes streaming events from WebSocket connections.
 pub fn process_stream_events(
 	state: &mut AppState,
-	timeline_list: &TimelinePanel,
+	timeline_list: &ListBox,
 	suppress_selection: &Cell<bool>,
 	frame: &Frame,
 ) {
@@ -228,7 +227,7 @@ pub struct NetworkResponseContext<'a> {
 	pub frame: &'a Frame,
 	pub state: &'a mut AppState,
 	pub timelines_selector: ListBox,
-	pub timeline_list: TimelinePanel,
+	pub timeline_list: ListBox,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
