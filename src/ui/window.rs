@@ -6,9 +6,9 @@ use crate::{
 	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
-	ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES,
-	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE,
-	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
+	ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS,
+	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST,
+	ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	ui::menu::build_menu_bar,
 	ui_wake::UiCommandSender,
@@ -202,6 +202,14 @@ pub fn bind_input_handlers(
 				}
 				if !ctrl && !alt {
 					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
+					event.skip(false);
+					return;
+				}
+			}
+
+			if !ctrl && !shift && alt {
+				if k == 70 {
+					let _ = ui_tx_list_key.send(UiCommand::ToggleFollow);
 					event.skip(false);
 					return;
 				}
@@ -659,6 +667,12 @@ pub fn bind_input_handlers(
 	let shutdown_menu = is_shutting_down;
 	let frame_menu = parts.frame;
 	frame_menu.on_menu_selected(move |event| match event.get_id() {
+		ID_TOGGLE_FOLLOW => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::ToggleFollow);
+		}
 		ID_VIEW_PROFILE => {
 			if shutdown_menu.get() {
 				return;

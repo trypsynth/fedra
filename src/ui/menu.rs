@@ -4,9 +4,9 @@ use crate::{
 	AppState, ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST,
 	ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
 	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT,
-	ID_OPTIONS, ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_VIEW_BOOSTS,
-	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
-	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
+	ID_OPTIONS, ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW,
+	ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS,
+	ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -45,6 +45,9 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu
 		.append(ID_QUOTE, "&Quote...\tCtrl+Q", "Quote this post", ItemKind::Normal)
 		.expect("Failed to append quote menu item");
+	post_menu
+		.append(ID_TOGGLE_FOLLOW, "Toggle &Follow\tAlt+F", "Follow or unfollow the author", ItemKind::Normal)
+		.expect("Failed to append toggle follow menu item");
 	post_menu
 		.append(ID_VIEW_PROFILE, "View &Profile\tCtrl+P", "View profile of selected post's author", ItemKind::Normal)
 		.expect("Failed to append view profile menu item");

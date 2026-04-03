@@ -110,6 +110,7 @@ pub enum UiCommand {
 	ApplyPending(Option<usize>),
 	HomePressed,
 	ToggleContentWarning,
+	ToggleFollow,
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
 	SwitchTimelineByIndex(usize),
@@ -1435,6 +1436,76 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if let Some(url) = url_to_open {
 				live_region::announce(live_region, "Opening link");
 				let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
+			}
+		}
+		UiCommand::ToggleFollow => {
+			let Some(status) = get_selected_status(state) else {
+				live_region::announce(live_region, "No post selected");
+				return;
+			};
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+
+			let mut all_users: Vec<crate::mastodon::Account> = Vec::new();
+
+			if status.reblog.is_some() {
+				all_users.push(status.account.clone());
+			}
+			all_users.push(target.account.clone());
+
+			let mut all_mentions: Vec<crate::mastodon::Mention> = target.mentions.clone();
+			for (url, text) in crate::html::extract_mention_links(&target.content) {
+				if all_mentions.iter().any(|m| m.url == url) {
+					continue;
+				}
+				let acct = acct_from_mention_link(&text, &url);
+				let username = acct.split('@').next().unwrap_or("").to_string();
+				all_mentions.push(crate::mastodon::Mention { id: String::new(), username, acct, url });
+			}
+			for mention in all_mentions {
+				if !all_users.iter().any(|u| u.acct == mention.acct) {
+					all_users.push(crate::mastodon::Account {
+						id: mention.id.clone(),
+						username: mention.username.clone(),
+						acct: mention.acct.clone(),
+						display_name: String::new(),
+						url: mention.url,
+						note: String::new(),
+						followers_count: 0,
+						following_count: 0,
+						statuses_count: 0,
+						fields: Vec::new(),
+						created_at: String::new(),
+						locked: false,
+						bot: false,
+						discoverable: None,
+						source: None,
+					});
+				}
+			}
+
+			let selected_user = if all_users.len() == 1 {
+				all_users[0].clone()
+			} else {
+				if let Some((acc, _)) = dialogs::prompt_for_account_list(
+					frame,
+					"Select User",
+					"Select user to follow/unfollow:",
+					&all_users,
+				) {
+					acc
+				} else {
+					return;
+				}
+			};
+
+			if let Some(net) = &state.network_handle {
+				net.send(NetworkCommand::ToggleFollow {
+					account_id: if selected_user.id.is_empty() { None } else { Some(selected_user.id) },
+					acct: selected_user.acct.clone(),
+					target_name: selected_user.username.clone(),
+				});
+			} else {
+				live_region::announce(live_region, "Network not available");
 			}
 		}
 		UiCommand::ViewInBrowser => {

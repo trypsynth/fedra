@@ -114,6 +114,11 @@ pub enum NetworkCommand {
 		reblogs: bool,
 		action: RelationshipAction,
 	},
+	ToggleFollow {
+		account_id: Option<String>,
+		acct: String,
+		target_name: String,
+	},
 	UnfollowAccount {
 		account_id: String,
 		target_name: String,
@@ -802,6 +807,37 @@ fn network_loop(
 					ui_waker,
 					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
 				);
+			}
+			Ok(NetworkCommand::ToggleFollow { account_id, acct, target_name }) => {
+				let resolved_id = if let Some(id) = account_id {
+					Some(id)
+				} else if let Ok(account) = client.lookup_account(access_token, &acct) {
+					Some(account.id)
+				} else {
+					None
+				};
+
+				if let Some(id) = resolved_id {
+					if let Ok(mut rels) = client.get_relationships(access_token, slice::from_ref(&id)) {
+						if let Some(rel) = rels.pop() {
+							let (action, result) = if rel.following {
+								(RelationshipAction::Unfollow, client.unfollow_account(access_token, &id))
+							} else if rel.requested {
+								(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
+							} else {
+								(
+									RelationshipAction::Follow,
+									client.follow_account_with_options(access_token, &id, true),
+								)
+							};
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::RelationshipUpdated { _account_id: id, target_name, action, result },
+							);
+						}
+					}
+				}
 			}
 			Ok(NetworkCommand::UnfollowAccount { account_id, target_name, action }) => {
 				let result = client.unfollow_account(access_token, &account_id);
