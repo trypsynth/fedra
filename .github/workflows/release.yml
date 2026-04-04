@@ -1,0 +1,75 @@
+name: Release Fedra
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    - name: Install CMake, Ninja, and Pandoc
+      run: |
+        choco install cmake ninja pandoc -y
+    - name: Clone wxWidgets
+      run: git clone --recurse-submodules https://github.com/wxWidgets/wxWidgets.git
+    - name: Build
+      run: |
+        $env:WXWIDGETS_DIR = "${{ github.workspace }}\wxWidgets"
+        cargo release
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: fedra-release-${{ github.ref_name }}
+        path: |
+          target/release/fedra.zip
+          target/release/fedra_setup.exe
+        retention-days: 90
+    - name: Get previous tag
+      id: prev_tag
+      shell: bash
+      run: |
+        PREV=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1 || echo "")
+        echo "tag=$PREV" >> $GITHUB_OUTPUT
+    - name: Generate release notes
+      id: release_notes
+      shell: bash
+      run: |
+        PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
+        if [ -z "$PREV_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %h: %s" HEAD)
+        else
+          COMMITS=$(git log --pretty=format:"- %h: %s" "$PREV_TAG".."${{ github.ref_name }}")
+        fi
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Fedra ${{ github.ref_name }}
+        body: |
+          ## What's changed
+          ${{ steps.release_notes.outputs.commits }}
+        files: |
+          target/release/fedra.zip
+          target/release/fedra_setup.exe
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
