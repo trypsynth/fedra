@@ -601,6 +601,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			let _ = config::ConfigStore::new().save(&state.config);
 			let msg = if enabled { "Quick keys enabled" } else { "Quick keys disabled" };
 			live_region::announce(live_region, msg);
+			if let Some(mb) = frame.get_menu_bar() {
+				update_menu_labels(&mb, state);
+			}
 		}
 		UiCommand::SwitchTimelineByIndex(index) => {
 			if index < state.timeline_manager.len() {

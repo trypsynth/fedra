@@ -308,8 +308,9 @@ pub fn bind_input_handlers(
 			if ctrl && shift {
 				match k {
 					81 => {
-						let _ =
-							ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(!quick_action_keys_list.get()));
+						let new_value = !quick_action_keys_list.get();
+						quick_action_keys_list.set(new_value);
+						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(new_value));
 						event.skip(false);
 						return;
 					}
