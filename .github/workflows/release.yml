@@ -46,27 +46,11 @@ jobs:
       run: |
         PREV=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1 || echo "")
         echo "tag=$PREV" >> $GITHUB_OUTPUT
-    - name: Generate release notes
-      id: release_notes
-      shell: bash
-      run: |
-        PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
-        if [ -z "$PREV_TAG" ]; then
-          COMMITS=$(git log --pretty=format:"- %h: %s" HEAD)
-        else
-          COMMITS=$(git log --pretty=format:"- %h: %s" "$PREV_TAG".."${{ github.ref_name }}")
-        fi
-        echo "commits<<EOF" >> $GITHUB_OUTPUT
-        echo "$COMMITS" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
     - name: Create release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref_name }}
         name: Fedra ${{ github.ref_name }}
-        body: |
-          ## What's changed
-          ${{ steps.release_notes.outputs.commits }}
         files: |
           target/release/fedra.zip
           target/release/fedra_setup.exe
