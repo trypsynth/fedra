@@ -15,6 +15,7 @@ pub enum TimelineType {
 	Notifications,
 	Direct,
 	Local,
+	InstanceLocal { instance: String },
 	Federated,
 	Bookmarks,
 	Favorites,
@@ -32,6 +33,7 @@ impl TimelineType {
 			Self::Notifications => "Notifications".to_string(),
 			Self::Direct => "Direct Messages".to_string(),
 			Self::Local => "Local".to_string(),
+			Self::InstanceLocal { instance } => format!("Local ({instance})"),
 			Self::Federated => "Federated".to_string(),
 			Self::Bookmarks => "Bookmarks".to_string(),
 			Self::Favorites => "Favorites".to_string(),
@@ -46,7 +48,9 @@ impl TimelineType {
 		match self {
 			Self::Home | Self::List { .. } => FilterContext::Home,
 			Self::Notifications => FilterContext::Notifications,
-			Self::Local | Self::Federated | Self::Search { .. } | Self::Hashtag { .. } => FilterContext::Public,
+			Self::Local | Self::Federated | Self::Search { .. } | Self::Hashtag { .. } | Self::InstanceLocal { .. } => {
+				FilterContext::Public
+			}
 			Self::Thread { .. } => FilterContext::Thread,
 			Self::User { .. } => FilterContext::Account,
 			Self::Direct | Self::Bookmarks | Self::Favorites => FilterContext::Unknown,
@@ -59,6 +63,7 @@ impl TimelineType {
 			Self::Notifications => "api/v1/notifications".to_string(),
 			Self::Direct => "api/v1/conversations".to_string(),
 			Self::Local | Self::Federated => "api/v1/timelines/public".to_string(),
+			Self::InstanceLocal { instance } => format!("https://{instance}/api/v1/timelines/public"),
 			Self::Bookmarks => "api/v1/bookmarks".to_string(),
 			Self::Favorites => "api/v1/favourites".to_string(),
 			Self::User { id, .. } => format!("api/v1/accounts/{id}/statuses"),
@@ -71,11 +76,10 @@ impl TimelineType {
 
 	pub fn api_query_params(&self) -> Vec<(&str, &str)> {
 		match self {
-			Self::Local => vec![("local", "true")],
+			Self::Local | Self::InstanceLocal { .. } => vec![("local", "true")],
 			_ => vec![],
 		}
 	}
-
 	pub fn stream_params(&self) -> Option<Vec<(&'static str, String)>> {
 		match self {
 			Self::Home | Self::Notifications => Some(vec![("stream", "user".to_string())]),
@@ -88,7 +92,15 @@ impl TimelineType {
 			| Self::User { .. }
 			| Self::Thread { .. }
 			| Self::Search { .. }
-			| Self::Hashtag { .. } => None,
+			| Self::Hashtag { .. }
+			| Self::InstanceLocal { .. } => None,
+		}
+	}
+
+	pub const fn requires_auth(&self) -> bool {
+		match self {
+			Self::InstanceLocal { .. } => false,
+			_ => true,
 		}
 	}
 
@@ -106,7 +118,7 @@ impl TimelineType {
 			Self::List { .. } => "List Timelines",
 			Self::Notifications => "Notifications",
 			Self::Direct => "Direct Messages",
-			Self::Local => "Local",
+			Self::Local | Self::InstanceLocal { .. } => "Local",
 			Self::Federated => "Federated",
 			Self::Bookmarks => "Bookmarks",
 			Self::Favorites => "Favorites",

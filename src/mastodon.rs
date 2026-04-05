@@ -1167,10 +1167,11 @@ impl MastodonClient {
 				query.append_pair("max_id", max_id);
 			}
 		}
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
+		let mut req = self.http.get(url);
+		if timeline_type.requires_auth() {
+			req = req.bearer_auth(access_token);
+		}
+		let response = req
 			.send()
 			.context("Failed to fetch timeline")?
 			.error_for_status()

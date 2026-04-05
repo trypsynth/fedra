@@ -80,6 +80,7 @@ pub enum UiCommand {
 	OpenTimeline(TimelineType),
 	OpenUserTimeline,
 	OpenUserTimelineByInput,
+	OpenInstanceTimelineByInput,
 	CloseTimeline,
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
@@ -1247,6 +1248,34 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					network.send(NetworkCommand::LookupAccount { handle });
 				} else {
 					live_region::announce(live_region, "Network not available");
+				}
+			}
+		}
+		UiCommand::OpenInstanceTimelineByInput => {
+			let dialog = TextEntryDialog::builder(
+				frame,
+				"Enter instance domain (e.g. mastodon.social):",
+				"Open Instance Timeline",
+			)
+			.build();
+			if dialog.show_modal() == ID_OK {
+				let input = dialog.get_value().unwrap_or_default().trim().to_string();
+				if !input.is_empty() {
+					let instance = input
+						.trim_start_matches("https://")
+						.trim_start_matches("http://")
+						.trim_end_matches('/')
+						.to_string();
+					let timeline_type = TimelineType::InstanceLocal { instance };
+					open_timeline(
+						state,
+						timelines_selector,
+						timeline_list,
+						&timeline_type,
+						suppress_selection,
+						live_region,
+						frame,
+					);
 				}
 			}
 		}
