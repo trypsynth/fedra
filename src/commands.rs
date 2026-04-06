@@ -2077,6 +2077,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::AppClosing => {
 			state.config.saved_timelines = state.timeline_manager.open_timeline_types();
+			state.config.saved_active_timeline = state.timeline_manager.active().map(|t| t.timeline_type.clone());
+			state.config.saved_selected_post_id = state.timeline_manager.active().and_then(|t| t.selected_id.clone());
 			let _ = config::ConfigStore::new().save(&state.config);
 			ctx.frame.destroy();
 		}

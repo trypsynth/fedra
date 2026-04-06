@@ -279,6 +279,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
 				let text_options = &view_options.text_options;
+				// Extract any pending position restore for this timeline's initial load.
+				let restore_id = if max_id.is_none() {
+					state.pending_restore_post_id.as_ref().and_then(|(rt, id)| {
+						if *rt == timeline_type { Some(id.clone()) } else { None }
+					})
+				} else {
+					None
+				};
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = if state.config.preserve_thread_order
@@ -377,6 +385,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						}
 					} else {
 						timeline.entries = new_entries;
+						// Restore selected post if it exists in the freshly loaded entries.
+						if let Some(ref id) = restore_id {
+							if timeline.entries.iter().any(|e| e.id() == id.as_str()) {
+								timeline.selected_id = Some(id.clone());
+							}
+						}
 						if is_active {
 							update_active_timeline_ui(
 								timeline_list,
@@ -394,6 +408,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						timeline.pending_find_next = false;
 						should_find_next = true;
 					}
+				}
+				// Clear the pending restore if it was for this timeline (whether found or not).
+				if restore_id.is_some() {
+					state.pending_restore_post_id = None;
 				}
 				if !status_snapshots.is_empty() {
 					let mut merged_any = false;

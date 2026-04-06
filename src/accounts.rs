@@ -241,6 +241,20 @@ pub fn switch_to_account(
 		start_streaming_for_timeline(state, &tt);
 	}
 
+	// Restore active timeline and selected post position from previous session.
+	if let Some(saved_type) = state.config.saved_active_timeline.take() {
+		if let Some(index) = state.timeline_manager.index_of(&saved_type) {
+			state.timeline_manager.set_active(index);
+		}
+		if let Some(post_id) = state.config.saved_selected_post_id.take() {
+			if let Some(active_type) = state.timeline_manager.active().map(|t| t.timeline_type.clone()) {
+				state.pending_restore_post_id = Some((active_type, post_id));
+			}
+		}
+	} else {
+		state.config.saved_selected_post_id = None;
+	}
+
 	timelines_selector.clear();
 	for name in state.timeline_manager.display_names() {
 		timelines_selector.append(&name);

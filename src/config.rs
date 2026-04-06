@@ -63,6 +63,10 @@ pub struct Config {
 	pub restore_open_timelines: bool,
 	#[serde(default)]
 	pub saved_timelines: Vec<crate::timeline::TimelineType>,
+	#[serde(default)]
+	pub saved_active_timeline: Option<crate::timeline::TimelineType>,
+	#[serde(default)]
+	pub saved_selected_post_id: Option<String>,
 }
 
 const fn default_restore_open_timelines() -> bool {
@@ -340,6 +344,8 @@ impl Default for Config {
 			find_loading_mode: FindLoadingMode::default(),
 			restore_open_timelines: default_restore_open_timelines(),
 			saved_timelines: Vec::new(),
+			saved_active_timeline: None,
+			saved_selected_post_id: None,
 		}
 	}
 }

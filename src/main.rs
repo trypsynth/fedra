@@ -96,6 +96,7 @@ pub(crate) struct AppState {
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
+	pub(crate) pending_restore_post_id: Option<(crate::timeline::TimelineType, String)>,
 }
 
 impl AppState {
@@ -125,6 +126,7 @@ impl AppState {
 			ui_waker,
 			_instance_checker: instance_checker,
 			pending_thread_continuation: false,
+			pending_restore_post_id: None,
 		}
 	}
 
