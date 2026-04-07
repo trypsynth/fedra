@@ -5,7 +5,7 @@ use std::{
 	thread::{self, JoinHandle},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::DateTime;
 use url::Url;
 
@@ -47,6 +47,19 @@ pub struct PostData {
 }
 
 #[derive(Debug)]
+pub enum ForeignInteraction {
+	Favorite,
+	Unfavorite,
+	Bookmark,
+	Unbookmark,
+	Boost,
+	Unboost,
+	Pin,
+	Unpin,
+	Vote(Vec<usize>),
+	Reply(Box<PostData>),
+}
+
 pub enum NetworkCommand {
 	FetchTimeline {
 		timeline_type: TimelineType,
@@ -60,6 +73,19 @@ pub enum NetworkCommand {
 	FetchThreadById {
 		timeline_type: TimelineType,
 		status_id: String,
+	},
+	ResolveStatusForThread {
+		url: String,
+	},
+	ResolveStatusForQuote {
+		url: String,
+	},
+	ResolveAndInteract {
+		url: String,
+		interaction: ForeignInteraction,
+	},
+	ResolveAccount {
+		url: String,
 	},
 	LookupAccount {
 		handle: String,
@@ -262,6 +288,12 @@ pub enum NetworkResponse {
 		timeline_type: TimelineType,
 		result: Result<TimelineData>,
 		max_id: Option<String>,
+	},
+	StatusResolvedForThread {
+		result: Result<Status>,
+	},
+	StatusResolvedForQuote {
+		result: Result<Status>,
 	},
 	AccountLookupResult {
 		handle: String,
@@ -668,6 +700,120 @@ fn network_loop(
 					ui_waker,
 					NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None },
 				);
+			}
+			Ok(NetworkCommand::ResolveStatusForThread { url }) => {
+				let result = client
+					.search(access_token, &url, SearchType::Statuses, Some(1), None)
+					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
+				send_response(responses, ui_waker, NetworkResponse::StatusResolvedForThread { result });
+			}
+			Ok(NetworkCommand::ResolveStatusForQuote { url }) => {
+				let result = client
+					.search(access_token, &url, SearchType::Statuses, Some(1), None)
+					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
+				send_response(responses, ui_waker, NetworkResponse::StatusResolvedForQuote { result });
+			}
+			Ok(NetworkCommand::ResolveAndInteract { url, interaction }) => {
+				let result = client
+					.search(access_token, &url, SearchType::Statuses, Some(1), None)
+					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
+				if let Ok(status) = result {
+					match interaction {
+						ForeignInteraction::Favorite => {
+							let res = client.favorite(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Favorited { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Unfavorite => {
+							let res = client.unfavorite(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Unfavorited { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Bookmark => {
+							let res = client.bookmark(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Bookmarked { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Unbookmark => {
+							let res = client.unbookmark(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Unbookmarked { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Boost => {
+							let res = client.reblog(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Boosted { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Unboost => {
+							let res = client.unreblog(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Unboosted { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Pin => {
+							let res = client.pin_status(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Pinned { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Unpin => {
+							let res = client.unpin_status(access_token, &status.id);
+							send_response(
+								responses,
+								ui_waker,
+								NetworkResponse::Unpinned { status_id: status.id, result: res },
+							);
+						}
+						ForeignInteraction::Vote(choices) => {
+							if let Some(poll) = status.poll {
+								let res = client.vote_poll(access_token, &poll.id, &choices);
+								send_response(responses, ui_waker, NetworkResponse::PollVoted { result: res });
+							}
+						}
+						ForeignInteraction::Reply(post) => {
+							let res = post_with_media(
+								client,
+								access_token,
+								&post.content,
+								&post.visibility,
+								post.spoiler_text.as_deref(),
+								post.content_type.as_deref(),
+								post.language.as_deref(),
+								post.media,
+								post.poll.as_ref(),
+								Some(&status.id),
+								None,
+								post.scheduled_at.as_deref(),
+							);
+							send_response(responses, ui_waker, NetworkResponse::PostComplete(res));
+						}
+					}
+				}
+			}
+			Ok(NetworkCommand::ResolveAccount { url }) => {
+				let result = client
+					.search(access_token, &url, SearchType::Accounts, Some(1), None)
+					.and_then(|mut res| res.accounts.pop().context("Account not found on local instance"));
+				send_response(responses, ui_waker, NetworkResponse::AccountLookupResult { handle: url, result });
 			}
 			Ok(NetworkCommand::LookupAccount { handle }) => {
 				let result = client.lookup_account(access_token, &handle);

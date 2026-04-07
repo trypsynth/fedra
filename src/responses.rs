@@ -281,9 +281,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let text_options = &view_options.text_options;
 				// Extract any pending position restore for this timeline's initial load.
 				let restore_id = if max_id.is_none() {
-					state.pending_restore_post_id.as_ref().and_then(|(rt, id)| {
-						if *rt == timeline_type { Some(id.clone()) } else { None }
-					})
+					state
+						.pending_restore_post_id
+						.as_ref()
+						.and_then(|(rt, id)| if *rt == timeline_type { Some(id.clone()) } else { None })
 				} else {
 					None
 				};
@@ -449,6 +450,21 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				} else {
 					live_region::announce(live_region, &spoken_failure("Failed to load timeline", err));
 				}
+			}
+			NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
+				ui_tx.send(crate::commands::UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
+			}
+			NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
+				live_region::announce(live_region, &format!("Failed to resolve thread: {}", summarize_api_error(&err)));
+			}
+			NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
+				ui_tx.send(crate::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
+			}
+			NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
+				live_region::announce(
+					live_region,
+					&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)),
+				);
 			}
 			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
 				let action = state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);

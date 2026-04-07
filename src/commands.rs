@@ -13,7 +13,7 @@ use crate::{
 	config::{self, Account, AutoloadMode, ContentWarningDisplay, SortOrder},
 	html,
 	mastodon::{MastodonClient, Status},
-	network::{self, NetworkCommand},
+	network::{self, ForeignInteraction, NetworkCommand},
 	timeline::{TimelineEntry, TimelineTextOptions, TimelineType},
 	ui::{
 		app_shell, dialogs,
@@ -104,6 +104,8 @@ pub enum UiCommand {
 	OpenLinks,
 	ViewInBrowser,
 	ViewThread,
+	ViewResolvedThread(Box<Status>),
+	PromptForQuote(Box<Status>),
 	ViewQuotedThread,
 	Vote,
 	LoadMore,
@@ -275,6 +277,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if let Some(handle) = &state.network_handle {
 				state.pending_thread_continuation = reply.continue_thread;
 				let post_data = post_result_to_data(reply, None);
+				let is_foreign = matches!(
+					state.timeline_manager.active().map(|t| &t.timeline_type),
+					Some(TimelineType::InstanceLocal { .. })
+				);
+				if is_foreign {
+					if let Some(url) = &target.url {
+						handle.send(NetworkCommand::ResolveAndInteract {
+							url: url.clone(),
+							interaction: ForeignInteraction::Reply(Box::new(post_data)),
+						});
+						return;
+					}
+				}
 				handle.send(NetworkCommand::Reply {
 					in_reply_to_id: target.id.clone(),
 					content: post_data.content,
@@ -291,8 +306,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::Quote => {
-			let (status, max_post_chars, enter_to_send) =
-				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
+			let status = get_selected_status(state).cloned();
 			let Some(status) = status else {
 				live_region::announce(live_region, "No post selected");
 				return;
@@ -302,6 +316,17 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				live_region::announce(live_region, "Cannot quote direct messages");
 				return;
 			}
+			if let Some(url) = foreign_url(state, target.url.as_ref()) {
+				if let Some(handle) = &state.network_handle {
+					handle.send(NetworkCommand::ResolveStatusForQuote { url });
+				} else {
+					live_region::announce(live_region, "Network not available");
+				}
+				return;
+			}
+			handle_ui_command(UiCommand::PromptForQuote(Box::new(target.clone())), ctx);
+		}
+		UiCommand::PromptForQuote(target) => {
 			if let Some(approval) = &target.quote_approval
 				&& approval.current_user == "denied"
 			{
@@ -309,14 +334,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			}
 			let target_id = target.id.clone();
-			let Some(post) =
-				dialogs::prompt_for_quote(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
-			else {
+			let Some(post) = dialogs::prompt_for_quote(
+				frame,
+				&target,
+				state.max_post_chars,
+				&state.poll_limits,
+				state.config.enter_to_send,
+			) else {
 				return;
 			};
 			if let Some(handle) = &state.network_handle {
 				state.pending_thread_continuation = post.continue_thread;
-				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, Some(target_id)) });
+				let post_data = post_result_to_data(post, Some(target_id));
+				handle.send(NetworkCommand::PostStatus { post: post_data });
 			} else {
 				live_region::announce(live_region, "Network not available");
 			}
@@ -1122,6 +1152,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					return;
 				}
 			};
+
+			if let Some(url) = foreign_url(state, Some(&account.url)) {
+				state.pending_user_lookup_action = Some(action);
+				if let Some(net) = &state.network_handle {
+					net.send(NetworkCommand::ResolveAccount { url });
+				}
+				return;
+			}
+
 			match action {
 				dialogs::UserLookupAction::Profile => {
 					if let Some(net) = &state.network_handle {
@@ -1680,6 +1719,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						return;
 					};
 					let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+
+					if let Some(url) = foreign_url(state, target.url.as_ref()) {
+						if let Some(net) = &state.network_handle {
+							net.send(NetworkCommand::ResolveStatusForThread { url });
+						}
+						return;
+					}
+
 					let name = format!("Thread: {}", target.account.display_name_or_username());
 					let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
 					open_timeline(
@@ -1697,6 +1744,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					};
 					handle.send(NetworkCommand::FetchThread { timeline_type, focus: Box::new(target.clone()) });
 				}
+			}
+		}
+		UiCommand::ViewResolvedThread(focus) => {
+			let name = format!("Thread: {}", focus.account.display_name_or_username());
+			let timeline_type = TimelineType::Thread { id: focus.id.clone(), name };
+			open_timeline(
+				state,
+				timelines_selector,
+				timeline_list,
+				&timeline_type,
+				suppress_selection,
+				live_region,
+				frame,
+			);
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchThread { timeline_type, focus });
 			}
 		}
 		UiCommand::ViewQuotedThread => {
@@ -1750,6 +1813,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			let post_text = target.display_text();
 			if let Some(choices) = dialogs::prompt_for_vote(frame, poll, &post_text) {
 				if let Some(handle) = &state.network_handle {
+					let is_foreign = matches!(
+						state.timeline_manager.active().map(|t| &t.timeline_type),
+						Some(TimelineType::InstanceLocal { .. })
+					);
+					if is_foreign {
+						if let Some(url) = &target.url {
+							handle.send(NetworkCommand::ResolveAndInteract {
+								url: url.clone(),
+								interaction: ForeignInteraction::Vote(choices),
+							});
+							return;
+						}
+					}
 					handle.send(NetworkCommand::VotePoll { poll_id: poll.id.clone(), choices });
 				} else {
 					live_region::announce(live_region, "Network not available");
@@ -2110,6 +2186,15 @@ pub fn get_selected_status(state: &AppState) -> Option<&Status> {
 	get_selected_entry(state)?.as_status()
 }
 
+/// Returns the URL if the active timeline is for a foreign instance.
+pub fn foreign_url(state: &AppState, url: Option<&String>) -> Option<String> {
+	if matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. })) {
+		url.cloned()
+	} else {
+		None
+	}
+}
+
 /// Sends a favorite or unfavorite request for the selected status.
 fn do_favorite(state: &AppState, live_region: StaticText) {
 	let Some(status) = get_selected_status(state) else {
@@ -2121,6 +2206,18 @@ fn do_favorite(state: &AppState, live_region: StaticText) {
 		return;
 	};
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+
+	let is_foreign =
+		matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. }));
+	if is_foreign {
+		if let Some(url) = &target.url {
+			let interaction =
+				if target.favourited { ForeignInteraction::Unfavorite } else { ForeignInteraction::Favorite };
+			handle.send(NetworkCommand::ResolveAndInteract { url: url.clone(), interaction });
+			return;
+		}
+	}
+
 	let status_id = target.id.clone();
 	if target.favourited {
 		handle.send(NetworkCommand::Unfavorite { status_id });
@@ -2139,6 +2236,14 @@ fn do_bookmark(state: &AppState, live_region: StaticText) {
 		return;
 	};
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+
+	if let Some(url) = foreign_url(state, target.url.as_ref()) {
+		let interaction =
+			if target.bookmarked { ForeignInteraction::Unbookmark } else { ForeignInteraction::Bookmark };
+		handle.send(NetworkCommand::ResolveAndInteract { url, interaction });
+		return;
+	}
+
 	let status_id = target.id.clone();
 	if target.bookmarked {
 		handle.send(NetworkCommand::Unbookmark { status_id });
@@ -2182,6 +2287,17 @@ fn do_pin(state: &AppState, live_region: StaticText) {
 		live_region::announce(live_region, "You can only pin your own posts");
 		return;
 	}
+
+	let is_foreign =
+		matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. }));
+	if is_foreign {
+		if let Some(url) = &target.url {
+			let interaction = if target.pinned { ForeignInteraction::Unpin } else { ForeignInteraction::Pin };
+			handle.send(NetworkCommand::ResolveAndInteract { url: url.clone(), interaction });
+			return;
+		}
+	}
+
 	let status_id = target.id.clone();
 	if target.pinned {
 		handle.send(NetworkCommand::Unpin { status_id });
@@ -2204,6 +2320,13 @@ fn do_boost(state: &AppState, live_region: StaticText) {
 		live_region::announce(live_region, "Cannot boost direct messages");
 		return;
 	}
+
+	if let Some(url) = foreign_url(state, target.url.as_ref()) {
+		let interaction = if target.reblogged { ForeignInteraction::Unboost } else { ForeignInteraction::Boost };
+		handle.send(NetworkCommand::ResolveAndInteract { url, interaction });
+		return;
+	}
+
 	let status_id = target.id.clone();
 	if target.reblogged {
 		handle.send(NetworkCommand::Unboost { status_id });
@@ -2319,3 +2442,4 @@ fn close_timeline(
 		}
 	}
 }
+
