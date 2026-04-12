@@ -62,6 +62,6 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 		}
 	});
 	media_ctrl.load_uri(&url);
-	media_ctrl.set_focus();
 	frame.show(true);
+	media_ctrl.set_focus();
 }

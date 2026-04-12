@@ -1586,11 +1586,51 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			};
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-			if let Some(media) = target.media_attachments.first() {
-				crate::ui::dialogs::show_media_player(frame, media.url.clone(), state.access_token.clone());
-			} else {
+
+			if target.media_attachments.is_empty() {
 				live_region::announce(live_region, "No media attached to this post");
+				return;
 			}
+
+			let media = if target.media_attachments.len() == 1 {
+				&target.media_attachments[0]
+			} else {
+				let options: Vec<String> = target
+					.media_attachments
+					.iter()
+					.enumerate()
+					.map(|(i, m)| {
+						let name = format!("{} {}", m.kind, i + 1);
+						if let Some(desc) = &m.description {
+							if !desc.is_empty() {
+								return format!("{} - {}", name, desc);
+							}
+						}
+						name
+					})
+					.collect();
+
+				// SingleChoiceDialog might require &[&str], so map to it just in case
+				let options_refs: Vec<&str> = options.iter().map(AsRef::as_ref).collect();
+
+				let dialog =
+					SingleChoiceDialog::builder(frame, "Select media to play", "Play Media", &options_refs).build();
+
+				if dialog.show_modal() == ID_OK {
+					let selection = dialog.get_selection();
+					if let Ok(idx) = usize::try_from(selection)
+						&& idx < target.media_attachments.len()
+					{
+						&target.media_attachments[idx]
+					} else {
+						return;
+					}
+				} else {
+					return;
+				}
+			};
+
+			crate::ui::dialogs::show_media_player(frame, media.url.clone(), state.access_token.clone());
 		}
 		UiCommand::ViewInBrowser => {
 			let Some(status) = get_selected_status(state) else {
