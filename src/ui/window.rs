@@ -6,10 +6,10 @@ use crate::{
 	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE,
 	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS,
-	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR,
-	ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
-	ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	KEY_DELETE, UiCommand,
+	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY,
+	ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP,
+	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD,
+	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
 	ui::menu::build_menu_bar,
 	ui_wake::UiCommandSender,
@@ -216,7 +216,12 @@ pub fn bind_input_handlers(
 				}
 			}
 
-			if ctrl && shift && !alt {
+			if !ctrl && shift && !alt {
+				if quick_action_keys_list.get() && k == 73 {
+					let _ = ui_tx_list_key.send(UiCommand::OpenInstanceTimelineByInput);
+					event.skip(false);
+					return;
+				}
 				match k {
 					314 => {
 						let _ = ui_tx_list_key.send(UiCommand::MoveTimelineLeft);
@@ -342,6 +347,13 @@ pub fn bind_input_handlers(
 
 			if ctrl {
 				match k {
+					73 => {
+						if !quick_action_keys_list.get() {
+							let _ = ui_tx_list_key.send(UiCommand::PlayMedia);
+							event.skip(false);
+							return;
+						}
+					}
 					87 => {
 						// w
 						if !quick_action_keys_list.get() {
@@ -405,6 +417,11 @@ pub fn bind_input_handlers(
 
 			if quick_action_keys_list.get() && !ctrl && !shift && !alt {
 				match k {
+					73 => {
+						let _ = ui_tx_list_key.send(UiCommand::PlayMedia);
+						event.skip(false);
+						return;
+					}
 					81 => {
 						let _ = ui_tx_list_key.send(UiCommand::Quote);
 						event.skip(false);
@@ -565,6 +582,7 @@ pub fn bind_input_handlers(
 			ItemKind::Normal,
 		);
 		menu.append(ID_OPEN_LINKS, "Open &Links\tAlt+Enter", "Open links in selected post", ItemKind::Normal);
+		menu.append(ID_PLAY_MEDIA, "Play &Media", "Play media attached to selected post", ItemKind::Normal);
 		menu.append(
 			ID_VIEW_IN_BROWSER,
 			if q { "&Open in Browser\tO" } else { "&Open in Browser\tCtrl+Shift+O" },
@@ -854,6 +872,12 @@ pub fn bind_input_handlers(
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenLinks);
+		}
+		ID_PLAY_MEDIA => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::PlayMedia);
 		}
 		ID_VIEW_IN_BROWSER => {
 			if shutdown_menu.get() {

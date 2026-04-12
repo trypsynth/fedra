@@ -103,6 +103,7 @@ pub enum UiCommand {
 	ProfileDialogClosed,
 	OpenLinks,
 	ViewInBrowser,
+	PlayMedia,
 	ViewThread,
 	ViewResolvedThread(Box<Status>),
 	PromptForQuote(Box<Status>),
@@ -1579,6 +1580,18 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				live_region::announce(live_region, "Network not available");
 			}
 		}
+		UiCommand::PlayMedia => {
+			let Some(status) = get_selected_status(state) else {
+				live_region::announce(live_region, "No post selected");
+				return;
+			};
+			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+			if let Some(media) = target.media_attachments.first() {
+				crate::ui::dialogs::show_media_player(frame, media.url.clone(), state.access_token.clone());
+			} else {
+				live_region::announce(live_region, "No media attached to this post");
+			}
+		}
 		UiCommand::ViewInBrowser => {
 			let Some(status) = get_selected_status(state) else {
 				live_region::announce(live_region, "No post selected");
@@ -2238,8 +2251,7 @@ fn do_bookmark(state: &AppState, live_region: StaticText) {
 	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 
 	if let Some(url) = foreign_url(state, target.url.as_ref()) {
-		let interaction =
-			if target.bookmarked { ForeignInteraction::Unbookmark } else { ForeignInteraction::Bookmark };
+		let interaction = if target.bookmarked { ForeignInteraction::Unbookmark } else { ForeignInteraction::Bookmark };
 		handle.send(NetworkCommand::ResolveAndInteract { url, interaction });
 		return;
 	}
@@ -2442,4 +2454,3 @@ fn close_timeline(
 		}
 	}
 }
-
