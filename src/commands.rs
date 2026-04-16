@@ -1051,15 +1051,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					if let Some(reblog) = &status.reblog {
 						let booster = &status.account;
 						let author = &reblog.account;
-						let accounts = [booster, author];
-						let labels = [
-							format!("{} (booster)", booster.display_name_or_username()),
-							format!("{} (author)", author.display_name_or_username()),
-						];
-						let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
-						match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
-							Some((acc, act)) => (acc, act),
-							None => return,
+						if booster.id == author.id {
+							(author.clone(), dialogs::UserLookupAction::Profile)
+						} else {
+							let accounts = [booster, author];
+							let labels = [
+								format!("{} (booster)", booster.display_name_or_username()),
+								format!("{} (author)", author.display_name_or_username()),
+							];
+							let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
+							match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
+								Some((acc, act)) => (acc, act),
+								None => return,
+							}
 						}
 					} else {
 						(status.account.clone(), dialogs::UserLookupAction::Profile)
@@ -1130,15 +1134,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					if let Some(reblog) = &status.reblog {
 						let booster = &status.account;
 						let author = &reblog.account;
-						let accounts = [booster, author];
-						let labels = [
-							format!("{} (booster)", booster.display_name_or_username()),
-							format!("{} (author)", author.display_name_or_username()),
-						];
-						let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
-						match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
-							Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
-							None => return,
+						if booster.id == author.id {
+							(author.clone(), dialogs::UserLookupAction::Timeline)
+						} else {
+							let accounts = [booster, author];
+							let labels = [
+								format!("{} (booster)", booster.display_name_or_username()),
+								format!("{} (author)", author.display_name_or_username()),
+							];
+							let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
+							match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
+								Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
+								None => return,
+							}
 						}
 					} else {
 						(status.account.clone(), dialogs::UserLookupAction::Timeline)
@@ -1519,7 +1527,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 
 			let mut all_users: Vec<crate::mastodon::Account> = Vec::new();
 
-			if status.reblog.is_some() {
+			if status.reblog.is_some() && status.account.id != target.account.id {
 				all_users.push(status.account.clone());
 			}
 			all_users.push(target.account.clone());
