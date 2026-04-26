@@ -1203,12 +1203,16 @@ impl MastodonClient {
 	pub fn get_notifications(
 		&self,
 		access_token: &str,
+		timeline_type: &TimelineType,
 		limit: Option<u32>,
 		max_id: Option<&str>,
 	) -> Result<(Vec<Notification>, Option<String>)> {
-		let mut url = self.base_url.join("api/v1/notifications")?;
+		let mut url = self.base_url.join(&timeline_type.api_path())?;
 		{
 			let mut query = url.query_pairs_mut();
+			for (key, value) in timeline_type.api_query_params() {
+				query.append_pair(key, value);
+			}
 			if let Some(limit) = limit {
 				query.append_pair("limit", &limit.to_string());
 			}

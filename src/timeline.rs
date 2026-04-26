@@ -112,7 +112,6 @@ impl TimelineType {
 		!matches!(self, Self::Home | Self::Notifications)
 	}
 
-
 	pub const fn supports_paging(&self) -> bool {
 		!matches!(self, Self::Thread { .. })
 	}

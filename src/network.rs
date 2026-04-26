@@ -623,8 +623,8 @@ fn network_loop(
 		match commands.recv() {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
 				let result = match timeline_type {
-					TimelineType::Notifications => client
-						.get_notifications(access_token, limit, max_id.as_deref())
+					TimelineType::Notifications | TimelineType::Mentions => client
+						.get_notifications(access_token, &timeline_type, limit, max_id.as_deref())
 						.map(|(n, next)| TimelineData::Notifications(n, next)),
 					TimelineType::Direct => client
 						.get_conversations(access_token, limit, max_id.as_deref())

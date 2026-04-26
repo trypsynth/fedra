@@ -221,9 +221,13 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 		}
 	});
 	if !media_ctrl.load_uri(&url) {
-		let dlg = MessageDialog::builder(&frame, "Failed to load media. Your system may be missing required media components (DirectShow/quartz.dll).", "Media Player Error")
-			.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-			.build();
+		let dlg = MessageDialog::builder(
+			&frame,
+			"Failed to load media. Your system may be missing required media components (DirectShow/quartz.dll).",
+			"Media Player Error",
+		)
+		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+		.build();
 		dlg.show_modal();
 		dlg.destroy();
 		frame.close(true);
