@@ -20,7 +20,10 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	const ID_MEDIA_CTRL: i32 = 10000;
 	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(800, 600)).build();
 	let sizer = BoxSizer::builder(Orientation::Vertical).build();
-	let media_ctrl = wxdragon::widgets::MediaCtrl::builder(&frame).with_id(ID_MEDIA_CTRL).build();
+	let media_ctrl = wxdragon::widgets::MediaCtrl::builder(&frame)
+		.with_id(ID_MEDIA_CTRL)
+		.with_backend_name("wxAMMediaBackend")
+		.build();
 	media_ctrl.show_player_controls(wxdragon::widgets::media_ctrl::MediaCtrlPlayerControls::None);
 	sizer.add(&media_ctrl, 1, SizerFlag::Expand | SizerFlag::All, 10);
 	frame.set_sizer(sizer, true);
@@ -217,7 +220,15 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 			_ => {}
 		}
 	});
-	media_ctrl.load_uri(&url);
+	if !media_ctrl.load_uri(&url) {
+		let dlg = MessageDialog::builder(&frame, "Failed to load media. Your system may be missing required media components (DirectShow/quartz.dll).", "Media Player Error")
+			.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+			.build();
+		dlg.show_modal();
+		dlg.destroy();
+		frame.close(true);
+		return;
+	}
 	frame.show(true);
 	media_ctrl.set_focus();
 }
