@@ -118,11 +118,12 @@ pub enum DefaultTimeline {
 	Direct,
 	Bookmarks,
 	Favorites,
+	Mentions,
 }
 
 impl DefaultTimeline {
 	pub const fn all() -> &'static [Self] {
-		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites]
+		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites, Self::Mentions]
 	}
 
 	pub const fn display_name(self) -> &'static str {
@@ -132,6 +133,7 @@ impl DefaultTimeline {
 			Self::Direct => "Direct Messages",
 			Self::Bookmarks => "Bookmarks",
 			Self::Favorites => "Favorites",
+			Self::Mentions => "Mentions",
 		}
 	}
 }
@@ -292,7 +294,7 @@ const fn default_strip_tracking() -> bool {
 }
 
 fn default_timelines() -> Vec<DefaultTimeline> {
-	vec![DefaultTimeline::Local, DefaultTimeline::Direct]
+	vec![DefaultTimeline::Local, DefaultTimeline::Direct, DefaultTimeline::Mentions]
 }
 
 fn deserialize_autoload_mode<'de, D>(deserializer: D) -> Result<AutoloadMode, D::Error>

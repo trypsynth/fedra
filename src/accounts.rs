@@ -177,6 +177,7 @@ pub fn switch_to_account(
 								crate::config::DefaultTimeline::Direct => TimelineType::Direct,
 								crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 								crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+								crate::config::DefaultTimeline::Mentions => TimelineType::Mentions,
 							};
 							if t == dt_type {
 								found = true;
@@ -221,6 +222,7 @@ pub fn switch_to_account(
 					crate::config::DefaultTimeline::Direct => TimelineType::Direct,
 					crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 					crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
+					crate::config::DefaultTimeline::Mentions => TimelineType::Mentions,
 				};
 				types_to_load.push(timeline_type);
 			}
