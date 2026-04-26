@@ -13,6 +13,7 @@ use crate::{
 pub enum TimelineType {
 	Home,
 	Notifications,
+	Mentions,
 	Direct,
 	Local,
 	InstanceLocal { instance: String },
@@ -31,6 +32,7 @@ impl TimelineType {
 		match self {
 			Self::Home => "Home".to_string(),
 			Self::Notifications => "Notifications".to_string(),
+			Self::Mentions => "Mentions".to_string(),
 			Self::Direct => "Direct Messages".to_string(),
 			Self::Local => "Local".to_string(),
 			Self::InstanceLocal { instance } => format!("Local ({instance})"),
@@ -47,7 +49,7 @@ impl TimelineType {
 	pub const fn filter_context(&self) -> FilterContext {
 		match self {
 			Self::Home | Self::List { .. } => FilterContext::Home,
-			Self::Notifications => FilterContext::Notifications,
+			Self::Notifications | Self::Mentions => FilterContext::Notifications,
 			Self::Local | Self::Federated | Self::Search { .. } | Self::Hashtag { .. } | Self::InstanceLocal { .. } => {
 				FilterContext::Public
 			}
@@ -60,7 +62,7 @@ impl TimelineType {
 	pub fn api_path(&self) -> String {
 		match self {
 			Self::Home => "api/v1/timelines/home".to_string(),
-			Self::Notifications => "api/v1/notifications".to_string(),
+			Self::Notifications | Self::Mentions => "api/v1/notifications".to_string(),
 			Self::Direct => "api/v1/conversations".to_string(),
 			Self::Local | Self::Federated => "api/v1/timelines/public".to_string(),
 			Self::InstanceLocal { instance } => format!("https://{instance}/api/v1/timelines/public"),
@@ -77,6 +79,7 @@ impl TimelineType {
 	pub fn api_query_params(&self) -> Vec<(&str, &str)> {
 		match self {
 			Self::Local | Self::InstanceLocal { .. } => vec![("local", "true")],
+			Self::Mentions => vec![("types[]", "mention")],
 			_ => vec![],
 		}
 	}
@@ -87,7 +90,8 @@ impl TimelineType {
 			Self::Local => Some(vec![("stream", "public:local".to_string())]),
 			Self::Federated => Some(vec![("stream", "public".to_string())]),
 			Self::List { id, .. } => Some(vec![("stream", "list".to_string()), ("list", id.clone())]),
-			Self::Bookmarks
+			Self::Mentions
+			| Self::Bookmarks
 			| Self::Favorites
 			| Self::User { .. }
 			| Self::Thread { .. }
@@ -108,6 +112,7 @@ impl TimelineType {
 		!matches!(self, Self::Home | Self::Notifications)
 	}
 
+
 	pub const fn supports_paging(&self) -> bool {
 		!matches!(self, Self::Thread { .. })
 	}
@@ -116,7 +121,7 @@ impl TimelineType {
 		match self {
 			Self::Home => "Home",
 			Self::List { .. } => "List Timelines",
-			Self::Notifications => "Notifications",
+			Self::Notifications | Self::Mentions => "Notifications",
 			Self::Direct => "Direct Messages",
 			Self::Local | Self::InstanceLocal { .. } => "Local",
 			Self::Federated => "Federated",

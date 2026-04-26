@@ -199,7 +199,7 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 	let msg: StreamMessage = serde_json::from_str(text).ok()?;
 	match msg.event.as_str() {
 		"update" => {
-			if *timeline_type == TimelineType::Notifications || *timeline_type == TimelineType::Direct {
+			if matches!(timeline_type, TimelineType::Notifications | TimelineType::Mentions | TimelineType::Direct) {
 				return None;
 			}
 			let payload = msg.payload?;

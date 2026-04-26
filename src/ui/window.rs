@@ -837,6 +837,12 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenList);
 		}
+		crate::ui::ids::ID_MENTIONS_TIMELINE => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Mentions));
+		}
 		crate::ID_BOOKMARKS_TIMELINE => {
 			if shutdown_menu.get() {
 				return;

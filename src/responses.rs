@@ -92,6 +92,7 @@ pub fn process_stream_events(
 	let mut active_needs_update = false;
 	let mut processed_notification_ids = std::collections::HashSet::new();
 	let mut status_snapshots: Vec<Status> = Vec::new();
+	let mut mention_forwards: Vec<Box<crate::mastodon::Notification>> = Vec::new();
 
 	for timeline in state.timeline_manager.iter_mut() {
 		let Some(handle) = &timeline.stream_handle else { continue };
@@ -164,6 +165,9 @@ pub fn process_stream_events(
 						if notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
 							&& notification.matches_filter(&timeline_filter, current_user_id)
 						{
+							if notification.kind == "mention" {
+								mention_forwards.push(notification.clone());
+							}
 							timeline.entries.insert(0, TimelineEntry::Notification(Box::new(*notification)));
 							if is_active {
 								active_needs_update = true;
@@ -201,6 +205,21 @@ pub fn process_stream_events(
 			}
 		}
 	}
+	if !mention_forwards.is_empty() {
+		if let Some(mentions_tl) = state.timeline_manager.get_mut(&TimelineType::Mentions) {
+			let existing_ids: std::collections::HashSet<String> =
+				mentions_tl.entries.iter().map(|e| e.id().to_string()).collect();
+			for notif in mention_forwards {
+				if !existing_ids.contains(&notif.id) {
+					mentions_tl.entries.insert(0, TimelineEntry::Notification(notif));
+				}
+			}
+			if active_type.as_ref() == Some(&TimelineType::Mentions) {
+				active_needs_update = true;
+			}
+		}
+	}
+
 	let mut merged_any = false;
 	for snapshot in &status_snapshots {
 		if merge_status_snapshot(state, snapshot) {

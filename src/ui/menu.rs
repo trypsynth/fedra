@@ -138,6 +138,7 @@ pub fn build_menu_bar() -> MenuBar {
 		)
 		.append_item(ID_FEDERATED_TIMELINE, "&Federated Timeline", "Open federated timeline")
 		.append_item(ID_DIRECT_TIMELINE, "&Direct Messages\tCtrl+D", "Open direct messages timeline")
+		.append_item(crate::ui::ids::ID_MENTIONS_TIMELINE, "&Mentions\tCtrl+Shift+M", "Open mentions timeline")
 		.append_item(crate::ID_BOOKMARKS_TIMELINE, "&Bookmarks", "Open bookmarks timeline")
 		.append_item(crate::ID_FAVORITES_TIMELINE, "F&avorites", "Open favorites timeline")
 		.append_item(crate::ui::ids::ID_OPEN_LIST, "Open &List...", "Open a Mastodon list")
