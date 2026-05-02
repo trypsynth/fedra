@@ -213,6 +213,22 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
   - `/`: Search
   - `1`..`9`: Switch timeline index
 
+## Media Player
+
+Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachments to open the media player. If the post has multiple attachments, a dialog lets you choose which one to play.
+
+### Media Player Keys
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `Left Arrow` | Seek backward 10 seconds |
+| `Right Arrow` | Seek forward 10 seconds |
+| `Up Arrow` | Volume up |
+| `Down Arrow` | Volume down |
+| `D` | Download media file |
+| `Escape` | Close media player |
+
 ## Search
 - Use `Ctrl+/` to open Search.
 - Search types:
