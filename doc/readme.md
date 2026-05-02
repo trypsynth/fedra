@@ -215,6 +215,14 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 
 ## Changelog
 
+### Version 0.3.1
+* Added a mentions timeline.
+* Added an option to open the local timeline for a spisific instence.
+* Added the ability to play back and download media in posts!
+* Fixed quick keys not disabling properly until you changed your list position.
+* You will no longer get a select user dialog with two of the same entry for posts where a user boosts their own post.
+* Your last-viewed post is now automatically restored upon relaunch if it is successfully fetched.
+
 ### Version 0.3.0
 * Added an option to hide the totals from polls, and switched to preset amounts of time for poll durations.
 * Added an option to restore previously opened timelines on startup.
