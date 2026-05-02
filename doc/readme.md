@@ -138,15 +138,24 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - `Delete` (in Timelines list): Close current timeline
 - `Ctrl+[`: Previous account
 - `Ctrl+]`: Next account
+- `Ctrl+Shift+Left Arrow`: Move current timeline left (in Timelines list)
+- `Ctrl+Shift+Right Arrow`: Move current timeline right (in Timelines list)
+- `Shift+Left Arrow`: Move current timeline left (in Posts list)
+- `Shift+Right Arrow`: Move current timeline right (in Posts list)
 
 ### Timelines / Discovery
 - `Ctrl+T`: Open selected user's timeline
 - `Ctrl+U`: Open user by handle
 - `Ctrl+/`: Search
+- `Ctrl+Shift+I`: Open an instance's local timeline by domain
 - `Ctrl+L`: Open Local timeline
 - `Ctrl+D`: Open Direct Messages timeline
+- `Ctrl+Shift+M`: Open Mentions timeline
 - `Ctrl+.`: Load more posts
 - `F5`: Refresh current timeline
+- `Ctrl+F`: Find in current timeline
+- `F3`: Find next occurrence
+- `Shift+F3`: Find previous occurrence
 
 ### Post Actions
 - `Ctrl+N`: New post
@@ -156,7 +165,9 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - `Enter`: Open thread / context (or open selected search result)
 - `Shift+Enter`: View post details in Fedra
 - `Alt+Enter`: Open links in selected post
+- `Ctrl+I`: Play media attached to selected post
 - `Ctrl+P`: View profile
+- `Alt+F`: Follow/unfollow the post's author
 - `Ctrl+M`: View mentions
 - `Ctrl+H`: View hashtags
 - `Ctrl+Shift+O`: Open selected post in browser
@@ -177,8 +188,7 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - Options menu → **Manage Lists...**: Create and manage Mastodon lists; open a list timeline via Timelines → Open List...
 
 ### Quick Action Keys Mode
-- Enable with `Ctrl+Shift+Q`
-- Disable with `Shift+Q`
+- Toggle with `Ctrl+Shift+Q`
 - Single-key actions while enabled:
   - `Backspace`: Close current timeline
   - `c`: New post
@@ -189,7 +199,10 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
   - `k`: Bookmark/unbookmark
   - `b`: Boost/unboost
   - `e`: Edit post
+  - `i`: Play media
   - `t`: User timeline
+  - `u`: Open user by handle
+  - `Shift+I`: Open instance timeline by domain
   - `m`: Mentions
   - `p`: Profile
   - `h`: Hashtags
