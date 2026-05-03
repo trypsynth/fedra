@@ -137,6 +137,11 @@ pub fn switch_to_account(
 		if let Ok(info) = client.get_instance_info() {
 			state.max_post_chars = Some(info.max_post_chars);
 			state.poll_limits = info.poll_limits;
+			if let Some(ref streaming_url) = info.streaming_url {
+				if let Ok(parsed) = Url::parse(streaming_url) {
+					state.streaming_url = Some(parsed);
+				}
+			}
 		}
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()

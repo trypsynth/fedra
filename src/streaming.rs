@@ -57,7 +57,7 @@ pub fn start_streaming(
 ) -> Option<StreamHandle> {
 	let stream_params = timeline_type.stream_params()?;
 	let mut streaming_url = base_url.join("api/v1/streaming").ok()?;
-	let scheme = if base_url.scheme() == "https" { "wss" } else { "ws" };
+	let scheme = if base_url.scheme() == "https" || base_url.scheme() == "wss" { "wss" } else { "ws" };
 	if streaming_url.set_scheme(scheme) == Err(()) {
 		return None;
 	}

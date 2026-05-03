@@ -1452,7 +1452,8 @@ impl MastodonClient {
 				as usize;
 		let poll_limits =
 			info.configuration.as_ref().and_then(|c| c.polls.as_ref()).map(PollLimits::from_config).unwrap_or_default();
-		Ok(InstanceInfo { max_post_chars: max_chars, poll_limits })
+		let streaming_url = info.urls.and_then(|u| u.streaming_api);
+		Ok(InstanceInfo { max_post_chars: max_chars, poll_limits, streaming_url })
 	}
 
 	pub fn get_status_context(&self, access_token: &str, status_id: &str) -> Result<StatusContext> {
@@ -2146,6 +2147,14 @@ struct MediaResponse {
 struct InstanceResponse {
 	#[serde(default)]
 	configuration: Option<InstanceConfiguration>,
+	#[serde(default)]
+	urls: Option<InstanceUrls>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstanceUrls {
+	#[serde(default)]
+	streaming_api: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2203,11 +2212,12 @@ impl Default for PollLimits {
 pub struct InstanceInfo {
 	pub max_post_chars: usize,
 	pub poll_limits: PollLimits,
+	pub streaming_url: Option<String>,
 }
 
 impl Default for InstanceInfo {
 	fn default() -> Self {
-		Self { max_post_chars: 500, poll_limits: PollLimits::default() }
+		Self { max_post_chars: 500, poll_limits: PollLimits::default(), streaming_url: None }
 	}
 }
 
