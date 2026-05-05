@@ -294,6 +294,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 		match response {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let mut should_find_next = false;
+				let mut should_find_prev = false;
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
@@ -428,6 +429,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						timeline.pending_find_next = false;
 						should_find_next = true;
 					}
+					if is_active && timeline.pending_find_prev {
+						timeline.pending_find_prev = false;
+						should_find_prev = true;
+					}
 				}
 				// Clear the pending restore if it was for this timeline (whether found or not).
 				if restore_id.is_some() {
@@ -458,6 +463,9 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 				if should_find_next {
 					dispatch_ui_command!(crate::commands::UiCommand::FindNext);
+				}
+				if should_find_prev {
+					dispatch_ui_command!(crate::commands::UiCommand::FindPrev);
 				}
 			}
 			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), max_id } => {

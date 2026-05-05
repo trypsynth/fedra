@@ -2088,7 +2088,6 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 						timeline_list.set_selection(idx as u32, true);
-						live_region::announce(live_region, "Found");
 					}
 				} else {
 					live_region::announce(live_region, "Not found");
@@ -2203,10 +2202,78 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 						timeline_list.set_selection(idx as u32, true);
-						live_region::announce(live_region, "Found previous");
 					}
 				} else {
-					live_region::announce(live_region, "No previous matches");
+					let effective_sort_order = if state.config.preserve_thread_order
+						&& matches!(active.timeline_type, TimelineType::Thread { .. })
+					{
+						SortOrder::OldestToNewest
+					} else {
+						state.config.sort_order
+					};
+
+					match state.config.find_loading_mode {
+						config::FindLoadingMode::None => {
+							if let Some(index) = active.find_prev(
+								active.entries.len(),
+								state.config.sort_order,
+								state.config.preserve_thread_order,
+							) {
+								let list_index = crate::ui::timeline_view::entry_index_to_list_index(
+									index,
+									active.entries.len(),
+									state.config.sort_order,
+								);
+								if let Some(idx) = list_index {
+									active.selected_index = Some(idx);
+									active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
+										idx,
+										active.entries.len(),
+										effective_sort_order,
+									)
+									.map(|entry_index| active.entries[entry_index].id().to_string());
+
+									timeline_list.set_selection(idx as u32, true);
+									live_region::announce(live_region, "Wrapped to bottom");
+								}
+							} else {
+								live_region::announce(live_region, "No matches found");
+							}
+						}
+						config::FindLoadingMode::LoadOnNext => {
+							if effective_sort_order == SortOrder::OldestToNewest {
+								active.pending_find_prev = true;
+								live_region::announce(live_region, "Loading more...");
+								handle_ui_command(UiCommand::LoadMore, ctx);
+							} else {
+								if let Some(index) = active.find_prev(
+									active.entries.len(),
+									state.config.sort_order,
+									state.config.preserve_thread_order,
+								) {
+									let list_index = crate::ui::timeline_view::entry_index_to_list_index(
+										index,
+										active.entries.len(),
+										state.config.sort_order,
+									);
+									if let Some(idx) = list_index {
+										active.selected_index = Some(idx);
+										active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
+											idx,
+											active.entries.len(),
+											effective_sort_order,
+										)
+										.map(|entry_index| active.entries[entry_index].id().to_string());
+
+										timeline_list.set_selection(idx as u32, true);
+										live_region::announce(live_region, "Wrapped to bottom");
+									}
+								} else {
+									live_region::announce(live_region, "No matches found");
+								}
+							}
+						}
+					}
 				}
 			} else {
 				live_region::announce(live_region, "No active search");
