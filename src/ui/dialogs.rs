@@ -11,12 +11,12 @@ mod post_view;
 mod profile;
 mod update;
 
-pub use accounts::*;
+pub use accounts::{show_manage_accounts_dialog, ManageAccountsResult};
 pub use auth::*;
 pub use common::*;
 pub use compose::*;
 pub use filters::*;
-pub use find::prompt_for_find;
+pub use find::show_find_dialog;
 pub use lists::*;
 pub use media_player::*;
 pub use options::*;

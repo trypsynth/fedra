@@ -2,7 +2,7 @@ use wxdragon::prelude::*;
 
 use super::KEY_RETURN;
 
-pub fn prompt_for_find(parent: &dyn WxWidget) -> Option<String> {
+pub fn show_find_dialog(parent: &dyn WxWidget) -> Option<String> {
 	let dialog = Dialog::builder(parent, "Find text in timeline").with_size(350, 150).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();

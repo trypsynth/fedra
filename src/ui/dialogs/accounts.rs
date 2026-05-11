@@ -13,7 +13,7 @@ pub enum ManageAccountsResult {
 	None,
 }
 
-pub fn prompt_manage_accounts(frame: &Frame, accounts: &[Account], active_id: Option<&str>) -> ManageAccountsResult {
+pub fn show_manage_accounts_dialog(frame: &Frame, accounts: &[Account], active_id: Option<&str>) -> ManageAccountsResult {
 	let dialog = Dialog::builder(frame, "Account Manager").with_size(400, 350).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();

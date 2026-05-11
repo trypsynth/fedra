@@ -816,7 +816,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::ManageAccounts => {
-			let result = dialogs::prompt_manage_accounts(
+			let result = dialogs::show_manage_accounts_dialog(
 				frame,
 				&state.config.accounts,
 				state.active_account().map(|a| a.id.as_str()),

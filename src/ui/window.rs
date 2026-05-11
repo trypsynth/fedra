@@ -11,7 +11,7 @@ use crate::{
 	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD,
 	ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
 	config::{AutoloadMode, SortOrder},
-	ui::menu::build_menu_bar,
+	ui::{dialogs, menu::build_menu_bar},
 	ui_wake::UiCommandSender,
 };
 
@@ -405,7 +405,7 @@ pub fn bind_input_handlers(
 						return;
 					}
 					70 => {
-						if let Some(query) = crate::ui::dialogs::prompt_for_find(&find_frame) {
+						if let Some(query) = dialogs::show_find_dialog(&find_frame) {
 							let _ = ui_tx_list_key.send(UiCommand::Find(query));
 						}
 						event.skip(false);
@@ -955,7 +955,7 @@ pub fn bind_input_handlers(
 			if shutdown_menu.get() {
 				return;
 			}
-			if let Some(query) = crate::ui::dialogs::prompt_for_find(&frame_menu) {
+			if let Some(query) = dialogs::show_find_dialog(&frame_menu) {
 				let _ = ui_tx_menu.send(UiCommand::Find(query));
 			}
 		}
