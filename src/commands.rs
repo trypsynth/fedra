@@ -1511,7 +1511,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			let url_to_open = if links.len() == 1 && !state.config.always_show_link_dialog {
 				Some(links[0].url.clone())
 			} else {
-				dialogs::prompt_for_link_selection(frame, &links)
+				dialogs::show_link_selection_dialog(frame, &links)
 			};
 			if let Some(url) = url_to_open {
 				live_region::announce(live_region, "Opening link");

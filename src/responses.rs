@@ -1099,7 +1099,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					dlg.update_lists(lists);
 				} else if lists.is_empty() {
 					live_region::announce(live_region, "No lists found");
-				} else if let Some(list) = dialogs::prompt_for_list_selection(frame, &lists) {
+				} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists) {
 					let timeline_type = TimelineType::List { id: list.id, title: list.title };
 					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 				}
