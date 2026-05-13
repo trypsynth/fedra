@@ -859,7 +859,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					continue;
 				}
 				if let Some(account) =
-					dialogs::prompt_for_follow_list(frame, "Followers", "Users who follow this person:", &accounts)
+					dialogs::show_follow_list_dialog(frame, "Followers", "Users who follow this person:", &accounts)
 				{
 					let timeline_type = TimelineType::User {
 						id: account.id.clone(),
@@ -877,7 +877,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					continue;
 				}
 				if let Some(account) =
-					dialogs::prompt_for_follow_list(frame, "Following", "Users this person follows:", &accounts)
+					dialogs::show_follow_list_dialog(frame, "Following", "Users this person follows:", &accounts)
 				{
 					let timeline_type = TimelineType::User {
 						id: account.id.clone(),
@@ -958,7 +958,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			},
 			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
-				if let Some(update) = dialogs::prompt_for_profile_edit(frame, &account)
+				if let Some(update) = dialogs::show_profile_edit_dialog(frame, &account)
 					&& let Some(handle) = &state.network_handle
 				{
 					handle.send(NetworkCommand::UpdateProfile { update });
