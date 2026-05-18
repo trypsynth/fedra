@@ -191,9 +191,11 @@ pub enum NetworkCommand {
 	},
 	FetchFollowers {
 		account_id: String,
+		acct: String,
 	},
 	FetchFollowing {
 		account_id: String,
+		acct: String,
 	},
 	VotePoll {
 		poll_id: String,
@@ -938,12 +940,20 @@ fn network_loop(
 				let result = client.get_favourited_by(access_token, &status_id);
 				send_response(responses, ui_waker, NetworkResponse::FavoritedByLoaded { result });
 			}
-			Ok(NetworkCommand::FetchFollowers { account_id }) => {
-				let result = client.get_followers(access_token, &account_id);
+			Ok(NetworkCommand::FetchFollowers { account_id, acct }) => {
+				let result = if acct.contains('@') {
+					client.get_remote_followers(&acct)
+				} else {
+					client.get_followers(access_token, &account_id)
+				};
 				send_response(responses, ui_waker, NetworkResponse::FollowersLoaded { result });
 			}
-			Ok(NetworkCommand::FetchFollowing { account_id }) => {
-				let result = client.get_following(access_token, &account_id);
+			Ok(NetworkCommand::FetchFollowing { account_id, acct }) => {
+				let result = if acct.contains('@') {
+					client.get_remote_following(&acct)
+				} else {
+					client.get_following(access_token, &account_id)
+				};
 				send_response(responses, ui_waker, NetworkResponse::FollowingLoaded { result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {

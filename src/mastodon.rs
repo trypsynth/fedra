@@ -1568,6 +1568,59 @@ impl MastodonClient {
 		Ok(accounts)
 	}
 
+	pub fn get_remote_followers(&self, acct: &str) -> Result<Vec<Account>> {
+		let (base_url, remote_id) = self.resolve_remote_account(acct)?;
+		let url = base_url.join(&format!("api/v1/accounts/{remote_id}/followers"))?;
+		let accounts: Vec<Account> = self
+			.http
+			.get(url)
+			.send()
+			.context("Failed to fetch remote followers")?
+			.error_for_status()
+			.context("Remote instance rejected followers request")?
+			.json()
+			.context("Invalid remote followers response")?;
+		Ok(accounts)
+	}
+
+	pub fn get_remote_following(&self, acct: &str) -> Result<Vec<Account>> {
+		let (base_url, remote_id) = self.resolve_remote_account(acct)?;
+		let url = base_url.join(&format!("api/v1/accounts/{remote_id}/following"))?;
+		let accounts: Vec<Account> = self
+			.http
+			.get(url)
+			.send()
+			.context("Failed to fetch remote following")?
+			.error_for_status()
+			.context("Remote instance rejected following request")?
+			.json()
+			.context("Invalid remote following response")?;
+		Ok(accounts)
+	}
+
+	fn resolve_remote_account(&self, acct: &str) -> Result<(Url, String)> {
+		let domain = acct
+			.split('@')
+			.nth(1)
+			.ok_or_else(|| anyhow::anyhow!("Invalid remote acct: {acct}"))?;
+		if domain.is_empty() {
+			return Err(anyhow::anyhow!("Invalid remote acct: {acct}"));
+		}
+		let base_url = Url::parse(&format!("https://{domain}/"))?;
+		let mut lookup_url = base_url.join("api/v1/accounts/lookup")?;
+		lookup_url.query_pairs_mut().append_pair("acct", acct);
+		let account: Account = self
+			.http
+			.get(lookup_url)
+			.send()
+			.context("Failed to lookup account on remote instance")?
+			.error_for_status()
+			.context("Could not find this account on their home instance")?
+			.json()
+			.context("Invalid account response from remote instance")?;
+		Ok((base_url, account.id))
+	}
+
 	pub fn search(
 		&self,
 		access_token: &str,
