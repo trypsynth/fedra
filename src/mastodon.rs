@@ -1541,7 +1541,8 @@ impl MastodonClient {
 	}
 
 	pub fn get_followers(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
+		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
+		url.query_pairs_mut().append_pair("limit", "80");
 		let response = self
 			.http
 			.get(url)
@@ -1555,7 +1556,8 @@ impl MastodonClient {
 	}
 
 	pub fn get_following(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
-		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
+		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
+		url.query_pairs_mut().append_pair("limit", "80");
 		let response = self
 			.http
 			.get(url)
