@@ -170,11 +170,13 @@ impl ProfileDialog {
 				return;
 			}
 			if id == ID_ACTION_VIEW_FOLLOWERS {
-				let _ = net_tx_handler.send(NetworkCommand::FetchFollowers { account_id });
+				let acct = account.acct.clone();
+				let _ = net_tx_handler.send(NetworkCommand::FetchFollowers { account_id, acct });
 				return;
 			}
 			if id == ID_ACTION_VIEW_FOLLOWING {
-				let _ = net_tx_handler.send(NetworkCommand::FetchFollowing { account_id });
+				let acct = account.acct.clone();
+				let _ = net_tx_handler.send(NetworkCommand::FetchFollowing { account_id, acct });
 				return;
 			}
 
