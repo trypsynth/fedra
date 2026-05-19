@@ -23,7 +23,7 @@ pub use common::*;
 pub use compose::*;
 pub use filters::*;
 pub use find::show_find_dialog;
-pub use follow_list::show_follow_list_dialog;
+pub use follow_list::FollowListDialog;
 pub use link_selection::show_link_selection_dialog;
 pub use list_edit::show_list_edit_dialog;
 pub use list_selection::show_list_selection_dialog;

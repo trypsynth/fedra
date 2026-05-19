@@ -101,6 +101,8 @@ pub enum UiCommand {
 	ViewFavorites,
 	HashtagDialogClosed,
 	ProfileDialogClosed,
+	FollowersDialogClosed,
+	FollowingDialogClosed,
 	OpenLinks,
 	ViewInBrowser,
 	PlayMedia,
@@ -1481,6 +1483,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::ProfileDialogClosed => {
 			state.profile_dialog = None;
+		}
+		UiCommand::FollowersDialogClosed => {
+			state.followers_dialog = None;
+		}
+		UiCommand::FollowingDialogClosed => {
+			state.following_dialog = None;
 		}
 		UiCommand::OpenLinks => {
 			let Some(status) = get_selected_status(state) else { return };

@@ -853,41 +853,137 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load favorites", &err));
 			}
-			NetworkResponse::FollowersLoaded { result: Ok(accounts), .. } => {
-				if accounts.is_empty() {
+			NetworkResponse::FollowersLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
+				if accounts.is_empty() && next_max_id.is_none() {
 					live_region::announce(live_region, "No followers found");
 					continue;
 				}
-				if let Some(account) =
-					dialogs::show_follow_list_dialog(frame, "Followers", "Users who follow this person:", &accounts)
-				{
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
+				let ui_tx_timeline = ui_tx.clone();
+				let ui_tx_close = ui_tx.clone();
+				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let dlg = dialogs::FollowListDialog::new(
+					frame,
+					"Followers",
+					"Users who follow this person:",
+					&accounts,
+					total_count,
+					account_id_opt,
+					move |account| {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+					},
+					move || {
+						let _ = ui_tx_close.send(UiCommand::FollowersDialogClosed);
+					},
+				);
+				dlg.show();
+				if next_max_id.is_none() {
+					dlg.mark_loaded();
+				}
+				state.followers_dialog = Some(dlg);
+				if let Some(max_id) = next_max_id {
+					if let Some(h) = &state.network_handle {
+						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
+					}
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load followers", &err));
 			}
-			NetworkResponse::FollowingLoaded { result: Ok(accounts), .. } => {
-				if accounts.is_empty() {
+			NetworkResponse::FollowersNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
+				let should_fetch = if let Some(dlg) = &state.followers_dialog {
+					if !accounts.is_empty() {
+						dlg.append_accounts(&accounts);
+					}
+					if accounts.is_empty() || next_max_id.is_none() {
+						dlg.mark_loaded();
+						None
+					} else {
+						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
+					}
+				} else {
+					None
+				};
+				if let Some((account_id, max_id)) = should_fetch {
+					if let Some(h) = &state.network_handle {
+						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
+					}
+				}
+			}
+			NetworkResponse::FollowersNextPageLoaded { result: Err(err) } => {
+				if let Some(dlg) = &state.followers_dialog {
+					dlg.mark_loaded();
+				}
+				live_region::announce(live_region, &spoken_failure("Failed to load more followers", &err));
+			}
+			NetworkResponse::FollowingLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
+				if accounts.is_empty() && next_max_id.is_none() {
 					live_region::announce(live_region, "No following found");
 					continue;
 				}
-				if let Some(account) =
-					dialogs::show_follow_list_dialog(frame, "Following", "Users this person follows:", &accounts)
-				{
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
+				let ui_tx_timeline = ui_tx.clone();
+				let ui_tx_close = ui_tx.clone();
+				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let dlg = dialogs::FollowListDialog::new(
+					frame,
+					"Following",
+					"Users this person follows:",
+					&accounts,
+					total_count,
+					account_id_opt,
+					move |account| {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+					},
+					move || {
+						let _ = ui_tx_close.send(UiCommand::FollowingDialogClosed);
+					},
+				);
+				dlg.show();
+				if next_max_id.is_none() {
+					dlg.mark_loaded();
+				}
+				state.following_dialog = Some(dlg);
+				if let Some(max_id) = next_max_id {
+					if let Some(h) = &state.network_handle {
+						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
+					}
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load following", &err));
+			}
+			NetworkResponse::FollowingNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
+				let should_fetch = if let Some(dlg) = &state.following_dialog {
+					if !accounts.is_empty() {
+						dlg.append_accounts(&accounts);
+					}
+					if accounts.is_empty() || next_max_id.is_none() {
+						dlg.mark_loaded();
+						None
+					} else {
+						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
+					}
+				} else {
+					None
+				};
+				if let Some((account_id, max_id)) = should_fetch {
+					if let Some(h) = &state.network_handle {
+						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
+					}
+				}
+			}
+			NetworkResponse::FollowingNextPageLoaded { result: Err(err) } => {
+				if let Some(dlg) = &state.following_dialog {
+					dlg.mark_loaded();
+				}
+				live_region::announce(live_region, &spoken_failure("Failed to load more following", &err));
 			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {

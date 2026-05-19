@@ -1540,47 +1540,67 @@ impl MastodonClient {
 		Ok(accounts)
 	}
 
+	fn fetch_accounts_page(
+		&self,
+		base_url: Url,
+		access_token: Option<&str>,
+		max_id: Option<&str>,
+	) -> Result<(Vec<Account>, Option<String>)> {
+		let mut url = base_url;
+		{
+			let mut query = url.query_pairs_mut();
+			query.append_pair("limit", "80");
+			if let Some(id) = max_id {
+				query.append_pair("max_id", id);
+			}
+		}
+		let mut req = self.http.get(url);
+		if let Some(token) = access_token {
+			req = req.bearer_auth(token);
+		}
+		let response = req.send()?.error_for_status()?;
+		let next_max_id = response
+			.headers()
+			.get("link")
+			.and_then(|h| h.to_str().ok())
+			.and_then(Self::parse_link_header);
+		let accounts: Vec<Account> = response.json()?;
+		Ok((accounts, next_max_id))
+	}
+
 	fn fetch_all_accounts(&self, base_url: Url, access_token: Option<&str>) -> Result<Vec<Account>> {
 		let mut all_accounts = Vec::new();
 		let mut max_id: Option<String> = None;
 		loop {
-			let mut url = base_url.clone();
-			{
-				let mut query = url.query_pairs_mut();
-				query.append_pair("limit", "80");
-				if let Some(ref id) = max_id {
-					query.append_pair("max_id", id);
-				}
-			}
-			let mut req = self.http.get(url);
-			if let Some(token) = access_token {
-				req = req.bearer_auth(token);
-			}
-			let response = req.send()?.error_for_status()?;
-			let next_max_id = response
-				.headers()
-				.get("link")
-				.and_then(|h| h.to_str().ok())
-				.and_then(Self::parse_link_header);
-			let accounts: Vec<Account> = response.json()?;
-			let done = accounts.is_empty() || next_max_id.is_none();
+			let (accounts, next) = self.fetch_accounts_page(base_url.clone(), access_token, max_id.as_deref())?;
+			let done = accounts.is_empty() || next.is_none();
 			all_accounts.extend(accounts);
 			if done {
 				break;
 			}
-			max_id = next_max_id;
+			max_id = next;
 		}
 		Ok(all_accounts)
 	}
 
-	pub fn get_followers(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
+	pub fn get_followers_page(
+		&self,
+		access_token: &str,
+		account_id: &str,
+		max_id: Option<&str>,
+	) -> Result<(Vec<Account>, Option<String>)> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
-		self.fetch_all_accounts(url, Some(access_token)).context("Failed to fetch followers")
+		self.fetch_accounts_page(url, Some(access_token), max_id).context("Failed to fetch followers")
 	}
 
-	pub fn get_following(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
+	pub fn get_following_page(
+		&self,
+		access_token: &str,
+		account_id: &str,
+		max_id: Option<&str>,
+	) -> Result<(Vec<Account>, Option<String>)> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
-		self.fetch_all_accounts(url, Some(access_token)).context("Failed to fetch following")
+		self.fetch_accounts_page(url, Some(access_token), max_id).context("Failed to fetch following")
 	}
 
 	pub fn get_remote_followers(&self, acct: &str) -> Result<Vec<Account>> {
