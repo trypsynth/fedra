@@ -1540,64 +1540,59 @@ impl MastodonClient {
 		Ok(accounts)
 	}
 
+	fn fetch_all_accounts(&self, base_url: Url, access_token: Option<&str>) -> Result<Vec<Account>> {
+		let mut all_accounts = Vec::new();
+		let mut max_id: Option<String> = None;
+		loop {
+			let mut url = base_url.clone();
+			{
+				let mut query = url.query_pairs_mut();
+				query.append_pair("limit", "80");
+				if let Some(ref id) = max_id {
+					query.append_pair("max_id", id);
+				}
+			}
+			let mut req = self.http.get(url);
+			if let Some(token) = access_token {
+				req = req.bearer_auth(token);
+			}
+			let response = req.send()?.error_for_status()?;
+			let next_max_id = response
+				.headers()
+				.get("link")
+				.and_then(|h| h.to_str().ok())
+				.and_then(Self::parse_link_header);
+			let accounts: Vec<Account> = response.json()?;
+			let done = accounts.is_empty() || next_max_id.is_none();
+			all_accounts.extend(accounts);
+			if done {
+				break;
+			}
+			max_id = next_max_id;
+		}
+		Ok(all_accounts)
+	}
+
 	pub fn get_followers(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
-		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
-		url.query_pairs_mut().append_pair("limit", "80");
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch followers")?
-			.error_for_status()
-			.context("Instance rejected followers request")?;
-		let accounts: Vec<Account> = response.json().context("Invalid followers response")?;
-		Ok(accounts)
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/followers"))?;
+		self.fetch_all_accounts(url, Some(access_token)).context("Failed to fetch followers")
 	}
 
 	pub fn get_following(&self, access_token: &str, account_id: &str) -> Result<Vec<Account>> {
-		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
-		url.query_pairs_mut().append_pair("limit", "80");
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch following")?
-			.error_for_status()
-			.context("Instance rejected following request")?;
-		let accounts: Vec<Account> = response.json().context("Invalid following response")?;
-		Ok(accounts)
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/following"))?;
+		self.fetch_all_accounts(url, Some(access_token)).context("Failed to fetch following")
 	}
 
 	pub fn get_remote_followers(&self, acct: &str) -> Result<Vec<Account>> {
 		let (base_url, remote_id) = self.resolve_remote_account(acct)?;
 		let url = base_url.join(&format!("api/v1/accounts/{remote_id}/followers"))?;
-		let accounts: Vec<Account> = self
-			.http
-			.get(url)
-			.send()
-			.context("Failed to fetch remote followers")?
-			.error_for_status()
-			.context("Remote instance rejected followers request")?
-			.json()
-			.context("Invalid remote followers response")?;
-		Ok(accounts)
+		self.fetch_all_accounts(url, None).context("Failed to fetch remote followers")
 	}
 
 	pub fn get_remote_following(&self, acct: &str) -> Result<Vec<Account>> {
 		let (base_url, remote_id) = self.resolve_remote_account(acct)?;
 		let url = base_url.join(&format!("api/v1/accounts/{remote_id}/following"))?;
-		let accounts: Vec<Account> = self
-			.http
-			.get(url)
-			.send()
-			.context("Failed to fetch remote following")?
-			.error_for_status()
-			.context("Remote instance rejected following request")?
-			.json()
-			.context("Invalid remote following response")?;
-		Ok(accounts)
+		self.fetch_all_accounts(url, None).context("Failed to fetch remote following")
 	}
 
 	fn resolve_remote_account(&self, acct: &str) -> Result<(Url, String)> {
