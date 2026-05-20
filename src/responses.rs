@@ -510,6 +510,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							let dlg = dialogs::ProfileDialog::new(
 								frame,
 								account.clone(),
+								state.current_user_id.as_deref(),
 								net_tx,
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -781,6 +782,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								let dlg = dialogs::ProfileDialog::new(
 									frame,
 									account.clone(),
+									state.current_user_id.as_deref(),
 									net_tx,
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -826,6 +828,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								let dlg = dialogs::ProfileDialog::new(
 									frame,
 									account.clone(),
+									state.current_user_id.as_deref(),
 									net_tx,
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -887,8 +890,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					dlg.mark_loaded();
 				}
 				state.followers_dialog = Some(dlg);
-				if let Some(max_id) = next_max_id {
-					if let Some(h) = &state.network_handle {
+				if let Some(h) = &state.network_handle {
+					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
+					if let Some(max_id) = next_max_id {
 						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
 					}
 				}
@@ -910,8 +915,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				} else {
 					None
 				};
-				if let Some((account_id, max_id)) = should_fetch {
-					if let Some(h) = &state.network_handle {
+				if let Some(h) = &state.network_handle {
+					if !accounts.is_empty() {
+						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
+					}
+					if let Some((account_id, max_id)) = should_fetch {
 						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
 					}
 				}
@@ -956,8 +965,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					dlg.mark_loaded();
 				}
 				state.following_dialog = Some(dlg);
-				if let Some(max_id) = next_max_id {
-					if let Some(h) = &state.network_handle {
+				if let Some(h) = &state.network_handle {
+					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
+					if let Some(max_id) = next_max_id {
 						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
 					}
 				}
@@ -979,8 +990,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				} else {
 					None
 				};
-				if let Some((account_id, max_id)) = should_fetch {
-					if let Some(h) = &state.network_handle {
+				if let Some(h) = &state.network_handle {
+					if !accounts.is_empty() {
+						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
+					}
+					if let Some((account_id, max_id)) = should_fetch {
 						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
 					}
 				}
@@ -990,6 +1005,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					dlg.mark_loaded();
 				}
 				live_region::announce(live_region, &spoken_failure("Failed to load more following", &err));
+			}
+			NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
+				let dialog = if for_followers { &state.followers_dialog } else { &state.following_dialog };
+				if let Some(dlg) = dialog {
+					dlg.update_relationships(&results);
+				}
 			}
 			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
 				Ok(rel) => {

@@ -28,17 +28,24 @@ pub struct ProfileDialog {
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
 	profile_text: TextCtrl,
 	account: Rc<RefCell<MastodonAccount>>,
+	is_own_account: bool,
 }
 
-fn append_relationship_text(text: &mut String, relationship: &crate::mastodon::Relationship) {
+pub(super) fn append_relationship_text(
+	text: &mut String,
+	relationship: &crate::mastodon::Relationship,
+	is_own_account: bool,
+) {
 	text.push_str("\r\n\r\nRelationship:\r\n");
-	let follow_status = match (relationship.following, relationship.followed_by) {
-		(true, true) => "You follow each other.",
-		(true, false) => "You follow this person.",
-		(false, true) => "This person follows you.",
-		(false, false) => "You do not follow each other.",
-	};
-	let _ = writeln!(text, "{follow_status}");
+	if !is_own_account {
+		let follow_status = match (relationship.following, relationship.followed_by) {
+			(true, true) => "You follow each other.",
+			(true, false) => "You follow this person.",
+			(false, true) => "This person follows you.",
+			(false, false) => "You do not follow each other.",
+		};
+		let _ = writeln!(text, "{follow_status}");
+	}
 
 	if relationship.requested {
 		text.push_str("You have requested to follow this person.\r\n");
@@ -69,6 +76,7 @@ impl ProfileDialog {
 	pub fn new<F, C>(
 		frame: &Frame,
 		account: MastodonAccount,
+		current_user_id: Option<&str>,
 		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
 		on_view_timeline: F,
 		on_close: C,
@@ -77,6 +85,7 @@ impl ProfileDialog {
 		F: Fn() + 'static + Clone,
 		C: Fn() + 'static + Clone,
 	{
+		let is_own_account = current_user_id.is_some_and(|id| id == account.id);
 		let title = format!("Profile for {}", account.display_name_or_username());
 		let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
 		let panel = Panel::builder(&dialog).build();
@@ -250,7 +259,7 @@ impl ProfileDialog {
 		});
 
 		dialog.centre();
-		Self { dialog, relationship, profile_text, account: account_rc }
+		Self { dialog, relationship, profile_text, account: account_rc, is_own_account }
 	}
 
 	pub fn show(&self) {
@@ -268,7 +277,7 @@ impl ProfileDialog {
 		let mut text = account.profile_display();
 
 		if let Some(rel) = self.relationship.borrow().clone() {
-			append_relationship_text(&mut text, &rel);
+			append_relationship_text(&mut text, &rel, self.is_own_account);
 		}
 
 		self.profile_text.set_value(&text);
@@ -278,7 +287,7 @@ impl ProfileDialog {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
 		let account = self.account.borrow();
 		let mut text = account.profile_display();
-		append_relationship_text(&mut text, relationship);
+		append_relationship_text(&mut text, relationship, self.is_own_account);
 		self.profile_text.set_value(&text);
 	}
 }

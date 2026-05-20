@@ -1095,6 +1095,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account,
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1187,6 +1188,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account,
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1405,6 +1407,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							let dlg = dialogs::ProfileDialog::new(
 								frame,
 								account,
+								state.current_user_id.as_deref(),
 								net_tx,
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1724,6 +1727,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account.clone(),
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));

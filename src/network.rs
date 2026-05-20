@@ -177,6 +177,10 @@ pub enum NetworkCommand {
 	FetchRelationship {
 		account_id: String,
 	},
+	FetchRelationshipsForList {
+		account_ids: Vec<String>,
+		for_followers: bool,
+	},
 	FetchAccount {
 		account_id: String,
 	},
@@ -370,6 +374,10 @@ pub enum NetworkResponse {
 	RelationshipLoaded {
 		_account_id: String,
 		result: Result<crate::mastodon::Relationship>,
+	},
+	RelationshipsForListLoaded {
+		results: Vec<crate::mastodon::Relationship>,
+		for_followers: bool,
 	},
 	AccountFetched {
 		result: Result<Account>,
@@ -1116,6 +1124,14 @@ fn network_loop(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipLoaded { _account_id: account_id, result },
+				);
+			}
+			Ok(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers }) => {
+				let results = client.get_relationships(access_token, &account_ids).unwrap_or_default();
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::RelationshipsForListLoaded { results, for_followers },
 				);
 			}
 			Ok(NetworkCommand::FetchAccount { account_id }) => {

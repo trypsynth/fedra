@@ -1,13 +1,15 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use wxdragon::prelude::*;
 
-use crate::mastodon::Account;
+use crate::mastodon::{Account, Relationship};
 
 pub struct FollowListDialog {
 	dialog: Dialog,
 	account_list: ListBox,
+	profile_text: TextCtrl,
 	accounts: Rc<RefCell<Vec<Account>>>,
+	relationships: Rc<RefCell<HashMap<String, Relationship>>>,
 	title_base: String,
 	total_count: u64,
 	loaded: Rc<RefCell<bool>>,
@@ -67,20 +69,27 @@ impl FollowListDialog {
 		dialog.set_escape_id(ID_CANCEL);
 
 		let accounts_rc: Rc<RefCell<Vec<Account>>> = Rc::new(RefCell::new(first_page.to_vec()));
-		let list_sel = account_list.clone();
-		let text_sel = profile_text.clone();
+		let relationships_rc: Rc<RefCell<HashMap<String, Relationship>>> = Rc::new(RefCell::new(HashMap::new()));
+
+		let list_sel = account_list;
+		let text_sel = profile_text;
 		let accounts_sel = accounts_rc.clone();
+		let relationships_sel = relationships_rc.clone();
 		list_sel.on_selection_changed(move |_| {
 			let selection = list_sel.get_selection().map(|sel| sel as usize);
 			if let Some(index) = selection
 				&& let Some(account) = accounts_sel.borrow().get(index)
 			{
-				text_sel.set_value(&account.profile_display());
+				let mut text = account.profile_display();
+				if let Some(rel) = relationships_sel.borrow().get(&account.id) {
+					super::profile::append_relationship_text(&mut text, rel, false);
+				}
+				text_sel.set_value(&text);
 			}
 		});
 
 		let accounts_btn = accounts_rc.clone();
-		let list_btn = account_list.clone();
+		let list_btn = account_list;
 		let dlg_timeline = dialog;
 		timeline_button.on_click(move |_| {
 			let selection = list_btn.get_selection().map(|s| s as usize);
@@ -103,7 +112,9 @@ impl FollowListDialog {
 		Self {
 			dialog,
 			account_list,
+			profile_text,
 			accounts: accounts_rc,
+			relationships: relationships_rc,
 			title_base: title.to_string(),
 			total_count,
 			loaded: Rc::new(RefCell::new(false)),
@@ -113,6 +124,25 @@ impl FollowListDialog {
 
 	pub fn show(&self) {
 		self.dialog.show(true);
+	}
+
+	pub fn update_relationships(&self, relationships: &[Relationship]) {
+		{
+			let mut map = self.relationships.borrow_mut();
+			for rel in relationships {
+				map.insert(rel.id.clone(), rel.clone());
+			}
+		}
+		if let Some(sel) = self.account_list.get_selection() {
+			let accounts = self.accounts.borrow();
+			if let Some(account) = accounts.get(sel as usize) {
+				let mut text = account.profile_display();
+				if let Some(rel) = self.relationships.borrow().get(&account.id) {
+					super::profile::append_relationship_text(&mut text, rel, false);
+				}
+				self.profile_text.set_value(&text);
+			}
+		}
 	}
 
 	pub fn append_accounts(&self, accounts: &[Account]) {
