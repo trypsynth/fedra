@@ -257,6 +257,10 @@ impl ProfileDialog {
 		self.dialog.show(true);
 	}
 
+	pub fn dialog_handle(&self) -> Dialog {
+		self.dialog
+	}
+
 	pub fn update_account(&self, account: &MastodonAccount) {
 		self.account.replace(account.clone());
 		self.dialog.set_label(&format!("Profile for {}", account.display_name_or_username()));

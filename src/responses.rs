@@ -861,8 +861,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
+				let followers_parent: &dyn wxdragon::window::WxWidget =
+					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
 				let dlg = dialogs::FollowListDialog::new(
-					frame,
+					followers_parent,
 					"Followers",
 					"Users who follow this person:",
 					&accounts,
@@ -927,8 +930,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
+				let following_parent: &dyn wxdragon::window::WxWidget =
+					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
 				let dlg = dialogs::FollowListDialog::new(
-					frame,
+					following_parent,
 					"Following",
 					"Users this person follows:",
 					&accounts,

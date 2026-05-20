@@ -16,7 +16,7 @@ pub struct FollowListDialog {
 
 impl FollowListDialog {
 	pub fn new<F, C>(
-		frame: &Frame,
+		parent: &dyn WxWidget,
 		title: &str,
 		label: &str,
 		first_page: &[Account],
@@ -32,7 +32,7 @@ impl FollowListDialog {
 		const ID_VIEW_TIMELINE: i32 = 10044;
 
 		let dialog_title = Self::make_title(title, first_page.len() as u64, total_count, false);
-		let dialog = Dialog::builder(frame, &dialog_title).with_size(600, 400).build();
+		let dialog = Dialog::builder(parent, &dialog_title).with_size(600, 400).build();
 		let panel = Panel::builder(&dialog).build();
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		let list_label = StaticText::builder(&panel).with_label(label).build();
