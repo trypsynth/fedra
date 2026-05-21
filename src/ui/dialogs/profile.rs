@@ -1,68 +1,20 @@
-use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
 use crate::{
-	html,
 	mastodon::{Account as MastodonAccount, Mention, Tag},
 	network::NetworkCommand,
 	ui::dialogs::UserLookupAction,
 };
 
-const ID_ACTION_FOLLOW: i32 = 6001;
-const ID_ACTION_UNFOLLOW: i32 = 6002;
-const ID_ACTION_BLOCK: i32 = 6003;
-const ID_ACTION_UNBLOCK: i32 = 6004;
-const ID_ACTION_MUTE: i32 = 6005;
-const ID_ACTION_UNMUTE: i32 = 6006;
-const ID_ACTION_OPEN_BROWSER: i32 = 6007;
-const ID_ACTION_SHOW_BOOSTS: i32 = 6008;
-const ID_ACTION_HIDE_BOOSTS: i32 = 6009;
-const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
-const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
-const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
-const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
+use super::user_actions;
 
 pub struct ProfileDialog {
 	dialog: Dialog,
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
 	profile_text: TextCtrl,
 	account: Rc<RefCell<MastodonAccount>>,
-}
-
-fn append_relationship_text(text: &mut String, relationship: &crate::mastodon::Relationship) {
-	text.push_str("\r\n\r\nRelationship:\r\n");
-	let follow_status = match (relationship.following, relationship.followed_by) {
-		(true, true) => "You follow each other.",
-		(true, false) => "You follow this person.",
-		(false, true) => "This person follows you.",
-		(false, false) => "You do not follow each other.",
-	};
-	let _ = writeln!(text, "{follow_status}");
-
-	if relationship.requested {
-		text.push_str("You have requested to follow this person.\r\n");
-	}
-	if relationship.requested_by {
-		text.push_str("This person has requested to follow you.\r\n");
-	}
-	if relationship.blocking {
-		text.push_str("You have blocked this person.\r\n");
-	}
-	if relationship.muting {
-		text.push_str("You have muted this person.\r\n");
-	}
-	if relationship.domain_blocking {
-		text.push_str("You have blocked this person's domain.\r\n");
-	}
-
-	if !relationship.note.is_empty() {
-		let note = html::strip_html(&relationship.note);
-		if !note.trim().is_empty() {
-			text.push_str("\r\nNote:\r\n");
-			text.push_str(&note);
-		}
-	}
 }
 
 impl ProfileDialog {
@@ -109,127 +61,8 @@ impl ProfileDialog {
 
 		let relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>> = Rc::new(RefCell::new(None));
 		let account_rc = Rc::new(RefCell::new(account));
-		let relationship_action = relationship.clone();
-		let actions_btn = actions_button;
 
-		actions_btn.on_click(move |_| {
-			let mut menu = Menu::builder().build();
-			{
-				let rel = relationship_action.borrow();
-				if let Some(r) = rel.as_ref() {
-					if r.following {
-						menu.append(ID_ACTION_UNFOLLOW, "Unfollow", "", ItemKind::Normal);
-						if r.showing_reblogs {
-							menu.append(ID_ACTION_HIDE_BOOSTS, "Hide Boosts", "", ItemKind::Normal);
-						} else {
-							menu.append(ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
-						}
-					} else if r.requested {
-						menu.append(ID_ACTION_UNFOLLOW, "Cancel Follow Request", "", ItemKind::Normal);
-					} else {
-						menu.append(ID_ACTION_FOLLOW, "Follow", "", ItemKind::Normal);
-					}
-					if r.requested_by {
-						menu.append(ID_ACTION_ACCEPT_FOLLOW_REQUEST, "Accept Follow Request", "", ItemKind::Normal);
-						menu.append(ID_ACTION_REJECT_FOLLOW_REQUEST, "Reject Follow Request", "", ItemKind::Normal);
-					}
-					if r.muting {
-						menu.append(ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
-					} else {
-						menu.append(ID_ACTION_MUTE, "Mute", "", ItemKind::Normal);
-					}
-					if r.blocking {
-						menu.append(ID_ACTION_UNBLOCK, "Unblock", "", ItemKind::Normal);
-					} else {
-						menu.append(ID_ACTION_BLOCK, "Block", "", ItemKind::Normal);
-					}
-					menu.append_separator();
-				}
-			}
-			menu.append(ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
-			menu.append_separator();
-			menu.append(ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
-			menu.append(ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
-			panel.popup_menu(&mut menu, None);
-		});
-
-		let account_handler = account_rc.clone();
-		let relationship_handler = relationship.clone();
-		let panel_handler = panel;
-		let net_tx_handler = net_tx;
-
-		panel_handler.on_menu_selected(move |event| {
-			let id = event.get_id();
-			let account = account_handler.borrow();
-			let account_id = account.id.clone();
-			let target_name = account.display_name_or_username().to_string();
-
-			if id == ID_ACTION_OPEN_BROWSER {
-				let _ =
-					wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
-				return;
-			}
-			if id == ID_ACTION_VIEW_FOLLOWERS {
-				let acct = account.acct.clone();
-				let _ = net_tx_handler.send(NetworkCommand::FetchFollowers { account_id, acct });
-				return;
-			}
-			if id == ID_ACTION_VIEW_FOLLOWING {
-				let acct = account.acct.clone();
-				let _ = net_tx_handler.send(NetworkCommand::FetchFollowing { account_id, acct });
-				return;
-			}
-
-			let cmd = match id {
-				ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
-					account_id,
-					target_name,
-					reblogs: true,
-					action: crate::network::RelationshipAction::Follow,
-				},
-				ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
-					account_id,
-					target_name,
-					action: if relationship_handler.borrow().as_ref().is_some_and(|r| !r.following && r.requested) {
-						crate::network::RelationshipAction::CancelFollowRequest
-					} else {
-						crate::network::RelationshipAction::Unfollow
-					},
-				},
-				ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
-					account_id,
-					target_name,
-					reblogs: true,
-					action: crate::network::RelationshipAction::ShowBoosts,
-				},
-				ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
-					account_id,
-					target_name,
-					reblogs: false,
-					action: crate::network::RelationshipAction::HideBoosts,
-				},
-				ID_ACTION_BLOCK => {
-					let confirm = MessageDialog::builder(
-						&panel_handler,
-						"Are you sure you want to block this user?",
-						"Block User",
-					)
-					.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-					.build();
-					if confirm.show_modal() != ID_YES {
-						return;
-					}
-					NetworkCommand::BlockAccount { account_id, target_name }
-				}
-				ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
-				ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
-				ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
-				ID_ACTION_ACCEPT_FOLLOW_REQUEST => NetworkCommand::AuthorizeFollowRequest { account_id, target_name },
-				ID_ACTION_REJECT_FOLLOW_REQUEST => NetworkCommand::RejectFollowRequest { account_id, target_name },
-				_ => return,
-			};
-			let _ = net_tx_handler.send(cmd);
-		});
+		user_actions::setup_actions_button(panel, actions_button, account_rc.clone(), relationship.clone(), net_tx);
 		let dlg_timeline = dialog;
 		let on_view_timeline = on_view_timeline;
 		timeline_button.on_click(move |_| {
@@ -262,7 +95,7 @@ impl ProfileDialog {
 		let mut text = account.profile_display();
 
 		if let Some(rel) = self.relationship.borrow().clone() {
-			append_relationship_text(&mut text, &rel);
+			user_actions::append_relationship_text(&mut text, &rel);
 		}
 
 		self.profile_text.set_value(&text);
@@ -272,7 +105,7 @@ impl ProfileDialog {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
 		let account = self.account.borrow();
 		let mut text = account.profile_display();
-		append_relationship_text(&mut text, relationship);
+		user_actions::append_relationship_text(&mut text, relationship);
 		self.profile_text.set_value(&text);
 	}
 }

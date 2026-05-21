@@ -5,7 +5,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, UiCommand,
 	config::{AutoloadMode, ConfigStore, SortOrder},
-	mastodon::{Poll, Status},
+	mastodon::{Account, Poll, Status},
 	network::{NetworkCommand, NetworkResponse, TimelineData},
 	streaming,
 	timeline::{TimelineEntry, TimelineType},
@@ -239,6 +239,35 @@ pub fn process_stream_events(
 			update_menu_labels(&mb, state);
 		}
 	}
+}
+
+fn open_follow_list(
+	frame: &Frame,
+	net_tx: std::sync::mpsc::Sender<NetworkCommand>,
+	token: u64,
+	ui_tx: &UiCommandSender,
+	title: &str,
+	label: &str,
+	accounts: &[Account],
+) -> Option<dialogs::FollowListDialog> {
+	let ui_tx_timeline = ui_tx.clone();
+	let ui_tx_close = ui_tx.clone();
+	let dlg = dialogs::FollowListDialog::new(
+		frame,
+		title,
+		label,
+		accounts,
+		net_tx,
+		token,
+		move |account| {
+			let _ = ui_tx_timeline.send(UiCommand::OpenAccountTimeline(account));
+		},
+		move || {
+			let _ = ui_tx_close.send(UiCommand::FollowListDialogClosed(token));
+		},
+	)?;
+	dlg.show();
+	Some(dlg)
 }
 
 /// Processes network responses from the background network thread.
@@ -858,14 +887,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, "No followers found");
 					continue;
 				}
-				if let Some(account) =
-					dialogs::show_follow_list_dialog(frame, "Followers", "Users who follow this person:", &accounts)
-				{
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
+				if let Some(net_tx) = state.network_handle.as_ref().map(|n| n.command_tx.clone()) {
+					let token = state.follow_list_token;
+					state.follow_list_token += 1;
+					if let Some(dlg) = open_follow_list(frame, net_tx, token, ui_tx, "Followers", "Users who follow this person:", &accounts) {
+						state.follow_list_dialog = Some(dlg);
+					}
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
@@ -876,56 +903,64 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, "No following found");
 					continue;
 				}
-				if let Some(account) =
-					dialogs::show_follow_list_dialog(frame, "Following", "Users this person follows:", &accounts)
-				{
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
+				if let Some(net_tx) = state.network_handle.as_ref().map(|n| n.command_tx.clone()) {
+					let token = state.follow_list_token;
+					state.follow_list_token += 1;
+					if let Some(dlg) = open_follow_list(frame, net_tx, token, ui_tx, "Following", "Users this person follows:", &accounts) {
+						state.follow_list_dialog = Some(dlg);
+					}
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load following", &err));
 			}
-			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
-				Ok(rel) => {
+			NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result } => {
+				match result {
+					Ok(rel) => {
+						if let Some(dlg) = &state.profile_dialog {
+							dlg.update_relationship(&rel);
+						}
+						if let Some(dlg) = &state.follow_list_dialog {
+							dlg.update_relationship(&account_id, &rel);
+						}
+						let msg = match action {
+							crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
+							crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
+							crate::network::RelationshipAction::CancelFollowRequest => {
+								format!("Canceled follow request to {target_name}")
+							}
+							crate::network::RelationshipAction::AcceptFollowRequest => {
+								format!("Accepted follow request from {target_name}")
+							}
+							crate::network::RelationshipAction::RejectFollowRequest => {
+								format!("Rejected follow request from {target_name}")
+							}
+							crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
+							crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
+							crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),
+							crate::network::RelationshipAction::Unmute => format!("Unmuted {target_name}"),
+							crate::network::RelationshipAction::ShowBoosts => {
+								format!("Showing boosts from {target_name}")
+							}
+							crate::network::RelationshipAction::HideBoosts => {
+								format!("Hiding boosts from {target_name}")
+							}
+						};
+						live_region::announce(live_region, &msg);
+					}
+					Err(err) => {
+						live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
+					}
+				}
+			}
+			NetworkResponse::RelationshipLoaded { _account_id: account_id, result } => {
+				if let Ok(rel) = result {
 					if let Some(dlg) = &state.profile_dialog {
 						dlg.update_relationship(&rel);
 					}
-					let msg = match action {
-						crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
-						crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
-						crate::network::RelationshipAction::CancelFollowRequest => {
-							format!("Canceled follow request to {target_name}")
-						}
-						crate::network::RelationshipAction::AcceptFollowRequest => {
-							format!("Accepted follow request from {target_name}")
-						}
-						crate::network::RelationshipAction::RejectFollowRequest => {
-							format!("Rejected follow request from {target_name}")
-						}
-						crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
-						crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
-						crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),
-						crate::network::RelationshipAction::Unmute => format!("Unmuted {target_name}"),
-						crate::network::RelationshipAction::ShowBoosts => {
-							format!("Showing boosts from {target_name}")
-						}
-						crate::network::RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
-					};
-					live_region::announce(live_region, &msg);
-				}
-				Err(err) => {
-					live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
-				}
-			},
-			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
-				if let Ok(rel) = result
-					&& let Some(dlg) = &state.profile_dialog
-				{
-					dlg.update_relationship(&rel);
+					if let Some(dlg) = &state.follow_list_dialog {
+						dlg.update_relationship(&account_id, &rel);
+					}
 				}
 			}
 			NetworkResponse::AccountFetched { result } => {
