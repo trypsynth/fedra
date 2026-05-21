@@ -15,12 +15,14 @@ pub struct ProfileDialog {
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
 	profile_text: TextCtrl,
 	account: Rc<RefCell<MastodonAccount>>,
+	is_own_account: bool,
 }
 
 impl ProfileDialog {
 	pub fn new<F, C>(
 		frame: &Frame,
 		account: MastodonAccount,
+		current_user_id: Option<&str>,
 		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
 		on_view_timeline: F,
 		on_close: C,
@@ -29,6 +31,7 @@ impl ProfileDialog {
 		F: Fn() + 'static + Clone,
 		C: Fn() + 'static + Clone,
 	{
+		let is_own_account = current_user_id.is_some_and(|id| id == account.id);
 		let title = format!("Profile for {}", account.display_name_or_username());
 		let dialog = Dialog::builder(frame, &title).with_size(500, 400).build();
 		let panel = Panel::builder(&dialog).build();
@@ -81,11 +84,15 @@ impl ProfileDialog {
 		});
 
 		dialog.centre();
-		Self { dialog, relationship, profile_text, account: account_rc }
+		Self { dialog, relationship, profile_text, account: account_rc, is_own_account }
 	}
 
 	pub fn show(&self) {
 		self.dialog.show(true);
+	}
+
+	pub fn dialog_handle(&self) -> Dialog {
+		self.dialog
 	}
 
 	pub fn update_account(&self, account: &MastodonAccount) {
@@ -95,7 +102,7 @@ impl ProfileDialog {
 		let mut text = account.profile_display();
 
 		if let Some(rel) = self.relationship.borrow().clone() {
-			user_actions::append_relationship_text(&mut text, &rel);
+			user_actions::append_relationship_text(&mut text, &rel, self.is_own_account);
 		}
 
 		self.profile_text.set_value(&text);
@@ -105,7 +112,7 @@ impl ProfileDialog {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
 		let account = self.account.borrow();
 		let mut text = account.profile_display();
-		user_actions::append_relationship_text(&mut text, relationship);
+		user_actions::append_relationship_text(&mut text, relationship, self.is_own_account);
 		self.profile_text.set_value(&text);
 	}
 }

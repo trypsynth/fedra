@@ -5,7 +5,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, UiCommand,
 	config::{AutoloadMode, ConfigStore, SortOrder},
-	mastodon::{Account, Poll, Status},
+	mastodon::{Poll, Status},
 	network::{NetworkCommand, NetworkResponse, TimelineData},
 	streaming,
 	timeline::{TimelineEntry, TimelineType},
@@ -241,34 +241,6 @@ pub fn process_stream_events(
 	}
 }
 
-fn open_follow_list(
-	frame: &Frame,
-	net_tx: std::sync::mpsc::Sender<NetworkCommand>,
-	token: u64,
-	ui_tx: &UiCommandSender,
-	title: &str,
-	label: &str,
-	accounts: &[Account],
-) -> Option<dialogs::FollowListDialog> {
-	let ui_tx_timeline = ui_tx.clone();
-	let ui_tx_close = ui_tx.clone();
-	let dlg = dialogs::FollowListDialog::new(
-		frame,
-		title,
-		label,
-		accounts,
-		net_tx,
-		token,
-		move |account| {
-			let _ = ui_tx_timeline.send(UiCommand::OpenAccountTimeline(account));
-		},
-		move || {
-			let _ = ui_tx_close.send(UiCommand::FollowListDialogClosed(token));
-		},
-	)?;
-	dlg.show();
-	Some(dlg)
-}
 
 /// Processes network responses from the background network thread.
 pub struct NetworkResponseContext<'a> {
@@ -539,6 +511,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							let dlg = dialogs::ProfileDialog::new(
 								frame,
 								account.clone(),
+								state.current_user_id.as_deref(),
 								net_tx,
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -810,6 +783,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								let dlg = dialogs::ProfileDialog::new(
 									frame,
 									account.clone(),
+									state.current_user_id.as_deref(),
 									net_tx,
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -855,6 +829,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								let dlg = dialogs::ProfileDialog::new(
 									frame,
 									account.clone(),
+									state.current_user_id.as_deref(),
 									net_tx,
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -882,85 +857,215 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load favorites", &err));
 			}
-			NetworkResponse::FollowersLoaded { result: Ok(accounts), .. } => {
-				if accounts.is_empty() {
+			NetworkResponse::FollowersLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
+				if accounts.is_empty() && next_max_id.is_none() {
 					live_region::announce(live_region, "No followers found");
 					continue;
 				}
-				if let Some(net_tx) = state.network_handle.as_ref().map(|n| n.command_tx.clone()) {
-					let token = state.follow_list_token;
-					state.follow_list_token += 1;
-					if let Some(dlg) = open_follow_list(frame, net_tx, token, ui_tx, "Followers", "Users who follow this person:", &accounts) {
-						state.follow_list_dialog = Some(dlg);
+				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
+					Some(tx) => tx,
+					None => continue,
+				};
+				let ui_tx_timeline = ui_tx.clone();
+				let ui_tx_close = ui_tx.clone();
+				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
+				let followers_parent: &dyn wxdragon::window::WxWidget =
+					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
+				let dlg = dialogs::FollowListDialog::new(
+					followers_parent,
+					"Followers",
+					"Users who follow this person:",
+					&accounts,
+					total_count,
+					account_id_opt,
+					net_tx_dlg,
+					move |account| {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+					},
+					move || {
+						let _ = ui_tx_close.send(UiCommand::FollowersDialogClosed);
+					},
+				);
+				dlg.show();
+				if next_max_id.is_none() {
+					dlg.mark_loaded();
+				}
+				state.followers_dialog = Some(dlg);
+				if let Some(h) = &state.network_handle {
+					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
+					if let Some(max_id) = next_max_id {
+						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
 					}
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load followers", &err));
 			}
-			NetworkResponse::FollowingLoaded { result: Ok(accounts), .. } => {
-				if accounts.is_empty() {
+			NetworkResponse::FollowersNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
+				let should_fetch = if let Some(dlg) = &state.followers_dialog {
+					if !accounts.is_empty() {
+						dlg.append_accounts(&accounts);
+					}
+					if accounts.is_empty() || next_max_id.is_none() {
+						dlg.mark_loaded();
+						None
+					} else {
+						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
+					}
+				} else {
+					None
+				};
+				if let Some(h) = &state.network_handle {
+					if !accounts.is_empty() {
+						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
+					}
+					if let Some((account_id, max_id)) = should_fetch {
+						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
+					}
+				}
+			}
+			NetworkResponse::FollowersNextPageLoaded { result: Err(err) } => {
+				if let Some(dlg) = &state.followers_dialog {
+					dlg.mark_loaded();
+				}
+				live_region::announce(live_region, &spoken_failure("Failed to load more followers", &err));
+			}
+			NetworkResponse::FollowingLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
+				if accounts.is_empty() && next_max_id.is_none() {
 					live_region::announce(live_region, "No following found");
 					continue;
 				}
-				if let Some(net_tx) = state.network_handle.as_ref().map(|n| n.command_tx.clone()) {
-					let token = state.follow_list_token;
-					state.follow_list_token += 1;
-					if let Some(dlg) = open_follow_list(frame, net_tx, token, ui_tx, "Following", "Users this person follows:", &accounts) {
-						state.follow_list_dialog = Some(dlg);
+				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
+					Some(tx) => tx,
+					None => continue,
+				};
+				let ui_tx_timeline = ui_tx.clone();
+				let ui_tx_close = ui_tx.clone();
+				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
+				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
+				let following_parent: &dyn wxdragon::window::WxWidget =
+					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
+				let dlg = dialogs::FollowListDialog::new(
+					following_parent,
+					"Following",
+					"Users this person follows:",
+					&accounts,
+					total_count,
+					account_id_opt,
+					net_tx_dlg,
+					move |account| {
+						let timeline_type = TimelineType::User {
+							id: account.id.clone(),
+							name: account.display_name_or_username().to_string(),
+						};
+						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+					},
+					move || {
+						let _ = ui_tx_close.send(UiCommand::FollowingDialogClosed);
+					},
+				);
+				dlg.show();
+				if next_max_id.is_none() {
+					dlg.mark_loaded();
+				}
+				state.following_dialog = Some(dlg);
+				if let Some(h) = &state.network_handle {
+					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
+					if let Some(max_id) = next_max_id {
+						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
 					}
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
 				live_region::announce(live_region, &spoken_failure("Failed to load following", &err));
 			}
-			NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result } => {
-				match result {
-					Ok(rel) => {
-						if let Some(dlg) = &state.profile_dialog {
-							dlg.update_relationship(&rel);
-						}
-						if let Some(dlg) = &state.follow_list_dialog {
-							dlg.update_relationship(&account_id, &rel);
-						}
-						let msg = match action {
-							crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
-							crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
-							crate::network::RelationshipAction::CancelFollowRequest => {
-								format!("Canceled follow request to {target_name}")
-							}
-							crate::network::RelationshipAction::AcceptFollowRequest => {
-								format!("Accepted follow request from {target_name}")
-							}
-							crate::network::RelationshipAction::RejectFollowRequest => {
-								format!("Rejected follow request from {target_name}")
-							}
-							crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
-							crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
-							crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),
-							crate::network::RelationshipAction::Unmute => format!("Unmuted {target_name}"),
-							crate::network::RelationshipAction::ShowBoosts => {
-								format!("Showing boosts from {target_name}")
-							}
-							crate::network::RelationshipAction::HideBoosts => {
-								format!("Hiding boosts from {target_name}")
-							}
-						};
-						live_region::announce(live_region, &msg);
+			NetworkResponse::FollowingNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
+				let should_fetch = if let Some(dlg) = &state.following_dialog {
+					if !accounts.is_empty() {
+						dlg.append_accounts(&accounts);
 					}
-					Err(err) => {
-						live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
+					if accounts.is_empty() || next_max_id.is_none() {
+						dlg.mark_loaded();
+						None
+					} else {
+						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
+					}
+				} else {
+					None
+				};
+				if let Some(h) = &state.network_handle {
+					if !accounts.is_empty() {
+						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
+						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
+					}
+					if let Some((account_id, max_id)) = should_fetch {
+						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
 					}
 				}
 			}
-			NetworkResponse::RelationshipLoaded { _account_id: account_id, result } => {
-				if let Ok(rel) = result {
+			NetworkResponse::FollowingNextPageLoaded { result: Err(err) } => {
+				if let Some(dlg) = &state.following_dialog {
+					dlg.mark_loaded();
+				}
+				live_region::announce(live_region, &spoken_failure("Failed to load more following", &err));
+			}
+			NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
+				let dialog = if for_followers { &state.followers_dialog } else { &state.following_dialog };
+				if let Some(dlg) = dialog {
+					dlg.update_relationships(&results);
+				}
+			}
+			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
+				Ok(rel) => {
 					if let Some(dlg) = &state.profile_dialog {
 						dlg.update_relationship(&rel);
 					}
-					if let Some(dlg) = &state.follow_list_dialog {
-						dlg.update_relationship(&account_id, &rel);
+					if let Some(dlg) = &state.followers_dialog {
+						dlg.update_relationships(&[rel.clone()]);
 					}
+					if let Some(dlg) = &state.following_dialog {
+						dlg.update_relationships(&[rel.clone()]);
+					}
+					let msg = match action {
+						crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
+						crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
+						crate::network::RelationshipAction::CancelFollowRequest => {
+							format!("Canceled follow request to {target_name}")
+						}
+						crate::network::RelationshipAction::AcceptFollowRequest => {
+							format!("Accepted follow request from {target_name}")
+						}
+						crate::network::RelationshipAction::RejectFollowRequest => {
+							format!("Rejected follow request from {target_name}")
+						}
+						crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
+						crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
+						crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),
+						crate::network::RelationshipAction::Unmute => format!("Unmuted {target_name}"),
+						crate::network::RelationshipAction::ShowBoosts => {
+							format!("Showing boosts from {target_name}")
+						}
+						crate::network::RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
+					};
+					live_region::announce(live_region, &msg);
+				}
+				Err(err) => {
+					live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
+				}
+			},
+			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
+				if let Ok(rel) = result
+					&& let Some(dlg) = &state.profile_dialog
+				{
+					dlg.update_relationship(&rel);
 				}
 			}
 			NetworkResponse::AccountFetched { result } => {

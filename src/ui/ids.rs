@@ -1,19 +1,7 @@
-/// Generates sequential i32 constants starting from a base value.
-macro_rules! define_ids {
-	(base = $base:expr; $($name:ident),+ $(,)?) => {
-		define_ids!(@step $base; $($name),+);
-	};
-	(@step $n:expr; $name:ident) => {
-		pub const $name: i32 = $n;
-	};
-	(@step $n:expr; $name:ident, $($rest:ident),+) => {
-		pub const $name: i32 = $n;
-		define_ids!(@step $n + 1; $($rest),+);
-	};
-}
+use wx_utils::seq_ids;
 
-define_ids! {
-	base = 1001;
+seq_ids! {
+	1001 =>
 	// Post actions
 	ID_NEW_POST,
 	ID_REPLY,

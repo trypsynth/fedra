@@ -12,7 +12,7 @@ use crate::{
 	auth,
 	config::{self, Account, AutoloadMode, ContentWarningDisplay, SortOrder},
 	html,
-	mastodon::{Account as MastodonAccount, MastodonClient, Status},
+	mastodon::{MastodonClient, Status},
 	network::{self, ForeignInteraction, NetworkCommand},
 	timeline::{TimelineEntry, TimelineTextOptions, TimelineType},
 	ui::{
@@ -64,21 +64,6 @@ fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
 	min_id_str.or_else(|| entries.last().map(|entry| entry.id().to_string()))
 }
 
-enum AccountTimelineTarget {
-	Direct(TimelineType),
-	Resolve(String),
-}
-
-fn account_timeline_target(is_foreign_context: bool, account: &MastodonAccount) -> AccountTimelineTarget {
-	if is_foreign_context || account.acct.contains('@') {
-		AccountTimelineTarget::Resolve(account.url.clone())
-	} else {
-		AccountTimelineTarget::Direct(TimelineType::User {
-			id: account.id.clone(),
-			name: account.display_name_or_username().to_string(),
-		})
-	}
-}
 
 /// Commands that can be triggered by UI events.
 pub enum UiCommand {
@@ -94,7 +79,6 @@ pub enum UiCommand {
 	Pin,
 	Refresh,
 	OpenTimeline(TimelineType),
-	OpenAccountTimeline(MastodonAccount),
 	OpenUserTimeline,
 	OpenUserTimelineByInput,
 	OpenInstanceTimelineByInput,
@@ -117,8 +101,9 @@ pub enum UiCommand {
 	ViewBoosts,
 	ViewFavorites,
 	HashtagDialogClosed,
-	FollowListDialogClosed(u64),
 	ProfileDialogClosed,
+	FollowersDialogClosed,
+	FollowingDialogClosed,
 	OpenLinks,
 	ViewInBrowser,
 	PlayMedia,
@@ -498,33 +483,6 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				live_region,
 				frame,
 			);
-		}
-		UiCommand::OpenAccountTimeline(account) => {
-			let is_foreign_context = matches!(
-				state.timeline_manager.active().map(|t| &t.timeline_type),
-				Some(TimelineType::InstanceLocal { .. })
-			);
-			match account_timeline_target(is_foreign_context, &account) {
-				AccountTimelineTarget::Direct(timeline_type) => {
-					open_timeline(
-						state,
-						timelines_selector,
-						timeline_list,
-						&timeline_type,
-						suppress_selection,
-						live_region,
-						frame,
-					);
-				}
-				AccountTimelineTarget::Resolve(url) => {
-					state.pending_user_lookup_action = Some(dialogs::UserLookupAction::Timeline);
-					if let Some(net) = &state.network_handle {
-						net.send(NetworkCommand::ResolveAccount { url });
-					} else {
-						live_region::announce(live_region, "Network not available");
-					}
-				}
-			}
 		}
 		UiCommand::CloseTimeline => {
 			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
@@ -1138,6 +1096,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account,
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1230,6 +1189,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account,
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1448,6 +1408,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							let dlg = dialogs::ProfileDialog::new(
 								frame,
 								account,
+								state.current_user_id.as_deref(),
 								net_tx,
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -1524,13 +1485,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::HashtagDialogClosed => {
 			state.hashtag_dialog = None;
 		}
-		UiCommand::FollowListDialogClosed(token) => {
-			if state.follow_list_dialog.as_ref().is_some_and(|d| d.token() == token) {
-				state.follow_list_dialog = None;
-			}
-		}
 		UiCommand::ProfileDialogClosed => {
 			state.profile_dialog = None;
+		}
+		UiCommand::FollowersDialogClosed => {
+			state.followers_dialog = None;
+		}
+		UiCommand::FollowingDialogClosed => {
+			state.following_dialog = None;
 		}
 		UiCommand::OpenLinks => {
 			let Some(status) = get_selected_status(state) else { return };
@@ -1766,6 +1728,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						let dlg = dialogs::ProfileDialog::new(
 							frame,
 							account.clone(),
+							state.current_user_id.as_deref(),
 							net_tx,
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));

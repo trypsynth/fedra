@@ -177,6 +177,10 @@ pub enum NetworkCommand {
 	FetchRelationship {
 		account_id: String,
 	},
+	FetchRelationshipsForList {
+		account_ids: Vec<String>,
+		for_followers: bool,
+	},
 	FetchAccount {
 		account_id: String,
 	},
@@ -192,10 +196,20 @@ pub enum NetworkCommand {
 	FetchFollowers {
 		account_id: String,
 		acct: String,
+		total_count: u64,
 	},
 	FetchFollowing {
 		account_id: String,
 		acct: String,
+		total_count: u64,
+	},
+	FetchNextFollowersPage {
+		account_id: String,
+		max_id: String,
+	},
+	FetchNextFollowingPage {
+		account_id: String,
+		max_id: String,
 	},
 	VotePoll {
 		poll_id: String,
@@ -361,6 +375,10 @@ pub enum NetworkResponse {
 		_account_id: String,
 		result: Result<crate::mastodon::Relationship>,
 	},
+	RelationshipsForListLoaded {
+		results: Vec<crate::mastodon::Relationship>,
+		for_followers: bool,
+	},
 	AccountFetched {
 		result: Result<Account>,
 	},
@@ -377,10 +395,20 @@ pub enum NetworkResponse {
 		result: Result<Vec<Account>>,
 	},
 	FollowersLoaded {
-		result: Result<Vec<Account>>,
+		result: Result<(Vec<Account>, Option<String>)>,
+		total_count: u64,
+		account_id: String,
 	},
 	FollowingLoaded {
-		result: Result<Vec<Account>>,
+		result: Result<(Vec<Account>, Option<String>)>,
+		total_count: u64,
+		account_id: String,
+	},
+	FollowersNextPageLoaded {
+		result: Result<(Vec<Account>, Option<String>)>,
+	},
+	FollowingNextPageLoaded {
+		result: Result<(Vec<Account>, Option<String>)>,
 	},
 	CredentialsFetched {
 		result: Result<Account>,
@@ -944,21 +972,29 @@ fn network_loop(
 				let result = client.get_favourited_by(access_token, &status_id);
 				send_response(responses, ui_waker, NetworkResponse::FavoritedByLoaded { result });
 			}
-			Ok(NetworkCommand::FetchFollowers { account_id, acct }) => {
+			Ok(NetworkCommand::FetchFollowers { account_id, acct, total_count }) => {
 				let result = if acct.contains('@') {
-					client.get_remote_followers(&acct)
+					client.get_remote_followers(&acct).map(|accounts| (accounts, None))
 				} else {
-					client.get_followers(access_token, &account_id)
+					client.get_followers_page(access_token, &account_id, None)
 				};
-				send_response(responses, ui_waker, NetworkResponse::FollowersLoaded { result });
+				send_response(responses, ui_waker, NetworkResponse::FollowersLoaded { result, total_count, account_id });
 			}
-			Ok(NetworkCommand::FetchFollowing { account_id, acct }) => {
+			Ok(NetworkCommand::FetchFollowing { account_id, acct, total_count }) => {
 				let result = if acct.contains('@') {
-					client.get_remote_following(&acct)
+					client.get_remote_following(&acct).map(|accounts| (accounts, None))
 				} else {
-					client.get_following(access_token, &account_id)
+					client.get_following_page(access_token, &account_id, None)
 				};
-				send_response(responses, ui_waker, NetworkResponse::FollowingLoaded { result });
+				send_response(responses, ui_waker, NetworkResponse::FollowingLoaded { result, total_count, account_id });
+			}
+			Ok(NetworkCommand::FetchNextFollowersPage { account_id, max_id }) => {
+				let result = client.get_followers_page(access_token, &account_id, Some(&max_id));
+				send_response(responses, ui_waker, NetworkResponse::FollowersNextPageLoaded { result });
+			}
+			Ok(NetworkCommand::FetchNextFollowingPage { account_id, max_id }) => {
+				let result = client.get_following_page(access_token, &account_id, Some(&max_id));
+				send_response(responses, ui_waker, NetworkResponse::FollowingNextPageLoaded { result });
 			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
 				let result = client.follow_account_with_options(access_token, &account_id, reblogs);
@@ -1093,6 +1129,14 @@ fn network_loop(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipLoaded { _account_id: account_id, result },
+				);
+			}
+			Ok(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers }) => {
+				let results = client.get_relationships(access_token, &account_ids).unwrap_or_default();
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::RelationshipsForListLoaded { results, for_followers },
 				);
 			}
 			Ok(NetworkCommand::FetchAccount { account_id }) => {

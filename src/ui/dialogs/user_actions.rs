@@ -21,15 +21,17 @@ pub(crate) const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 pub(crate) const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
 pub(crate) const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
 
-pub(crate) fn append_relationship_text(text: &mut String, relationship: &Relationship) {
+pub(crate) fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	text.push_str("\r\n\r\nRelationship:\r\n");
-	let follow_status = match (relationship.following, relationship.followed_by) {
-		(true, true) => "You follow each other.",
-		(true, false) => "You follow this person.",
-		(false, true) => "This person follows you.",
-		(false, false) => "You do not follow each other.",
-	};
-	let _ = writeln!(text, "{follow_status}");
+	if !is_own_account {
+		let follow_status = match (relationship.following, relationship.followed_by) {
+			(true, true) => "You follow each other.",
+			(true, false) => "You follow this person.",
+			(false, true) => "This person follows you.",
+			(false, false) => "You do not follow each other.",
+		};
+		let _ = writeln!(text, "{follow_status}");
+	}
 	if relationship.requested {
 		text.push_str("You have requested to follow this person.\r\n");
 	}
@@ -114,12 +116,14 @@ pub(crate) fn setup_actions_button(
 		}
 		if id == ID_ACTION_VIEW_FOLLOWERS {
 			let acct = account.acct.clone();
-			let _ = net_tx.send(NetworkCommand::FetchFollowers { account_id, acct });
+			let total_count = account.followers_count;
+			let _ = net_tx.send(NetworkCommand::FetchFollowers { account_id, acct, total_count });
 			return;
 		}
 		if id == ID_ACTION_VIEW_FOLLOWING {
 			let acct = account.acct.clone();
-			let _ = net_tx.send(NetworkCommand::FetchFollowing { account_id, acct });
+			let total_count = account.following_count;
+			let _ = net_tx.send(NetworkCommand::FetchFollowing { account_id, acct, total_count });
 			return;
 		}
 		let cmd = match id {
