@@ -19,7 +19,7 @@ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["ht
 reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "form", "json", "multipart", "rustls"] }
 scraper = { version = "0.27.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 tungstenite = { version = "0.29.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
 wx-utils = "0.1.1"
