@@ -2,13 +2,12 @@ use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
+use super::user_actions;
 use crate::{
 	mastodon::{Account as MastodonAccount, Mention, Tag},
 	network::NetworkCommand,
 	ui::dialogs::UserLookupAction,
 };
-
-use super::user_actions;
 
 pub struct ProfileDialog {
 	dialog: Dialog,

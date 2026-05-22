@@ -64,7 +64,6 @@ fn paging_max_id(entries: &[TimelineEntry]) -> Option<String> {
 	min_id_str.or_else(|| entries.last().map(|entry| entry.id().to_string()))
 }
 
-
 /// Commands that can be triggered by UI events.
 pub enum UiCommand {
 	NewPost,

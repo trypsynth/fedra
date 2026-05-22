@@ -241,7 +241,6 @@ pub fn process_stream_events(
 	}
 }
 
-
 /// Processes network responses from the background network thread.
 pub struct NetworkResponseContext<'a> {
 	pub frame: &'a Frame,

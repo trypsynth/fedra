@@ -2,12 +2,11 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
+use super::user_actions;
 use crate::{
 	mastodon::{Account, Relationship},
 	network::NetworkCommand,
 };
-
-use super::user_actions;
 
 pub struct FollowListDialog {
 	dialog: Dialog,
@@ -120,8 +119,18 @@ impl FollowListDialog {
 					menu.append(user_actions::ID_ACTION_FOLLOW, "Follow", "", ItemKind::Normal);
 				}
 				if r.requested_by {
-					menu.append(user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST, "Accept Follow Request", "", ItemKind::Normal);
-					menu.append(user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST, "Reject Follow Request", "", ItemKind::Normal);
+					menu.append(
+						user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST,
+						"Accept Follow Request",
+						"",
+						ItemKind::Normal,
+					);
+					menu.append(
+						user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST,
+						"Reject Follow Request",
+						"",
+						ItemKind::Normal,
+					);
 				}
 				if r.muting {
 					menu.append(user_actions::ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
@@ -151,7 +160,8 @@ impl FollowListDialog {
 			let account_id = account.id.clone();
 			let target_name = account.display_name_or_username().to_string();
 			if id == user_actions::ID_ACTION_OPEN_BROWSER {
-				let _ = wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
+				let _ =
+					wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
 				return;
 			}
 			if id == user_actions::ID_ACTION_VIEW_FOLLOWERS {
@@ -196,13 +206,10 @@ impl FollowListDialog {
 					action: crate::network::RelationshipAction::HideBoosts,
 				},
 				user_actions::ID_ACTION_BLOCK => {
-					let confirm = MessageDialog::builder(
-						&panel,
-						"Are you sure you want to block this user?",
-						"Block User",
-					)
-					.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-					.build();
+					let confirm =
+						MessageDialog::builder(&panel, "Are you sure you want to block this user?", "Block User")
+							.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
+							.build();
 					if confirm.show_modal() != ID_YES {
 						return;
 					}
@@ -211,8 +218,12 @@ impl FollowListDialog {
 				user_actions::ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
 				user_actions::ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
 				user_actions::ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
-				user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST => NetworkCommand::AuthorizeFollowRequest { account_id, target_name },
-				user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST => NetworkCommand::RejectFollowRequest { account_id, target_name },
+				user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST => {
+					NetworkCommand::AuthorizeFollowRequest { account_id, target_name }
+				}
+				user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST => {
+					NetworkCommand::RejectFollowRequest { account_id, target_name }
+				}
 				_ => return,
 			};
 			let _ = net_tx.send(cmd);
@@ -298,11 +309,7 @@ impl FollowListDialog {
 
 	fn make_title(base: &str, shown: u64, total: u64, loaded: bool) -> String {
 		if loaded || total == 0 {
-			if shown == total && total > 0 {
-				format!("{base} ({total})")
-			} else {
-				format!("{base} ({shown})")
-			}
+			if shown == total && total > 0 { format!("{base} ({total})") } else { format!("{base} ({shown})") }
 		} else {
 			format!("{base} ({shown} of {total}, loading\u{2026})")
 		}
