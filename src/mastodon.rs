@@ -1559,11 +1559,8 @@ impl MastodonClient {
 			req = req.bearer_auth(token);
 		}
 		let response = req.send()?.error_for_status()?;
-		let next_max_id = response
-			.headers()
-			.get("link")
-			.and_then(|h| h.to_str().ok())
-			.and_then(Self::parse_link_header);
+		let next_max_id =
+			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
 		let accounts: Vec<Account> = response.json()?;
 		Ok((accounts, next_max_id))
 	}
@@ -1616,10 +1613,7 @@ impl MastodonClient {
 	}
 
 	fn resolve_remote_account(&self, acct: &str) -> Result<(Url, String)> {
-		let domain = acct
-			.split('@')
-			.nth(1)
-			.ok_or_else(|| anyhow::anyhow!("Invalid remote acct: {acct}"))?;
+		let domain = acct.split('@').nth(1).ok_or_else(|| anyhow::anyhow!("Invalid remote acct: {acct}"))?;
 		if domain.is_empty() {
 			return Err(anyhow::anyhow!("Invalid remote acct: {acct}"));
 		}

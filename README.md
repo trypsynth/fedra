@@ -8,7 +8,23 @@ For a comprehensive user guide, including a full list of features and hotkeys, p
 
 ## Building
 
-To build, you'll need cargo, as well as CMake and Ninja for building wxDragon. In addition, you also need LLVM, from LLVM.org. 
+To build, you'll need cargo, as well as CMake and Ninja for building wxDragon. In addition, you also need LLVM, from LLVM.org.
+
+### Toolchains
+
+- Stable Rust `1.88.0` is used for builds, tests, and clippy.
+- Nightly Rust is only required for formatting with `cargo +nightly fmt`.
+
+### Native Dependencies
+
+Due to accessibility issues observed in current versions of WX, Fedra expects a local `wxWidgets` checkout and the `WXWIDGETS_DIR` environment variable to point to it.
+
+On PowerShell:
+
+```powershell
+git clone --recurse-submodules https://github.com/wxWidgets/wxWidgets.git
+$env:WXWIDGETS_DIR = "$PWD\\wxWidgets"
+```
 
 ```batch
 cargo build --release
@@ -22,6 +38,29 @@ The following tools aren't required to build a functioning Fedra on a basic leve
 
 * `pandoc` on your `PATH` to generate the HTML readme.
 * InnoSetup installed to create the installer.
+
+## Before Committing
+
+Run the formatter before you commit changes:
+
+```batch
+cargo +nightly fmt
+```
+
+Set up the repository pre-commit hooks from the repo root:
+
+```batch
+cargo install prek
+prek install
+```
+
+Run the same checks that CI expects:
+
+```batch
+cargo +nightly fmt --check
+cargo test
+cargo clippy --release
+```
 
 ## License
 
