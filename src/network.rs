@@ -974,7 +974,11 @@ fn network_loop(
 				} else {
 					client.get_followers_page(access_token, &account_id, None)
 				};
-				send_response(responses, ui_waker, NetworkResponse::FollowersLoaded { result, total_count, account_id });
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::FollowersLoaded { result, total_count, account_id },
+				);
 			}
 			Ok(NetworkCommand::FetchFollowing { account_id, acct, total_count }) => {
 				let result = if acct.contains('@') {
@@ -982,7 +986,11 @@ fn network_loop(
 				} else {
 					client.get_following_page(access_token, &account_id, None)
 				};
-				send_response(responses, ui_waker, NetworkResponse::FollowingLoaded { result, total_count, account_id });
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::FollowingLoaded { result, total_count, account_id },
+				);
 			}
 			Ok(NetworkCommand::FetchNextFollowersPage { account_id, max_id }) => {
 				let result = client.get_followers_page(access_token, &account_id, Some(&max_id));
