@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Write as FmtWrite, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
