@@ -17,7 +17,7 @@ To build, you'll need cargo, as well as CMake and Ninja for building wxDragon. I
 
 ### Native Dependencies
 
-Fedra expects a local `wxWidgets` checkout and the `WXWIDGETS_DIR` environment variable to point to it.
+Due to accessibility issues observed in current versions of WX, Fedra expects a local `wxWidgets` checkout and the `WXWIDGETS_DIR` environment variable to point to it.
 
 On PowerShell:
 
