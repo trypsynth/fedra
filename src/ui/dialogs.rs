@@ -16,6 +16,7 @@ mod post_view;
 mod profile;
 mod profile_edit;
 mod update;
+mod user_actions;
 
 pub use accounts::{ManageAccountsResult, show_manage_accounts_dialog};
 pub use auth::*;

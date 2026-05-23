@@ -861,6 +861,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, "No followers found");
 					continue;
 				}
+				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
+					Some(tx) => tx,
+					None => continue,
+				};
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
@@ -874,6 +878,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					&accounts,
 					total_count,
 					account_id_opt,
+					net_tx_dlg,
 					move |account| {
 						let timeline_type = TimelineType::User {
 							id: account.id.clone(),
@@ -936,6 +941,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					live_region::announce(live_region, "No following found");
 					continue;
 				}
+				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
+					Some(tx) => tx,
+					None => continue,
+				};
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
@@ -949,6 +958,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					&accounts,
 					total_count,
 					account_id_opt,
+					net_tx_dlg,
 					move |account| {
 						let timeline_type = TimelineType::User {
 							id: account.id.clone(),
@@ -1016,6 +1026,12 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				Ok(rel) => {
 					if let Some(dlg) = &state.profile_dialog {
 						dlg.update_relationship(&rel);
+					}
+					if let Some(dlg) = &state.followers_dialog {
+						dlg.update_relationships(&[rel.clone()]);
+					}
+					if let Some(dlg) = &state.following_dialog {
+						dlg.update_relationships(&[rel.clone()]);
 					}
 					let msg = match action {
 						crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),

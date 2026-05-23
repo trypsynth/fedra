@@ -1,8 +1,12 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
-use crate::mastodon::{Account, Relationship};
+use super::user_actions;
+use crate::{
+	mastodon::{Account, Relationship},
+	network::NetworkCommand,
+};
 
 pub struct FollowListDialog {
 	dialog: Dialog,
@@ -24,6 +28,7 @@ impl FollowListDialog {
 		first_page: &[Account],
 		total_count: u64,
 		account_id: Option<String>,
+		net_tx: Sender<NetworkCommand>,
 		on_view_timeline: F,
 		on_close: C,
 	) -> Self
@@ -52,12 +57,14 @@ impl FollowListDialog {
 		}
 
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-		let timeline_button =
-			Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
+		let actions_button = Button::builder(&panel).with_label("Actions...").build();
+		let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
 		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+		button_sizer.add(&actions_button, 0, SizerFlag::Right, 8);
 		button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
 		button_sizer.add_stretch_spacer(1);
 		button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+
 		main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 		main_sizer.add(&account_list, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 		main_sizer.add(&profile_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
@@ -70,11 +77,13 @@ impl FollowListDialog {
 
 		let accounts_rc: Rc<RefCell<Vec<Account>>> = Rc::new(RefCell::new(first_page.to_vec()));
 		let relationships_rc: Rc<RefCell<HashMap<String, Relationship>>> = Rc::new(RefCell::new(HashMap::new()));
+		let current_account_rc: Rc<RefCell<Option<Account>>> = Rc::new(RefCell::new(first_page.first().cloned()));
 
 		let list_sel = account_list;
 		let text_sel = profile_text;
 		let accounts_sel = accounts_rc.clone();
 		let relationships_sel = relationships_rc.clone();
+		let current_account_sel = current_account_rc.clone();
 		list_sel.on_selection_changed(move |_| {
 			let selection = list_sel.get_selection().map(|sel| sel as usize);
 			if let Some(index) = selection
@@ -82,10 +91,142 @@ impl FollowListDialog {
 			{
 				let mut text = account.profile_display();
 				if let Some(rel) = relationships_sel.borrow().get(&account.id) {
-					super::profile::append_relationship_text(&mut text, rel, false);
+					user_actions::append_relationship_text(&mut text, rel, false);
 				}
 				text_sel.set_value(&text);
+				*current_account_sel.borrow_mut() = Some(account.clone());
 			}
+		});
+
+		let relationships_click = relationships_rc.clone();
+		let current_account_click = current_account_rc.clone();
+		actions_button.on_click(move |_| {
+			let current = current_account_click.borrow();
+			let Some(account) = current.as_ref() else { return };
+			let rel = relationships_click.borrow().get(&account.id).cloned();
+			let mut menu = Menu::builder().build();
+			if let Some(r) = &rel {
+				if r.following {
+					menu.append(user_actions::ID_ACTION_UNFOLLOW, "Unfollow", "", ItemKind::Normal);
+					if r.showing_reblogs {
+						menu.append(user_actions::ID_ACTION_HIDE_BOOSTS, "Hide Boosts", "", ItemKind::Normal);
+					} else {
+						menu.append(user_actions::ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
+					}
+				} else if r.requested {
+					menu.append(user_actions::ID_ACTION_UNFOLLOW, "Cancel Follow Request", "", ItemKind::Normal);
+				} else {
+					menu.append(user_actions::ID_ACTION_FOLLOW, "Follow", "", ItemKind::Normal);
+				}
+				if r.requested_by {
+					menu.append(
+						user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST,
+						"Accept Follow Request",
+						"",
+						ItemKind::Normal,
+					);
+					menu.append(
+						user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST,
+						"Reject Follow Request",
+						"",
+						ItemKind::Normal,
+					);
+				}
+				if r.muting {
+					menu.append(user_actions::ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
+				} else {
+					menu.append(user_actions::ID_ACTION_MUTE, "Mute", "", ItemKind::Normal);
+				}
+				if r.blocking {
+					menu.append(user_actions::ID_ACTION_UNBLOCK, "Unblock", "", ItemKind::Normal);
+				} else {
+					menu.append(user_actions::ID_ACTION_BLOCK, "Block", "", ItemKind::Normal);
+				}
+				menu.append_separator();
+			}
+			menu.append(user_actions::ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
+			menu.append_separator();
+			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
+			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
+			panel.popup_menu(&mut menu, None);
+		});
+
+		let relationships_handler = relationships_rc.clone();
+		let current_account_handler = current_account_rc.clone();
+		panel.on_menu_selected(move |event| {
+			let id = event.get_id();
+			let current = current_account_handler.borrow();
+			let Some(account) = current.as_ref() else { return };
+			let account_id = account.id.clone();
+			let target_name = account.display_name_or_username().to_string();
+			if id == user_actions::ID_ACTION_OPEN_BROWSER {
+				let _ =
+					wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
+				return;
+			}
+			if id == user_actions::ID_ACTION_VIEW_FOLLOWERS {
+				let acct = account.acct.clone();
+				let total_count = account.followers_count;
+				let _ = net_tx.send(NetworkCommand::FetchFollowers { account_id, acct, total_count });
+				return;
+			}
+			if id == user_actions::ID_ACTION_VIEW_FOLLOWING {
+				let acct = account.acct.clone();
+				let total_count = account.following_count;
+				let _ = net_tx.send(NetworkCommand::FetchFollowing { account_id, acct, total_count });
+				return;
+			}
+			let rel = relationships_handler.borrow().get(&account_id).cloned();
+			let cmd = match id {
+				user_actions::ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
+					account_id,
+					target_name,
+					reblogs: true,
+					action: crate::network::RelationshipAction::Follow,
+				},
+				user_actions::ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
+					account_id,
+					target_name,
+					action: if rel.as_ref().is_some_and(|r| !r.following && r.requested) {
+						crate::network::RelationshipAction::CancelFollowRequest
+					} else {
+						crate::network::RelationshipAction::Unfollow
+					},
+				},
+				user_actions::ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
+					account_id,
+					target_name,
+					reblogs: true,
+					action: crate::network::RelationshipAction::ShowBoosts,
+				},
+				user_actions::ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
+					account_id,
+					target_name,
+					reblogs: false,
+					action: crate::network::RelationshipAction::HideBoosts,
+				},
+				user_actions::ID_ACTION_BLOCK => {
+					let confirm =
+						MessageDialog::builder(&panel, "Are you sure you want to block this user?", "Block User")
+							.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
+							.build();
+					if confirm.show_modal() != ID_YES {
+						return;
+					}
+					NetworkCommand::BlockAccount { account_id, target_name }
+				}
+				user_actions::ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
+				user_actions::ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
+				user_actions::ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
+				user_actions::ID_ACTION_ACCEPT_FOLLOW_REQUEST => {
+					NetworkCommand::AuthorizeFollowRequest { account_id, target_name }
+				}
+				user_actions::ID_ACTION_REJECT_FOLLOW_REQUEST => {
+					NetworkCommand::RejectFollowRequest { account_id, target_name }
+				}
+				_ => return,
+			};
+			let _ = net_tx.send(cmd);
 		});
 
 		let accounts_btn = accounts_rc.clone();
@@ -138,7 +279,7 @@ impl FollowListDialog {
 			if let Some(account) = accounts.get(sel as usize) {
 				let mut text = account.profile_display();
 				if let Some(rel) = self.relationships.borrow().get(&account.id) {
-					super::profile::append_relationship_text(&mut text, rel, false);
+					user_actions::append_relationship_text(&mut text, rel, false);
 				}
 				self.profile_text.set_value(&text);
 			}
@@ -168,11 +309,7 @@ impl FollowListDialog {
 
 	fn make_title(base: &str, shown: u64, total: u64, loaded: bool) -> String {
 		if loaded || total == 0 {
-			if shown == total && total > 0 {
-				format!("{base} ({total})")
-			} else {
-				format!("{base} ({shown})")
-			}
+			if shown == total && total > 0 { format!("{base} ({total})") } else { format!("{base} ({shown})") }
 		} else {
 			format!("{base} ({shown} of {total}, loading\u{2026})")
 		}

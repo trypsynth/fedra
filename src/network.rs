@@ -11,8 +11,8 @@ use url::Url;
 
 use crate::{
 	mastodon::{
-		Account, Conversation, MastodonClient, Notification, PostSubmission, SearchResults, SearchType, Status,
-		StatusContext,
+		Account, Conversation, MastodonClient, Notification, PostSubmission, Relationship, SearchResults, SearchType,
+		Status, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -642,6 +642,10 @@ fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineDat
 	TimelineData::Statuses(sorted_statuses, None)
 }
 
+fn first_relationship_result(relationships: Vec<Relationship>) -> Result<Relationship> {
+	relationships.into_iter().next().ok_or_else(|| anyhow::anyhow!("Relationship lookup returned no results"))
+}
+
 fn network_loop(
 	client: &MastodonClient,
 	access_token: &str,
@@ -1126,8 +1130,9 @@ fn network_loop(
 				);
 			}
 			Ok(NetworkCommand::FetchRelationship { account_id }) => {
-				let result =
-					client.get_relationships(access_token, slice::from_ref(&account_id)).map(|mut rels| rels.remove(0));
+				let result = client
+					.get_relationships(access_token, slice::from_ref(&account_id))
+					.and_then(first_relationship_result);
 				send_response(
 					responses,
 					ui_waker,
