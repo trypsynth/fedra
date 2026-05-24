@@ -108,13 +108,7 @@ pub fn process_stream_events(
 			.and_then(|id| state.config.accounts.iter().find(|a| a.id == id).and_then(|a| a.user_id.clone()));
 		let current_user_id = current_user_id_string.as_deref();
 		if is_active {
-			let effective_sort_order = if state.config.preserve_thread_order
-				&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
-			{
-				SortOrder::OldestToNewest
-			} else {
-				state.config.sort_order
-			};
+			let effective_sort_order = timeline.effective_sort_order(&state.config);
 			sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 		}
 		for event in events {
@@ -310,13 +304,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				};
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
-						let effective_sort_order = if state.config.preserve_thread_order
-							&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
-						{
-							SortOrder::OldestToNewest
-						} else {
-							state.config.sort_order
-						};
+						let effective_sort_order = timeline.effective_sort_order(&state.config);
 						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
 					let filter_context = timeline_type.filter_context();
@@ -1148,13 +1136,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let text_options = &view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
-						let effective_sort_order = if state.config.preserve_thread_order
-							&& matches!(timeline.timeline_type, TimelineType::Thread { .. })
-						{
-							SortOrder::OldestToNewest
-						} else {
-							state.config.sort_order
-						};
+						let effective_sort_order = timeline.effective_sort_order(&state.config);
 						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 					}
 					let mut new_entries: Vec<TimelineEntry> = Vec::new();

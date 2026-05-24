@@ -292,6 +292,14 @@ pub struct Timeline {
 }
 
 impl Timeline {
+	pub fn effective_sort_order(&self, config: &Config) -> SortOrder {
+		if config.preserve_thread_order && matches!(self.timeline_type, TimelineType::Thread { .. }) {
+			SortOrder::OldestToNewest
+		} else {
+			config.sort_order
+		}
+	}
+
 	pub const fn new(timeline_type: TimelineType) -> Self {
 		Self {
 			timeline_type,
@@ -310,18 +318,13 @@ impl Timeline {
 		}
 	}
 
-	pub fn find_next(&self, start_index: usize, sort_order: SortOrder, preserve_thread_order: bool) -> Option<usize> {
+	pub fn find_next(&self, start_index: usize, config: &Config) -> Option<usize> {
 		let query = self.find_query.as_ref()?;
 		if self.entries.is_empty() {
 			return None;
 		}
 
-		let effective_sort_order = if preserve_thread_order && matches!(self.timeline_type, TimelineType::Thread { .. })
-		{
-			SortOrder::OldestToNewest
-		} else {
-			sort_order
-		};
+		let effective_sort_order = self.effective_sort_order(config);
 		let len = self.entries.len();
 		for visual_index in start_index..len {
 			let entry_index = match effective_sort_order {
@@ -341,20 +344,14 @@ impl Timeline {
 	pub fn find_prev(
 		&self,
 		start_visual_index: usize,
-		sort_order: SortOrder,
-		preserve_thread_order: bool,
+		config: &Config,
 	) -> Option<usize> {
 		let query = self.find_query.as_ref()?;
 		if self.entries.is_empty() {
 			return None;
 		}
 
-		let effective_sort_order = if preserve_thread_order && matches!(self.timeline_type, TimelineType::Thread { .. })
-		{
-			SortOrder::OldestToNewest
-		} else {
-			sort_order
-		};
+		let effective_sort_order = self.effective_sort_order(config);
 
 		let len = self.entries.len();
 

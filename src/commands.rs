@@ -499,6 +499,16 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				handle_ui_command(UiCommand::ApplyPending(Some(0)), ctx);
 			} else if timeline_list.get_selection() != Some(0) {
 				timeline_list.set_selection(0, true);
+				if let Some(active) = state.timeline_manager.active_mut() {
+					let effective_sort_order = if state.config.preserve_thread_order
+						&& matches!(active.timeline_type, TimelineType::Thread { .. })
+					{
+						SortOrder::OldestToNewest
+					} else {
+						state.config.sort_order
+					};
+					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
+				}
 			}
 		}
 		UiCommand::ApplyPending(target_index) => {
@@ -528,6 +538,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						// We want to visually stay exactly where we were, so our new index is current + added_count.
 						timeline_list.set_selection(current.saturating_add(added_count as u32), true);
 					}
+				}
+				if let Some(active) = state.timeline_manager.active_mut() {
+					let effective_sort_order = active.effective_sort_order(&state.config);
+					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 				}
 			} else {
 				handle_ui_command(UiCommand::LoadMore, ctx);
@@ -652,13 +666,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::TimelineSelectionChanged(index) => {
 			if index < state.timeline_manager.len() {
 				if let Some(active) = state.timeline_manager.active_mut() {
-					let effective_sort_order = if state.config.preserve_thread_order
-						&& matches!(active.timeline_type, TimelineType::Thread { .. })
-					{
-						SortOrder::OldestToNewest
-					} else {
-						state.config.sort_order
-					};
+					let effective_sort_order = active.effective_sort_order(&state.config);
 					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 				}
 				state.timeline_manager.set_active(index);
@@ -690,13 +698,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::TimelineEntrySelectionChanged(index) => {
 			if let Some(active) = state.timeline_manager.active_mut() {
-				let effective_sort_order = if state.config.preserve_thread_order
-					&& matches!(active.timeline_type, TimelineType::Thread { .. })
-				{
-					SortOrder::OldestToNewest
-				} else {
-					state.config.sort_order
-				};
+				let effective_sort_order = active.effective_sort_order(&state.config);
 				active.selected_index = Some(index);
 				active.selected_id = list_index_to_entry_index(index, active.entries.len(), effective_sort_order)
 					.map(|entry_index| active.entries[entry_index].id().to_string());
@@ -2078,21 +2080,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::Find(query) => {
 			if let Some(active) = state.timeline_manager.active_mut() {
 				active.find_query = Some(query);
-				if let Some(index) = active.find_next(0, state.config.sort_order, state.config.preserve_thread_order) {
+				if let Some(index) = active.find_next(0, &state.config) {
 					let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 						index,
 						active.entries.len(),
-						state.config.sort_order,
+						active.effective_sort_order(&state.config),
 					);
 					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
-						let effective_sort_order = if state.config.preserve_thread_order
-							&& matches!(active.timeline_type, TimelineType::Thread { .. })
-						{
-							SortOrder::OldestToNewest
-						} else {
-							state.config.sort_order
-						};
+						let effective_sort_order = active.effective_sort_order(&state.config);
 						active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
 							idx,
 							active.entries.len(),
@@ -2111,24 +2107,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				&& active.find_query.is_some()
 			{
 				let start_index = active.selected_index.map_or(0, |i| i + 1);
+				let found_index = if let Some(index) = active.find_next(start_index, &state.config) {
+					Some(index)
+				} else {
+					// wrap around
+					active.find_next(0, &state.config)
+				};
 
-				if let Some(index) =
-					active.find_next(start_index, state.config.sort_order, state.config.preserve_thread_order)
-				{
+				if let Some(index) = found_index {
 					let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 						index,
 						active.entries.len(),
-						state.config.sort_order,
+						active.effective_sort_order(&state.config),
 					);
 					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
-						let effective_sort_order = if state.config.preserve_thread_order
-							&& matches!(active.timeline_type, TimelineType::Thread { .. })
-						{
-							SortOrder::OldestToNewest
-						} else {
-							state.config.sort_order
-						};
+						let effective_sort_order = active.effective_sort_order(&state.config);
 						active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
 							idx,
 							active.entries.len(),
@@ -2142,23 +2136,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				} else {
 					match state.config.find_loading_mode {
 						config::FindLoadingMode::None => {
-							if let Some(index) =
-								active.find_next(0, state.config.sort_order, state.config.preserve_thread_order)
-							{
+							if let Some(index) = active.find_next(0, &state.config) {
 								let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 									index,
 									active.entries.len(),
-									state.config.sort_order,
+									active.effective_sort_order(&state.config),
 								);
 								if let Some(idx) = list_index {
 									active.selected_index = Some(idx);
-									let effective_sort_order = if state.config.preserve_thread_order
-										&& matches!(active.timeline_type, TimelineType::Thread { .. })
-									{
-										SortOrder::OldestToNewest
-									} else {
-										state.config.sort_order
-									};
+									let effective_sort_order = active.effective_sort_order(&state.config);
 									active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
 										idx,
 										active.entries.len(),
@@ -2190,23 +2176,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			{
 				let start_index = active.selected_index.unwrap_or(active.entries.len());
 
-				if let Some(index) =
-					active.find_prev(start_index, state.config.sort_order, state.config.preserve_thread_order)
-				{
+				if let Some(index) = active.find_prev(start_index, &state.config) {
 					let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 						index,
 						active.entries.len(),
-						state.config.sort_order,
+						active.effective_sort_order(&state.config),
 					);
 					if let Some(idx) = list_index {
 						active.selected_index = Some(idx);
-						let effective_sort_order = if state.config.preserve_thread_order
-							&& matches!(active.timeline_type, TimelineType::Thread { .. })
-						{
-							SortOrder::OldestToNewest
-						} else {
-							state.config.sort_order
-						};
+						let effective_sort_order = active.effective_sort_order(&state.config);
 						active.selected_id = crate::ui::timeline_view::list_index_to_entry_index(
 							idx,
 							active.entries.len(),
@@ -2216,25 +2194,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						timeline_list.set_selection(idx as u32, true);
 					}
 				} else {
-					let effective_sort_order = if state.config.preserve_thread_order
-						&& matches!(active.timeline_type, TimelineType::Thread { .. })
-					{
-						SortOrder::OldestToNewest
-					} else {
-						state.config.sort_order
-					};
+					let effective_sort_order = active.effective_sort_order(&state.config);
 
 					match state.config.find_loading_mode {
 						config::FindLoadingMode::None => {
-							if let Some(index) = active.find_prev(
-								active.entries.len(),
-								state.config.sort_order,
-								state.config.preserve_thread_order,
-							) {
+							if let Some(index) = active.find_prev(active.entries.len(), &state.config) {
 								let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 									index,
 									active.entries.len(),
-									state.config.sort_order,
+									active.effective_sort_order(&state.config),
 								);
 								if let Some(idx) = list_index {
 									active.selected_index = Some(idx);
@@ -2258,15 +2226,11 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								live_region::announce(live_region, "Loading more...");
 								handle_ui_command(UiCommand::LoadMore, ctx);
 							} else {
-								if let Some(index) = active.find_prev(
-									active.entries.len(),
-									state.config.sort_order,
-									state.config.preserve_thread_order,
-								) {
+								if let Some(index) = active.find_prev(active.entries.len(), &state.config) {
 									let list_index = crate::ui::timeline_view::entry_index_to_list_index(
 										index,
 										active.entries.len(),
-										state.config.sort_order,
+										active.effective_sort_order(&state.config),
 									);
 									if let Some(idx) = list_index {
 										active.selected_index = Some(idx);
