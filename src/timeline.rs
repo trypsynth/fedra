@@ -341,11 +341,7 @@ impl Timeline {
 		None
 	}
 
-	pub fn find_prev(
-		&self,
-		start_visual_index: usize,
-		config: &Config,
-	) -> Option<usize> {
+	pub fn find_prev(&self, start_visual_index: usize, config: &Config) -> Option<usize> {
 		let query = self.find_query.as_ref()?;
 		if self.entries.is_empty() {
 			return None;

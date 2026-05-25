@@ -192,7 +192,7 @@ pub fn bind_input_handlers(
 			if k == 13 {
 				// Enter
 				if alt {
-					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
+					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
 					event.skip(false);
 					return;
 				}
@@ -202,7 +202,7 @@ pub fn bind_input_handlers(
 					return;
 				}
 				if !ctrl && !alt {
-					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
+					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
 					event.skip(false);
 					return;
 				}

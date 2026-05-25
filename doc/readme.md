@@ -162,9 +162,9 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - `Ctrl+R`: Reply to all mentioned users
 - `Ctrl+Shift+R`: Reply to author only
 - `Ctrl+Q`: Quote selected post
-- `Enter`: Open thread / context (or open selected search result)
+- `Enter`: Open links in selected post
 - `Shift+Enter`: View post details in Fedra
-- `Alt+Enter`: Open links in selected post
+- `Alt+Enter`: Open thread / context (or open selected search result)
 - `Ctrl+I`: Play media attached to selected post
 - `Ctrl+P`: View profile
 - `Alt+F`: Follow/unfollow the post's author
