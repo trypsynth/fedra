@@ -136,10 +136,7 @@ pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 
-	let current_ui_sel = timeline_list.get_selection().map(|s| s as usize);
-	if current_ui_sel != Some(selection) {
-		timeline_list.set_selection(selection as u32, true);
-	}
+	timeline_list.set_selection(selection as u32, true);
 }
 
 pub fn update_active_timeline_ui(
