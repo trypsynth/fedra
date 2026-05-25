@@ -470,6 +470,7 @@ dependencies = [
  "live-region",
  "minijinja",
  "reqwest 0.13.3",
+ "rustls",
  "scraper",
  "serde",
  "serde_json",
