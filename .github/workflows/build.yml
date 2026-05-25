@@ -26,20 +26,35 @@ jobs:
         components: rustfmt, clippy
     - name: Install CMake, Ninja, and Pandoc
       run: |
-        choco install cmake ninja pandoc -y
+        choco install cmake ninja pandoc minisign -y
     - name: Clone wxWidgets
       run: git clone --recurse-submodules https://github.com/wxWidgets/wxWidgets.git
     - name: Build
       run: |
         $env:WXWIDGETS_DIR = "${{ github.workspace }}\wxWidgets"
         cargo release
+    - name: Sign artifacts
+      shell: pwsh
+      env:
+        MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+        MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+      run: |
+        $keyPath = Join-Path $env:RUNNER_TEMP "fedra.key"
+        [IO.File]::WriteAllText($keyPath, $env:MINISIGN_KEY)
+        $pwPath = Join-Path $env:RUNNER_TEMP "fedra.pw"
+        [IO.File]::WriteAllText($pwPath, $env:MINISIGN_PASSWORD)
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_setup.exe
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra.zip
+        Remove-Item $keyPath, $pwPath
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: fedra-build
         path: |
           target/release/fedra.zip
+          target/release/fedra.zip.minisig
           target/release/fedra_setup.exe
+          target/release/fedra_setup.exe.minisig
         retention-days: 30
     - name: Get latest tag reachable from HEAD
       id: get_tag
@@ -71,7 +86,9 @@ jobs:
           ${{ steps.release_notes.outputs.commits }}
         files: |
           target/release/fedra.zip
+          target/release/fedra.zip.minisig
           target/release/fedra_setup.exe
+          target/release/fedra_setup.exe.minisig
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
