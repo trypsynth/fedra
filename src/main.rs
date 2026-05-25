@@ -168,7 +168,6 @@ fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandConte
 }
 
 fn main() {
-	rustls::crypto::ring::default_provider().install_default().ok();
 	panic::set_hook(Box::new(|info| {
 		let log_path = config::config_dir().join("crash.log");
 		if let Ok(mut file) = File::create(&log_path) {
