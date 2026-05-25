@@ -2031,6 +2031,8 @@ dependencies = [
 [[package]]
 name = "ship-shape"
 version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f6e2e1c1f250e150dcd15200e7ecaefb1870be032978b4a4dc892ca1c9695b"
 dependencies = [
  "minisign-verify",
  "pulldown-cmark",
