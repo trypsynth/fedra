@@ -18,6 +18,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
 	Update { timeline_type: TimelineType, status: Box<Status> },
+	StatusUpdate { status: Box<Status> },
 	Delete { timeline_type: TimelineType, id: String },
 	Notification { timeline_type: TimelineType, notification: Box<Notification> },
 	Conversation { timeline_type: TimelineType, conversation: Box<Conversation> },
@@ -205,6 +206,11 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 			let payload = msg.payload?;
 			let status: Status = serde_json::from_str(&payload).ok()?;
 			Some(StreamEvent::Update { timeline_type: timeline_type.clone(), status: Box::new(status) })
+		}
+		"status.update" => {
+			let payload = msg.payload?;
+			let status: Status = serde_json::from_str(&payload).ok()?;
+			Some(StreamEvent::StatusUpdate { status: Box::new(status) })
 		}
 		"delete" => {
 			if *timeline_type == TimelineType::Notifications {

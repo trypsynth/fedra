@@ -125,6 +125,9 @@ pub fn process_stream_events(
 						}
 					}
 				}
+				streaming::StreamEvent::StatusUpdate { status, .. } => {
+					status_snapshots.push((*status).clone());
+				}
 				streaming::StreamEvent::Delete { timeline_type, id } => {
 					if timeline.timeline_type == timeline_type {
 						timeline.entries.retain(|entry| entry.as_status().is_none_or(|s| s.id != id));
