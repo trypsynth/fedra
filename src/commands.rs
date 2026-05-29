@@ -137,6 +137,7 @@ pub enum UiCommand {
 	FindNext,
 	FindPrev,
 	AppClosing,
+	ExitApp,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -2261,6 +2262,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			state.config.saved_selected_post_id = state.timeline_manager.active().and_then(|t| t.selected_id.clone());
 			let _ = config::ConfigStore::new().save(&state.config);
 			ctx.frame.destroy();
+		}
+		UiCommand::ExitApp => {
+			ctx.frame.close(true);
 		}
 	}
 }

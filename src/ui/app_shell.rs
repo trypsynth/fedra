@@ -67,7 +67,7 @@ impl AppShell {
 	}
 }
 
-pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender, hotkey: &HotkeyConfig) -> AppShell {
+pub fn install_app_shell(_frame: &Frame, ui_tx: UiCommandSender, hotkey: &HotkeyConfig) -> AppShell {
 	let mut tray_menu = Menu::builder()
 		.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
 		.append_separator()
@@ -82,13 +82,12 @@ pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender, hotkey: &HotkeyC
 		let _ = taskbar.set_icon(&fallback, "Fedra");
 	}
 	let ui_tx_tray = ui_tx.clone();
-	let frame_tray = *frame;
 	taskbar.on_menu(move |event| match event.get_id() {
 		ID_TRAY_TOGGLE => {
 			let _ = ui_tx_tray.send(UiCommand::ToggleWindowVisibility);
 		}
 		ID_TRAY_EXIT => {
-			frame_tray.close(true);
+			let _ = ui_tx_tray.send(UiCommand::ExitApp);
 		}
 		_ => {}
 	});
