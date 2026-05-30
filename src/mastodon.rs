@@ -75,6 +75,8 @@ pub struct Status {
 	pub application: Option<Application>,
 	pub visibility: String,
 	#[serde(default)]
+	pub sensitive: bool,
+	#[serde(default)]
 	pub pinned: bool,
 	#[serde(deserialize_with = "deserialize_u64_or_zero")]
 	pub reblogs_count: u64,
@@ -336,7 +338,7 @@ impl Status {
 		if !content.is_empty() {
 			out.push_str(&content);
 		}
-		if let Some(media) = self.media_summary() {
+		if let Some(media) = self.media_summary(ContentWarningDisplay::Inline, true) {
 			if !out.is_empty() {
 				out.push(' ');
 			}
@@ -491,7 +493,7 @@ impl Status {
 		let boost_count = count_label(self.reblogs_count, "boost", "boosts");
 		let favorite_count = count_label(self.favourites_count, "favorite", "favorites");
 		let client = self.client_name().unwrap_or_default();
-		let media = self.media_summary().unwrap_or_default();
+		let media = self.media_summary(options.cw_display, cw_expanded).unwrap_or_default();
 		let poll = self.poll_summary().map_or_else(String::new, |p| format!(" {p}"));
 
 		let (quote_author, quote_username, quote_content, quote_media, quote_poll) =
@@ -508,7 +510,10 @@ impl Status {
 					let author = quote.account.timeline_display_name(options.display_name_emoji_mode);
 					let username = format!("@{}", quote.account.acct);
 					let content = quote.content_with_cw(options.cw_display, cw_expanded);
-					let media = quote.media_summary().map(|s| format!(" {s}")).unwrap_or_default();
+					let media = quote
+						.media_summary(options.cw_display, cw_expanded)
+						.map(|s| format!(" {s}"))
+						.unwrap_or_default();
 					let poll = quote.poll_summary().map_or_else(String::new, |p| format!(" {p}"));
 					(author, username, content, media, poll)
 				},
@@ -578,7 +583,7 @@ impl Status {
 			.map(std::string::ToString::to_string)
 	}
 
-	fn media_summary(&self) -> Option<String> {
+	fn media_summary(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> Option<String> {
 		if self.media_attachments.is_empty() {
 			return None;
 		}
@@ -607,7 +612,21 @@ impl Status {
 		if !alt_texts.is_empty() {
 			let _ = write!(summary, " [{alt_texts}]");
 		}
-		Some(summary)
+		if self.sensitive {
+			match cw_display {
+				ContentWarningDisplay::Inline => Some(format!("Sensitive media - {summary}")),
+				ContentWarningDisplay::Hidden => Some(format!("{summary} (marked as sensitive)")),
+				ContentWarningDisplay::WarningOnly => {
+					if cw_expanded {
+						Some(format!("{summary} (marked as sensitive)"))
+					} else {
+						Some(format!("{count} sensitive media"))
+					}
+				}
+			}
+		} else {
+			Some(summary)
+		}
 	}
 
 	fn poll_summary(&self) -> Option<String> {
@@ -1007,6 +1026,7 @@ impl MastodonClient {
 		access_token: &str,
 		status: &str,
 		visibility: &str,
+		sensitive: bool,
 		spoiler_text: Option<&str>,
 		media_ids: &[String],
 		content_type: Option<&str>,
@@ -1019,6 +1039,7 @@ impl MastodonClient {
 		let url = self.base_url.join("api/v1/statuses")?;
 		let mut params =
 			vec![("status".to_string(), status.to_string()), ("visibility".to_string(), visibility.to_string())];
+		params.push(("sensitive".to_string(), sensitive.to_string()));
 		if let Some(spoiler) = spoiler_text
 			&& !spoiler.trim().is_empty()
 		{
@@ -1917,6 +1938,7 @@ impl MastodonClient {
 		access_token: &str,
 		status_id: &str,
 		status: &str,
+		sensitive: bool,
 		spoiler_text: Option<&str>,
 		language: Option<&str>,
 		media_ids: &[String],
@@ -1924,6 +1946,7 @@ impl MastodonClient {
 	) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
 		let mut params = vec![("status".to_string(), status.to_string())];
+		params.push(("sensitive".to_string(), sensitive.to_string()));
 		if let Some(spoiler) = spoiler_text {
 			params.push(("spoiler_text".to_string(), spoiler.to_string()));
 		}

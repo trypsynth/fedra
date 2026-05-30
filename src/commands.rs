@@ -30,6 +30,7 @@ fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: Option<Strin
 	network::PostData {
 		content: post.content,
 		visibility: post.visibility.as_api_str().to_string(),
+		sensitive: post.sensitive,
 		spoiler_text: post.spoiler_text,
 		content_type: post.content_type,
 		language: post.language,
@@ -246,6 +247,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					in_reply_to_id: status.id.clone(),
 					content: post_data.content,
 					visibility: post_data.visibility,
+					sensitive: post_data.sensitive,
 					spoiler_text: post_data.spoiler_text,
 					content_type: post_data.content_type,
 					language: post_data.language,
@@ -298,6 +300,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					in_reply_to_id: target.id.clone(),
 					content: post_data.content,
 					visibility: post_data.visibility,
+					sensitive: post_data.sensitive,
 					spoiler_text: post_data.spoiler_text,
 					content_type: post_data.content_type,
 					language: post_data.language,
@@ -422,6 +425,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				handle.send(NetworkCommand::EditStatus {
 					status_id: target.id.clone(),
 					content: edit.content,
+					sensitive: edit.sensitive,
 					spoiler_text: edit.spoiler_text,
 					language: edit.language,
 					media,

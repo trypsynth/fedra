@@ -46,6 +46,7 @@ impl PostVisibility {
 pub struct PostResult {
 	pub content: String,
 	pub visibility: PostVisibility,
+	pub sensitive: bool,
 	pub spoiler_text: Option<String>,
 	pub content_type: Option<String>,
 	pub language: Option<String>,
@@ -76,6 +77,7 @@ struct ComposeDialogConfig {
 	ok_label: String,
 	initial_content: String,
 	initial_cw: Option<String>,
+	initial_sensitive: bool,
 	initial_language: Option<String>,
 	default_visibility: PostVisibility,
 	can_change_visibility: bool,
@@ -375,7 +377,11 @@ fn prompt_for_poll(
 	}))
 }
 
-fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Vec<PostMedia>> {
+fn prompt_for_media(
+	parent: &dyn WxWidget,
+	initial: Vec<PostMedia>,
+	initial_sensitive: bool,
+) -> Option<(Vec<PostMedia>, bool)> {
 	let dialog = Dialog::builder(parent, "Manage Media").with_size(520, 360).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -383,6 +389,8 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	let media_list = ListBox::builder(&panel).build();
 	let add_button = Button::builder(&panel).with_label("Add...").build();
 	let remove_button = Button::builder(&panel).with_label("Remove").build();
+	let sensitive_checkbox = CheckBox::builder(&panel).with_label("Mark media as sensitive").build();
+	sensitive_checkbox.set_value(initial_sensitive);
 	let desc_label = StaticText::builder(&panel).with_label("Description for selected media:").build();
 	let desc_text = TextCtrl::builder(&panel).build();
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -400,6 +408,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	buttons_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add_sizer(&list_sizer, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&sensitive_checkbox, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&desc_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&desc_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -543,7 +552,7 @@ fn prompt_for_media(parent: &dyn WxWidget, initial: Vec<PostMedia>) -> Option<Ve
 	if result != ID_OK {
 		return None;
 	}
-	Some(items.borrow().clone())
+	Some((items.borrow().clone(), sensitive_checkbox.get_value()))
 }
 
 pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &str) -> Option<Vec<usize>> {
@@ -904,12 +913,16 @@ fn prompt_for_compose(
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial_media));
+	let sensitive_state: Rc<RefCell<bool>> = Rc::new(RefCell::new(config.initial_sensitive));
 	let media_items_manage = media_items.clone();
+	let sensitive_state_manage = sensitive_state.clone();
 	let media_parent = dialog;
 	media_button.on_click(move |_| {
 		let current = media_items_manage.borrow().clone();
-		if let Some(updated) = prompt_for_media(&media_parent, current) {
+		let current_sensitive = *sensitive_state_manage.borrow();
+		if let Some((updated, updated_sensitive)) = prompt_for_media(&media_parent, current, current_sensitive) {
 			*media_items_manage.borrow_mut() = updated;
+			*sensitive_state_manage.borrow_mut() = updated_sensitive;
 		}
 	});
 	let poll_state: Rc<RefCell<Option<PostPoll>>> = Rc::new(RefCell::new(initial_poll));
@@ -1069,6 +1082,7 @@ fn prompt_for_compose(
 	Some(PostResult {
 		content: trimmed.to_string(),
 		visibility,
+		sensitive: *sensitive_state.borrow(),
 		spoiler_text,
 		content_type,
 		language,
@@ -1096,6 +1110,7 @@ pub fn prompt_for_post(
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),
 			initial_cw: None,
+			initial_sensitive: false,
 			initial_language: None,
 			default_visibility: default_visibility.unwrap_or(PostVisibility::Public),
 			can_change_visibility: true,
@@ -1162,6 +1177,7 @@ pub fn prompt_for_reply(
 			ok_label: "Post".to_string(),
 			initial_content: mention,
 			initial_cw,
+			initial_sensitive: false,
 			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,
@@ -1211,6 +1227,7 @@ pub fn prompt_for_edit(
 			ok_label: "Save".to_string(),
 			initial_content: status.display_text(),
 			initial_cw,
+			initial_sensitive: status.sensitive,
 			initial_language: status.language.clone(),
 			default_visibility,
 			can_change_visibility: false,
@@ -1250,6 +1267,7 @@ pub fn prompt_for_quote(
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),
 			initial_cw: None,
+			initial_sensitive: false,
 			initial_language: None,
 			default_visibility,
 			can_change_visibility: true,

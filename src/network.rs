@@ -37,6 +37,7 @@ pub enum RelationshipAction {
 pub struct PostData {
 	pub content: String,
 	pub visibility: String,
+	pub sensitive: bool,
 	pub spoiler_text: Option<String>,
 	pub content_type: Option<String>,
 	pub language: Option<String>,
@@ -121,6 +122,7 @@ pub enum NetworkCommand {
 		in_reply_to_id: String,
 		content: String,
 		visibility: String,
+		sensitive: bool,
 		spoiler_text: Option<String>,
 		content_type: Option<String>,
 		language: Option<String>,
@@ -221,6 +223,7 @@ pub enum NetworkCommand {
 	EditStatus {
 		status_id: String,
 		content: String,
+		sensitive: bool,
 		spoiler_text: Option<String>,
 		language: Option<String>,
 		media: Vec<EditMedia>,
@@ -466,6 +469,7 @@ fn post_with_media(
 	access_token: &str,
 	content: &str,
 	visibility: &str,
+	sensitive: bool,
 	spoiler_text: Option<&str>,
 	content_type: Option<&str>,
 	language: Option<&str>,
@@ -493,6 +497,7 @@ fn post_with_media(
 		access_token,
 		content,
 		visibility,
+		sensitive,
 		spoiler_text,
 		&media_ids,
 		content_type,
@@ -509,6 +514,7 @@ fn edit_with_media(
 	access_token: &str,
 	status_id: &str,
 	content: &str,
+	sensitive: bool,
 	spoiler_text: Option<&str>,
 	language: Option<&str>,
 	media: Vec<EditMedia>,
@@ -533,7 +539,7 @@ fn edit_with_media(
 	if let Some(err) = upload_failed {
 		return Err(err);
 	}
-	client.edit_status(access_token, status_id, content, spoiler_text, language, &media_ids, poll)
+	client.edit_status(access_token, status_id, content, sensitive, spoiler_text, language, &media_ids, poll)
 }
 
 pub struct NetworkHandle {
@@ -829,6 +835,7 @@ fn network_loop(
 								access_token,
 								&post.content,
 								&post.visibility,
+								post.sensitive,
 								post.spoiler_text.as_deref(),
 								post.content_type.as_deref(),
 								post.language.as_deref(),
@@ -859,6 +866,7 @@ fn network_loop(
 					access_token,
 					&post.content,
 					&post.visibility,
+					post.sensitive,
 					post.spoiler_text.as_deref(),
 					post.content_type.as_deref(),
 					post.language.as_deref(),
@@ -870,12 +878,13 @@ fn network_loop(
 				);
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
 			}
-			Ok(NetworkCommand::EditStatus { status_id, content, spoiler_text, language, media, poll }) => {
+			Ok(NetworkCommand::EditStatus { status_id, content, sensitive, spoiler_text, language, media, poll }) => {
 				let result = edit_with_media(
 					client,
 					access_token,
 					&status_id,
 					&content,
+					sensitive,
 					spoiler_text.as_deref(),
 					language.as_deref(),
 					media,
@@ -923,6 +932,7 @@ fn network_loop(
 				in_reply_to_id,
 				content,
 				visibility,
+				sensitive,
 				spoiler_text,
 				content_type,
 				language,
@@ -935,6 +945,7 @@ fn network_loop(
 					access_token,
 					&content,
 					&visibility,
+					sensitive,
 					spoiler_text.as_deref(),
 					content_type.as_deref(),
 					language.as_deref(),
