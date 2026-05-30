@@ -6,6 +6,64 @@ use wxdragon::{
 
 use crate::{ID_BOOST, ID_FAVORITE, ID_REPLY, UiCommand, mastodon::Status};
 
+fn strip_quote_html(html: &str) -> String {
+	if let Some(start) = html.find("<span class=\"quote-inline\">") {
+		if let Some(end) = html[start..].find("</span>") {
+			let mut cleaned = String::new();
+			cleaned.push_str(&html[..start]);
+			cleaned.push_str(&html[start + end + 7..]);
+			return cleaned;
+		}
+	}
+
+	let mut start_idx = 0;
+	if html.starts_with("<p>") {
+		start_idx = 3;
+	}
+
+	if let Some(re_idx) = html[start_idx..].find("RE: ") {
+		if re_idx < 30 {
+			let actual_re_idx = start_idx + re_idx;
+			let mut end_cut = actual_re_idx;
+
+			if let Some(a_idx) = html[actual_re_idx..].find("</a>") {
+				end_cut = actual_re_idx + a_idx + 4;
+			} else if let Some(br_idx) = html[actual_re_idx..].find("<br") {
+				end_cut = actual_re_idx + br_idx;
+			} else if let Some(p_idx) = html[actual_re_idx..].find("</p>") {
+				end_cut = actual_re_idx + p_idx;
+			}
+
+			let remainder = &html[end_cut..];
+			let mut rest = remainder.trim_start();
+
+			if let Some(stripped) = rest.strip_prefix("</span>") {
+				rest = stripped.trim_start();
+			}
+
+			if let Some(stripped) =
+				rest.strip_prefix("<br>").or_else(|| rest.strip_prefix("<br />")).or_else(|| rest.strip_prefix("<br/>"))
+			{
+				rest = stripped.trim_start();
+			} else if let Some(stripped) = rest.strip_prefix("</p>") {
+				rest = stripped.trim_start();
+			}
+
+			let prefix = &html[..actual_re_idx];
+			if prefix == "<p>" {
+				if rest.starts_with("<p>") {
+					return rest.to_string();
+				} else {
+					return format!("<p>{}", rest);
+				}
+			} else {
+				return format!("{}{}", prefix, rest);
+			}
+		}
+	}
+	html.to_string()
+}
+
 pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiCommand> {
 	let title = format!("Post by {}", status.account.display_name_or_username());
 	let dialog = Dialog::builder(parent, &title).with_size(600, 500).build();
@@ -24,11 +82,32 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		}
 	});
 
-	let content = if status.spoiler_text.is_empty() {
+	let mut content = if status.spoiler_text.is_empty() {
 		status.content.clone()
 	} else {
 		format!("<p><strong>Content Warning: {}</strong></p><hr>{}", status.spoiler_text, status.content)
 	};
+
+	if let Some(quote) = status.quote.as_ref().and_then(|q| q.quoted_status.as_ref()) {
+		content = strip_quote_html(&content);
+
+		let quote_author = quote.account.display_name_or_username();
+		let quote_acct = &quote.account.acct;
+		let quote_content = if quote.spoiler_text.is_empty() {
+			quote.content.clone()
+		} else {
+			format!("<p><strong>Content Warning: {}</strong></p><hr>{}", quote.spoiler_text, quote.content)
+		};
+
+		content = format!(
+			"{}
+			<blockquote style=\"border-left: 4px solid #ccc; margin-left: 0; padding-left: 10px; color: #555;\">
+				<strong>{} <small>({})</small></strong>
+				{}
+			</blockquote>",
+			content, quote_author, quote_acct, quote_content
+		);
+	}
 
 	let html = format!(
 		"<html>
