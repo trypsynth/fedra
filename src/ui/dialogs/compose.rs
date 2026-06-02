@@ -872,7 +872,8 @@ fn prompt_for_compose(
 	}
 	thread_checkbox.set_value(config.initial_thread_mode);
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(&ok_label).build();
+	const ID_CUSTOM_SUBMIT: i32 = 26001;
+	let ok_button = Button::builder(&panel).with_id(ID_CUSTOM_SUBMIT).with_label(&ok_label).build();
 	if enter_to_send {
 		ok_button.set_default();
 	}
@@ -1021,6 +1022,26 @@ fn prompt_for_compose(
 	if config.show_schedule_controls {
 		schedule_button.set_label(&schedule_button_label(scheduled_state.borrow().as_deref()));
 	}
+	let dialog_ok = dialog;
+	let content_text_ok = content_text;
+	let title_prefix_ok = title_prefix.clone();
+	ok_button.on_click(move |_| {
+		let content = content_text_ok.get_value();
+		let char_count = content.trim().chars().count();
+		if char_count > max_chars {
+			show_warning_widget(
+				&dialog_ok,
+				&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
+				&title_prefix_ok,
+			);
+		} else {
+			dialog_ok.end_modal(ID_OK);
+		}
+	});
+
+	let dialog_enter = dialog;
+	let content_text_enter = content_text;
+	let title_prefix_enter = title_prefix.clone();
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			let key = key_event.get_key_code();
@@ -1033,7 +1054,17 @@ fn prompt_for_compose(
 			};
 
 			if should_submit {
-				dialog.end_modal(ID_OK);
+				let content = content_text_enter.get_value();
+				let char_count = content.trim().chars().count();
+				if char_count > max_chars {
+					show_warning_widget(
+						&dialog_enter,
+						&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
+						&title_prefix_enter,
+					);
+				} else {
+					dialog_enter.end_modal(ID_OK);
+				}
 				event.skip(false);
 			} else {
 				event.skip(true);
@@ -1053,15 +1084,6 @@ fn prompt_for_compose(
 	}
 	let content = content_text.get_value();
 	let trimmed = content.trim();
-	let char_count = trimmed.chars().count();
-	if char_count > max_chars {
-		show_warning_widget(
-			frame,
-			&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
-			&title_prefix,
-		);
-		return None;
-	}
 	let visibility_idx = visibility_choice.get_selection().unwrap_or(0) as usize;
 	let visibility = PostVisibility::all().get(visibility_idx).copied().unwrap_or(PostVisibility::Public);
 	let spoiler_text = if cw_checkbox.get_value() {
