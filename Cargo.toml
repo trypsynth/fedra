@@ -9,7 +9,7 @@ members = ["xtask"]
 
 [dependencies]
 anyhow = "1.0.102"
-chrono = { version = "0.4.44", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 chrono-humanize = "0.2.3"
 clearurls = "0.0.4"
 ego-tree = "0.11.0"
