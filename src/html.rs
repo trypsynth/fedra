@@ -123,8 +123,9 @@ pub fn extract_mention_links(html: &str) -> Vec<(String, String)> {
 	let selector = scraper::Selector::parse("a").unwrap();
 	for element in fragment.select(&selector) {
 		let Some(href) = element.value().attr("href") else { continue };
-		let is_mention =
-			element.value().attr("class").is_some_and(|class| class.split_whitespace().any(|c| c == "mention"));
+		let class_attr = element.value().attr("class").unwrap_or("");
+		let is_mention = class_attr.split_whitespace().any(|c| c == "mention")
+			&& !class_attr.split_whitespace().any(|c| c == "hashtag");
 		if !is_mention {
 			continue;
 		}
