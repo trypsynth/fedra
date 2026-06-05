@@ -43,6 +43,7 @@ impl PostVisibility {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct PostResult {
 	pub content: String,
 	pub visibility: PostVisibility,
@@ -72,19 +73,20 @@ pub struct PostPoll {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-struct ComposeDialogConfig {
-	title_prefix: String,
-	ok_label: String,
-	initial_content: String,
-	initial_cw: Option<String>,
-	initial_sensitive: bool,
-	initial_language: Option<String>,
-	default_visibility: PostVisibility,
-	can_change_visibility: bool,
-	show_schedule_controls: bool,
-	show_thread_checkbox: bool,
-	initial_thread_mode: bool,
-	quoted_text: Option<String>,
+#[derive(Debug, Clone)]
+pub struct ComposeDialogConfig {
+	pub title_prefix: String,
+	pub ok_label: String,
+	pub initial_content: String,
+	pub initial_cw: Option<String>,
+	pub initial_sensitive: bool,
+	pub initial_language: Option<String>,
+	pub default_visibility: PostVisibility,
+	pub can_change_visibility: bool,
+	pub show_schedule_controls: bool,
+	pub show_thread_checkbox: bool,
+	pub initial_thread_mode: bool,
+	pub quoted_text: Option<String>,
 }
 
 const fn visibility_index(visibility: PostVisibility) -> usize {
@@ -773,7 +775,7 @@ fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<O
 	Some(Some(scheduled_utc.to_rfc3339_opts(SecondsFormat::Secs, true)))
 }
 
-fn prompt_for_compose(
+pub fn prompt_for_compose(
 	frame: &Frame,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
@@ -781,19 +783,19 @@ fn prompt_for_compose(
 	config: ComposeDialogConfig,
 	initial_media: Vec<PostMedia>,
 	initial_poll: Option<PostPoll>,
-) -> Option<PostResult> {
+) -> Option<(PostResult, ComposeDialogConfig)> {
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
-	let title_prefix = config.title_prefix;
-	let ok_label = config.ok_label;
-	let initial_content = config.initial_content;
-	let initial_cw = config.initial_cw;
+	let title_prefix = config.title_prefix.clone();
+	let ok_label = config.ok_label.clone();
+	let initial_content = config.initial_content.clone();
+	let initial_cw = config.initial_cw.clone();
 	let default_visibility = config.default_visibility;
 	let dialog =
 		Dialog::builder(frame, &format!("{title_prefix} - 0 of {max_chars} characters")).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
-	if let Some(quoted_text) = config.quoted_text {
+	if let Some(quoted_text) = config.quoted_text.clone() {
 		let label = if title_prefix.starts_with("Quote ") {
 			format!("Quoting from {}:", title_prefix.trim_start_matches("Quote "))
 		} else {
@@ -1101,18 +1103,21 @@ fn prompt_for_compose(
 	if trimmed.is_empty() && media.is_empty() && poll.is_none() {
 		return None;
 	}
-	Some(PostResult {
-		content: trimmed.to_string(),
-		visibility,
-		sensitive: *sensitive_state.borrow(),
-		spoiler_text,
-		content_type,
-		language,
-		media,
-		poll,
-		scheduled_at: scheduled_state.borrow().clone(),
-		continue_thread: thread_checkbox.get_value(),
-	})
+	Some((
+		PostResult {
+			content: trimmed.to_string(),
+			visibility,
+			sensitive: *sensitive_state.borrow(),
+			spoiler_text,
+			content_type,
+			language,
+			media,
+			poll,
+			scheduled_at: scheduled_state.borrow().clone(),
+			continue_thread: thread_checkbox.get_value(),
+		},
+		config,
+	))
 }
 
 pub fn prompt_for_post(
@@ -1121,7 +1126,7 @@ pub fn prompt_for_post(
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
 	default_visibility: Option<PostVisibility>,
-) -> Option<PostResult> {
+) -> Option<(PostResult, ComposeDialogConfig)> {
 	prompt_for_compose(
 		frame,
 		max_chars,
@@ -1155,7 +1160,7 @@ pub fn prompt_for_reply(
 	self_acct: Option<&str>,
 	enter_to_send: bool,
 	initial_thread_mode: bool,
-) -> Option<PostResult> {
+) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = replying_to.account.display_name_or_username();
 	let mention = if reply_all {
 		let mut accts = Vec::new();
@@ -1219,7 +1224,7 @@ pub fn prompt_for_edit(
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
-) -> Option<PostResult> {
+) -> Option<(PostResult, ComposeDialogConfig)> {
 	let default_visibility = match status.visibility.as_str() {
 		"unlisted" => PostVisibility::Unlisted,
 		"private" => PostVisibility::Private,
@@ -1269,7 +1274,7 @@ pub fn prompt_for_quote(
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
-) -> Option<PostResult> {
+) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = quoting.account.display_name_or_username();
 	let default_visibility = match quoting.visibility.as_str() {
 		"unlisted" => PostVisibility::Unlisted,

@@ -70,6 +70,19 @@ pub struct ContextMenuState {
 	pub quick_action_keys: bool,
 }
 
+pub(crate) enum PostOperation {
+	NewPost,
+	Reply { in_reply_to_id: String },
+	Edit { status_id: String },
+	Quote { quoted_status_id: String },
+}
+
+pub(crate) struct PendingPost {
+	pub config: ui::dialogs::ComposeDialogConfig,
+	pub operation: PostOperation,
+	pub last_result: ui::dialogs::PostResult,
+}
+
 pub(crate) struct AppState {
 	pub(crate) config: Config,
 	pub(crate) timeline_manager: TimelineManager,
@@ -98,6 +111,7 @@ pub(crate) struct AppState {
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
 	pub(crate) pending_restore_post_id: Option<(crate::timeline::TimelineType, String)>,
+	pub(crate) pending_post: Option<PendingPost>,
 }
 
 impl AppState {
@@ -130,6 +144,7 @@ impl AppState {
 			_instance_checker: instance_checker,
 			pending_thread_continuation: false,
 			pending_restore_post_id: None,
+			pending_post: None,
 		}
 	}
 

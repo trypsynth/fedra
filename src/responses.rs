@@ -533,6 +533,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				);
 			}
 			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Published(status))) => {
+				state.pending_post = None;
 				live_region::announce(live_region, "Posted");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
@@ -540,6 +541,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
+				state.pending_post = None;
 				state.pending_thread_continuation = false;
 				live_region::announce(
 					live_region,
@@ -549,6 +551,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::PostComplete(Err(ref err)) => {
 				state.pending_thread_continuation = false;
 				live_region::announce(live_region, &spoken_failure("Failed to post", err));
+				dispatch_ui_command!(UiCommand::RecoverDraft);
 			}
 			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
