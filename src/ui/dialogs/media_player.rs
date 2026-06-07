@@ -14,7 +14,11 @@ use wxdragon::{prelude::*, widgets::media_ctrl::SeekMode};
 
 thread_local! {
 	static ACTIVE_PROGRESS: RefCell<Option<ProgressDialog>> = const { RefCell::new(None) };
+	static ACTIVE_MEDIA_FRAMES: RefCell<std::collections::HashMap<usize, Frame>> = RefCell::new(std::collections::HashMap::new());
+	static ACTIVE_MEDIA_CTRLS: RefCell<std::collections::HashMap<usize, wxdragon::widgets::MediaCtrl>> = RefCell::new(std::collections::HashMap::new());
 }
+
+static DOWNLOAD_TASK_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Option<String>) {
 	const ID_MEDIA_CTRL: i32 = 10000;
@@ -140,6 +144,11 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 						let d_total = total;
 						let d_is_running = is_running;
 						let d_cancelled = cancelled;
+
+						let task_id = DOWNLOAD_TASK_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+						ACTIVE_MEDIA_FRAMES.with(|f| f.borrow_mut().insert(task_id, frm.clone()));
+						ACTIVE_MEDIA_CTRLS.with(|c| c.borrow_mut().insert(task_id, mc.clone()));
+
 						thread::spawn(move || {
 							let result: anyhow::Result<()> = (|| {
 								let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
@@ -172,38 +181,50 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 							match result {
 								Ok(()) => {
 									wxdragon::call_after(Box::new(move || {
-										if let Some(top_win) =
-											wxdragon::get_app_instance().and_then(|a| a.get_top_window())
-										{
-											let dlg = MessageDialog::builder(&top_win, "Download complete.", "Fedra")
-												.with_style(
-													MessageDialogStyle::OK | MessageDialogStyle::IconInformation,
-												)
-												.build();
-											dlg.show_modal();
-											dlg.destroy();
-											if let Some(mc_win) = top_win.find_window_by_id(ID_MEDIA_CTRL) {
-												mc_win.set_focus();
+										let cb_frm = ACTIVE_MEDIA_FRAMES.with(|f| f.borrow_mut().remove(&task_id));
+										let cb_mc = ACTIVE_MEDIA_CTRLS.with(|c| c.borrow_mut().remove(&task_id));
+										if let (Some(frm), Some(mc)) = (cb_frm, cb_mc) {
+											if frm.is_valid() {
+												let dlg = MessageDialog::builder(&frm, "Download complete.", "Fedra")
+													.with_style(
+														MessageDialogStyle::OK | MessageDialogStyle::IconInformation,
+													)
+													.build();
+												dlg.show_modal();
+												dlg.destroy();
+												wxdragon::call_after(Box::new(move || {
+													if mc.is_valid() {
+														mc.set_focus();
+													}
+												}));
 											}
 										}
 									}));
 								}
 								Err(e) if e.to_string() == "Download cancelled" => {
 									let _ = std::fs::remove_file(&path);
+									wxdragon::call_after(Box::new(move || {
+										ACTIVE_MEDIA_FRAMES.with(|f| f.borrow_mut().remove(&task_id));
+										ACTIVE_MEDIA_CTRLS.with(|c| c.borrow_mut().remove(&task_id));
+									}));
 								}
 								Err(e) => {
 									let msg = format!("Failed to download media: {e}");
 									wxdragon::call_after(Box::new(move || {
-										if let Some(top_win) =
-											wxdragon::get_app_instance().and_then(|a| a.get_top_window())
-										{
-											let dlg = MessageDialog::builder(&top_win, &msg, "Fedra")
-												.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-												.build();
-											dlg.show_modal();
-											dlg.destroy();
-											if let Some(mc_win) = top_win.find_window_by_id(ID_MEDIA_CTRL) {
-												mc_win.set_focus();
+										let cb_frm = ACTIVE_MEDIA_FRAMES.with(|f| f.borrow_mut().remove(&task_id));
+										let cb_mc = ACTIVE_MEDIA_CTRLS.with(|c| c.borrow_mut().remove(&task_id));
+										if let (Some(frm), Some(mc)) = (cb_frm, cb_mc) {
+											if frm.is_valid() {
+												let dlg = MessageDialog::builder(&frm, &msg, "Fedra")
+													.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+													.build();
+												dlg.show_modal();
+												dlg.destroy();
+												wxdragon::call_after(Box::new(move || {
+													if mc.is_valid() {
+														mc.set_focus();
+													}
+												}));
 											}
 										}
 									}));
