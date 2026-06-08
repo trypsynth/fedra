@@ -1836,6 +1836,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 
 					let name = format!("Thread: {}", target.account.display_name_or_username());
 					let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
+					state.pending_restore_post_id = Some((timeline_type.clone(), target.id.clone()));
 					open_timeline(
 						state,
 						timelines_selector,
@@ -1856,6 +1857,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ViewResolvedThread(focus) => {
 			let name = format!("Thread: {}", focus.account.display_name_or_username());
 			let timeline_type = TimelineType::Thread { id: focus.id.clone(), name };
+			state.pending_restore_post_id = Some((timeline_type.clone(), focus.id.clone()));
 			open_timeline(
 				state,
 				timelines_selector,
@@ -1891,6 +1893,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			);
 
 			if let Some((timeline_type, focus_status)) = quoted_info {
+				state.pending_restore_post_id = Some((timeline_type.clone(), focus_status.id.clone()));
 				open_timeline(
 					state,
 					timelines_selector,
