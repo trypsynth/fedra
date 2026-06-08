@@ -32,7 +32,8 @@ struct TimelineActivationHandler {
 impl ActivationHandler for TimelineActivationHandler {
 	fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
 		let state = self.state.borrow();
-		let mut root = Node::new(Role::List);
+		let mut root = Node::new(Role::ListBox);
+		root.set_size_of_set(state.entries.len());
 		let mut children = Vec::with_capacity(state.entries.len());
 		let mut nodes = Vec::with_capacity(state.entries.len() + 1);
 		let focus_id = if let Some(idx) = state.selected_index {
@@ -40,11 +41,12 @@ impl ActivationHandler for TimelineActivationHandler {
 		} else {
 			state.entries.first().map(|(id, _)| *id).unwrap_or(ROOT_ID)
 		};
-		for (id, text) in &state.entries {
+		for (i, (id, text)) in state.entries.iter().enumerate() {
 			children.push(*id);
-			let mut node = Node::new(Role::ListItem);
+			let mut node = Node::new(Role::ListBoxOption);
 			node.set_label(text.clone());
 			node.add_action(accesskit::Action::Focus);
+			node.set_position_in_set(i);
 			if *id == focus_id {
 				node.set_selected(true);
 			}
@@ -208,18 +210,20 @@ impl TimelineList {
 			if let Some(old) = old_idx {
 				if old != new_idx {
 					if let Some((old_id, old_text)) = state.entries.get(old) {
-						let mut old_node = Node::new(Role::ListItem);
+						let mut old_node = Node::new(Role::ListBoxOption);
 						old_node.set_label(old_text.clone());
 						old_node.add_action(accesskit::Action::Focus);
+						old_node.set_position_in_set(old);
 						nodes.push((*old_id, old_node));
 					}
 				}
 			}
 
 			if let Some((new_id, new_text)) = state.entries.get(new_idx) {
-				let mut new_node = Node::new(Role::ListItem);
+				let mut new_node = Node::new(Role::ListBoxOption);
 				new_node.set_label(new_text.clone());
 				new_node.add_action(accesskit::Action::Focus);
+				new_node.set_position_in_set(new_idx);
 				new_node.set_selected(true);
 				nodes.push((*new_id, new_node));
 			}
@@ -254,7 +258,7 @@ impl TimelineList {
 		state.selected_index = None;
 		drop(state);
 		let update = TreeUpdate {
-			nodes: vec![(ROOT_ID, Node::new(Role::List))],
+			nodes: vec![(ROOT_ID, Node::new(Role::ListBox))],
 			tree: None,
 			focus: ROOT_ID,
 			tree_id: accesskit::TreeId::ROOT,
@@ -291,8 +295,6 @@ impl TimelineList {
 	}
 
 	pub fn update_entries(&self, entries: &[(NodeId, String)], selected_id: Option<NodeId>) {
-		let mut root = Node::new(Role::List);
-		
 		let mut seen_ids = std::collections::HashSet::new();
 		let mut unique_entries = Vec::with_capacity(entries.len());
 		for (id, text) in entries {
@@ -300,17 +302,21 @@ impl TimelineList {
 				unique_entries.push((*id, text.clone()));
 			}
 		}
+
+		let mut root = Node::new(Role::ListBox);
+		root.set_size_of_set(unique_entries.len());
 		let mut children = Vec::with_capacity(unique_entries.len());
 		let mut nodes = Vec::with_capacity(unique_entries.len() + 1);
 		let valid_focus = selected_id
 			.filter(|id| unique_entries.iter().any(|(eid, _)| eid == id))
 			.or_else(|| unique_entries.first().map(|(id, _)| *id));
 		let focus_id = valid_focus.unwrap_or(ROOT_ID);
-		for (id, text) in &unique_entries {
+		for (i, (id, text)) in unique_entries.iter().enumerate() {
 			children.push(*id);
-			let mut node = Node::new(Role::ListItem);
+			let mut node = Node::new(Role::ListBoxOption);
 			node.set_label(text.clone());
 			node.add_action(accesskit::Action::Focus);
+			node.set_position_in_set(i);
 			if *id == focus_id {
 				node.set_selected(true);
 			}
@@ -346,18 +352,20 @@ impl TimelineList {
 		if let Some(old) = old_idx {
 			if Some(old) != new_idx {
 				if let Some((old_id, old_text)) = state.entries.get(old) {
-					let mut old_node = Node::new(Role::ListItem);
+					let mut old_node = Node::new(Role::ListBoxOption);
 					old_node.set_label(old_text.clone());
 					old_node.add_action(accesskit::Action::Focus);
+					old_node.set_position_in_set(old);
 					nodes.push((*old_id, old_node));
 				}
 			}
 		}
 		if let Some(new) = new_idx {
 			if let Some((new_id, new_text)) = state.entries.get(new) {
-				let mut new_node = Node::new(Role::ListItem);
+				let mut new_node = Node::new(Role::ListBoxOption);
 				new_node.set_label(new_text.clone());
 				new_node.add_action(accesskit::Action::Focus);
+				new_node.set_position_in_set(new);
 				new_node.set_selected(true);
 				nodes.push((*new_id, new_node));
 			}
