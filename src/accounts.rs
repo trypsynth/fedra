@@ -91,7 +91,7 @@ pub fn switch_to_account(
 	state: &mut AppState,
 	frame: &Frame,
 	timelines_selector: ListBox,
-	timeline_list: &ListBox,
+	timeline_list: &crate::ui::timeline_list::TimelineList,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	should_announce: bool,

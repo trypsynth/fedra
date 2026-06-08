@@ -18,7 +18,7 @@ use crate::{
 pub struct WindowParts {
 	pub frame: Frame,
 	pub timelines_selector: ListBox,
-	pub timeline_list: ListBox,
+	pub timeline_list: crate::ui::timeline_list::TimelineList,
 	pub live_region_label: StaticText,
 }
 
@@ -37,7 +37,7 @@ pub fn build_main_window() -> WindowParts {
 	let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
 	let timelines_selector = ListBox::builder(&panel).with_choices(vec!["Home".to_string()]).build();
 	timelines_selector.set_selection(0_u32, true);
-	let timeline_list = ListBox::builder(&panel).build();
+	let timeline_list = crate::ui::timeline_list::TimelineList::new(&panel);
 	let timelines_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	timelines_sizer.add(&timelines_label, 0, SizerFlag::All, 8);
 	timelines_sizer.add(
@@ -176,7 +176,7 @@ pub fn bind_input_handlers(
 	let timeline_list_key = parts.timeline_list.clone();
 	let find_frame = parts.frame;
 	parts.timeline_list.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
+		if let WindowEventData::Keyboard(key_event) = event {
 			if shutdown_list_key.get() {
 				event.skip(true);
 				return;
@@ -292,7 +292,7 @@ pub fn bind_input_handlers(
 						if k == 315 {
 							// Up
 							if sort_order == SortOrder::OldestToNewest && index == 0 {
-								let _ = ui_tx_list_key.send(UiCommand::ApplyPending(None));
+								let _ = ui_tx_list_key.send(UiCommand::LoadMore);
 								event.skip(false);
 								return;
 							}
@@ -633,14 +633,14 @@ pub fn bind_input_handlers(
 	let timeline_list_sel = parts.timeline_list.clone();
 	let autoload_mode_selection = autoload_mode;
 	let sort_order_selection = sort_order_cell;
-	parts.timeline_list.on_selection_changed(move |event| {
+	parts.timeline_list.on_selection_changed(move || {
 		if shutdown_list.get() {
 			return;
 		}
 		if suppress_list.get() {
 			return;
 		}
-		let Some(sel) = event.get_selection() else { return };
+		let Some(sel) = timeline_list_sel.get_selection() else { return };
 		let Ok(selection) = usize::try_from(sel) else { return };
 		let _ = ui_tx_list.send(UiCommand::TimelineEntrySelectionChanged(selection));
 		if autoload_mode_selection.get() == AutoloadMode::AtEnd {

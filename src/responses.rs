@@ -84,7 +84,7 @@ fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
 /// Processes streaming events from WebSocket connections.
 pub fn process_stream_events(
 	state: &mut AppState,
-	timeline_list: &ListBox,
+	timeline_list: &crate::ui::timeline_list::TimelineList,
 	suppress_selection: &Cell<bool>,
 	frame: &Frame,
 ) {
@@ -243,7 +243,7 @@ pub struct NetworkResponseContext<'a> {
 	pub frame: &'a Frame,
 	pub state: &'a mut AppState,
 	pub timelines_selector: ListBox,
-	pub timeline_list: ListBox,
+	pub timeline_list: crate::ui::timeline_list::TimelineList,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
@@ -295,7 +295,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
-				let text_options = &view_options.text_options;
+				let _text_options = &view_options.text_options;
 				// Extract any pending position restore for this timeline's initial load.
 				let restore_id = if max_id.is_none() {
 					state
@@ -372,28 +372,18 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
 						if filtered.is_empty() {
 							live_region::announce(live_region, "No more posts");
-						} else if state.config.sort_order == SortOrder::OldestToNewest {
-							timeline.pending_older_entries.extend(filtered.clone());
 						} else {
 							timeline.entries.extend(filtered.clone());
 						}
 
-						if is_active && state.config.sort_order != SortOrder::OldestToNewest {
-							if state.config.sort_order == SortOrder::NewestToOldest {
-								let entries_to_append = if filtered.is_empty() { &[][..] } else { &filtered };
-								for entry in entries_to_append {
-									let is_expanded = state.cw_expanded.contains(entry.id());
-									timeline_list.append(&entry.display_text(text_options, is_expanded));
-								}
-							} else {
-								update_active_timeline_ui(
-									timeline_list,
-									timeline,
-									suppress_selection,
-									&view_options,
-									&state.cw_expanded,
-								);
-							}
+						if is_active {
+							update_active_timeline_ui(
+								timeline_list,
+								timeline,
+								suppress_selection,
+								&view_options,
+								&state.cw_expanded,
+							);
 						}
 					} else {
 						timeline.entries = new_entries;
@@ -1139,7 +1129,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let is_active = active_type.as_ref() == Some(&timeline_type);
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
-				let text_options = &view_options.text_options;
+				let _text_options = &view_options.text_options;
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = timeline.effective_sort_order(&state.config);
@@ -1167,10 +1157,13 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						} else {
 							timeline.entries.extend(new_entries.clone());
 							if is_active {
-								for entry in &new_entries {
-									let is_expanded = state.cw_expanded.contains(entry.id());
-									timeline_list.append(&entry.display_text(text_options, is_expanded));
-								}
+								update_active_timeline_ui(
+									timeline_list,
+									timeline,
+									suppress_selection,
+									&view_options,
+									&state.cw_expanded,
+								);
 							}
 						}
 					} else {

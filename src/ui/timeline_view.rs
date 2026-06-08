@@ -1,11 +1,24 @@
-use std::{cell::Cell, collections::HashSet};
+use std::{
+	cell::Cell,
+	collections::{HashSet, hash_map::DefaultHasher},
+	hash::{Hash, Hasher},
+};
 
-use wxdragon::prelude::*;
+use accesskit::NodeId;
 
 use crate::{
 	config::{Config, SortOrder},
 	timeline::{Timeline, TimelineEntry, TimelineTextOptions, TimelineType},
+	ui::timeline_list::TimelineList,
 };
+
+pub fn entry_id_to_node_id(id: &str) -> NodeId {
+	let mut hasher = DefaultHasher::new();
+	id.hash(&mut hasher);
+	let hash = hasher.finish();
+	let hash = if hash == 0 { 1 } else { hash };
+	NodeId(hash)
+}
 
 #[derive(Debug, Clone)]
 pub struct TimelineViewOptions {
@@ -25,37 +38,27 @@ impl TimelineViewOptions {
 }
 
 pub fn update_timeline_ui(
-	timeline_list: &ListBox,
+	timeline_list: &TimelineList,
 	entries: &[TimelineEntry],
 	sort_order: SortOrder,
 	text_options: &TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
+	selected_id: Option<&str>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
 		SortOrder::OldestToNewest => Box::new(entries.iter().rev()),
 	};
 
-	let count = timeline_list.get_count() as usize;
-	if count == entries.len() {
-		for (i, entry) in iter.enumerate() {
-			let is_expanded = cw_expanded.contains(entry.id());
-			let text = entry.display_text(text_options, is_expanded);
-			if let Some(current) = timeline_list.get_string(i as u32) {
-				if current != text {
-					timeline_list.set_string(i as u32, &text);
-				}
-			} else {
-				timeline_list.set_string(i as u32, &text);
-			}
-		}
-	} else {
-		timeline_list.clear();
-		for entry in iter {
-			let is_expanded = cw_expanded.contains(entry.id());
-			timeline_list.append(&entry.display_text(text_options, is_expanded));
-		}
+	let mut list_entries = Vec::with_capacity(entries.len());
+	for entry in iter {
+		let is_expanded = cw_expanded.contains(entry.id());
+		let text = entry.display_text(text_options, is_expanded);
+		list_entries.push((entry_id_to_node_id(entry.id()), text));
 	}
+
+	let selected_node_id = selected_id.map(entry_id_to_node_id);
+	timeline_list.update_entries(&list_entries, selected_node_id);
 }
 
 pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnOnce() -> T) -> T {
@@ -65,11 +68,9 @@ pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnO
 	result
 }
 
-pub fn with_frozen_listbox<T>(listbox: &ListBox, f: impl FnOnce() -> T) -> T {
-	listbox.freeze();
-	let result = f();
-	listbox.thaw();
-	result
+pub fn with_frozen_listbox<T>(_listbox: &TimelineList, f: impl FnOnce() -> T) -> T {
+	// Custom TimelineList doesn't need freeze/thaw right now, but kept for compatibility
+	f()
 }
 
 pub const fn list_index_to_entry_index(list_index: usize, entries_len: usize, sort_order: SortOrder) -> Option<usize> {
@@ -92,18 +93,20 @@ pub const fn entry_index_to_list_index(entry_index: usize, entries_len: usize, s
 	}
 }
 
-pub fn sync_timeline_selection_from_list(timeline: &mut Timeline, timeline_list: &ListBox, sort_order: SortOrder) {
-	let selection = timeline_list.get_selection().map(|s| s as usize);
-	timeline.selected_index = selection;
-	timeline.selected_id = selection
-		.and_then(|list_index| list_index_to_entry_index(list_index, timeline.entries.len(), sort_order))
-		.map(|entry_index| timeline.entries[entry_index].id().to_string());
+pub fn sync_timeline_selection_from_list(
+	_timeline: &mut Timeline,
+	_timeline_list: &TimelineList,
+	_sort_order: SortOrder,
+) {
+	// Selection is driven by Timeline state and keyboard events on TimelineList,
+	// so this direction is less relevant for the virtual tree unless reacting to UI Automation events.
 }
 
-pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline, sort_order: SortOrder) {
+pub fn apply_timeline_selection(timeline_list: &TimelineList, timeline: &mut Timeline, sort_order: SortOrder) {
 	if timeline.entries.is_empty() {
 		timeline.selected_index = None;
 		timeline.selected_id = None;
+		timeline_list.set_selection(None);
 		return;
 	}
 	let entries_len = timeline.entries.len();
@@ -136,11 +139,11 @@ pub fn apply_timeline_selection(timeline_list: &ListBox, timeline: &mut Timeline
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
 
-	timeline_list.set_selection(selection as u32, true);
+	timeline_list.set_selection(timeline.selected_id.as_deref().map(entry_id_to_node_id));
 }
 
 pub fn update_active_timeline_ui(
-	timeline_list: &ListBox,
+	timeline_list: &TimelineList,
 	timeline: &mut Timeline,
 	suppress_selection: &Cell<bool>,
 	options: &TimelineViewOptions,
@@ -154,14 +157,17 @@ pub fn update_active_timeline_ui(
 		};
 	with_frozen_listbox(timeline_list, || {
 		with_suppressed_selection(suppress_selection, || {
+			// Apply selection before update so we can pass the correctly calculated selection ID
+			apply_timeline_selection(timeline_list, timeline, effective_sort_order);
+
 			update_timeline_ui(
 				timeline_list,
 				&timeline.entries,
 				effective_sort_order,
 				&options.text_options,
 				cw_expanded,
+				timeline.selected_id.as_deref(),
 			);
-			apply_timeline_selection(timeline_list, timeline, effective_sort_order);
 		});
 	});
 }

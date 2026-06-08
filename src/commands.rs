@@ -114,7 +114,7 @@ pub enum UiCommand {
 	Vote,
 	LoadMore,
 	LoadMoreBackground,
-	ApplyPending(Option<usize>),
+
 	HomePressed,
 	ToggleContentWarning,
 	ToggleFollow,
@@ -163,7 +163,7 @@ pub struct UiCommandContext<'a> {
 	pub state: &'a mut AppState,
 	pub frame: &'a Frame,
 	pub timelines_selector: ListBox,
-	pub timeline_list: ListBox,
+	pub timeline_list: crate::ui::timeline_list::TimelineList,
 	pub suppress_selection: &'a Cell<bool>,
 	pub live_region: StaticText,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
@@ -525,13 +525,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			handle_ui_command(UiCommand::LoadMore, ctx);
 		}
 		UiCommand::HomePressed => {
-			let has_pending =
-				state.timeline_manager.active().is_some_and(|active| !active.pending_older_entries.is_empty());
-			if has_pending {
-				handle_ui_command(UiCommand::ApplyPending(Some(0)), ctx);
-			} else if timeline_list.get_selection() != Some(0) {
-				timeline_list.set_selection(0, true);
+			if timeline_list.get_selection() != Some(0) {
 				if let Some(active) = state.timeline_manager.active_mut() {
+					timeline_list
+						.set_selection(Some(crate::ui::timeline_view::entry_id_to_node_id(active.entries[0].id())));
 					let effective_sort_order = if state.config.preserve_thread_order
 						&& matches!(active.timeline_type, TimelineType::Thread { .. })
 					{
@@ -543,42 +540,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				}
 			}
 		}
-		UiCommand::ApplyPending(target_index) => {
-			let has_pending =
-				state.timeline_manager.active().is_some_and(|active| !active.pending_older_entries.is_empty());
-			if has_pending {
-				let timeline_type = state.timeline_manager.active().unwrap().timeline_type.clone();
-				let view_options = state.timeline_view_options_for(&timeline_type);
 
-				let active = state.timeline_manager.active_mut().unwrap();
-				let new_entries = std::mem::take(&mut active.pending_older_entries);
-				let added_count = new_entries.len();
-				active.entries.extend(new_entries);
-
-				let current_selection = timeline_list.get_selection();
-
-				update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
-
-				if let Some(explicit_target) = target_index {
-					timeline_list.set_selection(explicit_target as u32, true);
-				} else if let Some(current) = current_selection {
-					// We were at 'current'. Now there are 'added_count' new items at the top.
-					if current == 0 {
-						// If we were at the top boundary, act like Up Arrow (slide them into the new chunk's bottom)
-						timeline_list.set_selection(added_count.saturating_sub(1) as u32, true);
-					} else {
-						// We want to visually stay exactly where we were, so our new index is current + added_count.
-						timeline_list.set_selection(current.saturating_add(added_count as u32), true);
-					}
-				}
-				if let Some(active) = state.timeline_manager.active_mut() {
-					let effective_sort_order = active.effective_sort_order(&state.config);
-					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
-				}
-			} else {
-				handle_ui_command(UiCommand::LoadMore, ctx);
-			}
-		}
 		UiCommand::LoadMore => {
 			if let Some(active) = state.timeline_manager.active_mut()
 				&& !active.entries.is_empty()
@@ -632,10 +594,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 				return;
 			}
-			let text_options = state.timeline_manager.active().map_or_else(
+			let _text_options = state.timeline_manager.active().map_or_else(
 				|| TimelineTextOptions::from_config_default(&state.config),
 				|a| TimelineTextOptions::from_config(&state.config, &a.timeline_type),
 			);
+			let timeline_type = state.timeline_manager.active().map(|a| a.timeline_type.clone());
+			let view_options = timeline_type.map(|t| state.timeline_view_options_for(&t));
 			let Some(active) = state.timeline_manager.active_mut() else { return };
 			let Some(list_index) = active.selected_index else {
 				live_region::announce(live_region, "No post selected");
@@ -668,9 +632,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			} else {
 				state.cw_expanded.insert(entry_id.to_string());
 			}
-			let is_expanded = state.cw_expanded.contains(entry_id);
-			let text = entry.display_text(&text_options, is_expanded);
-			timeline_list.set_string(list_index as u32, &text);
+			if let Some(view_options) = view_options {
+				update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
+			}
 		}
 		UiCommand::ToggleWindowVisibility => {
 			app_shell::toggle_window_visibility(frame, tray_hidden);
@@ -2130,7 +2094,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx as u32, true);
+						timeline_list.set_selection(
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
+						);
 					}
 				} else {
 					live_region::announce(live_region, "Not found");
@@ -2165,7 +2131,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 
-						timeline_list.set_selection(idx as u32, true);
+						timeline_list.set_selection(
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
+						);
 						live_region::announce(live_region, "Found next");
 					}
 				} else {
@@ -2187,7 +2155,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									)
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
-									timeline_list.set_selection(idx as u32, true);
+									timeline_list.set_selection(
+										active
+											.selected_id
+											.as_deref()
+											.map(crate::ui::timeline_view::entry_id_to_node_id),
+									);
 									live_region::announce(live_region, "Wrapped to top");
 								}
 							} else {
@@ -2226,7 +2199,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(idx as u32, true);
+						timeline_list.set_selection(
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
+						);
 					}
 				} else {
 					let effective_sort_order = active.effective_sort_order(&state.config);
@@ -2248,7 +2223,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									)
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
-									timeline_list.set_selection(idx as u32, true);
+									timeline_list.set_selection(
+										active
+											.selected_id
+											.as_deref()
+											.map(crate::ui::timeline_view::entry_id_to_node_id),
+									);
 									live_region::announce(live_region, "Wrapped to bottom");
 								}
 							} else {
@@ -2276,7 +2256,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 										)
 										.map(|entry_index| active.entries[entry_index].id().to_string());
 
-										timeline_list.set_selection(idx as u32, true);
+										timeline_list.set_selection(
+											active
+												.selected_id
+												.as_deref()
+												.map(crate::ui::timeline_view::entry_id_to_node_id),
+										);
 										live_region::announce(live_region, "Wrapped to bottom");
 									}
 								} else {
@@ -2562,7 +2547,7 @@ fn do_boost(state: &AppState, live_region: StaticText) {
 fn open_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: &ListBox,
+	timeline_list: &crate::ui::timeline_list::TimelineList,
 	timeline_type: &TimelineType,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
@@ -2628,7 +2613,7 @@ fn open_timeline(
 fn close_timeline(
 	state: &mut AppState,
 	selector: ListBox,
-	timeline_list: &ListBox,
+	timeline_list: &crate::ui::timeline_list::TimelineList,
 	suppress_selection: &Cell<bool>,
 	live_region: StaticText,
 	use_history: bool,
