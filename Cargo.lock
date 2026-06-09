@@ -1919,9 +1919,9 @@ dependencies = [
 
 [[package]]
 name = "ship-shape"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0f6e2e1c1f250e150dcd15200e7ecaefb1870be032978b4a4dc892ca1c9695b"
+checksum = "93243a14ab9d7c0ae4f081bd29f8a59c31e9dea74b034e3f67a4021f357a44f7"
 dependencies = [
  "minisign-verify",
  "pulldown-cmark",
