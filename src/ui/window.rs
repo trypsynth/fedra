@@ -513,7 +513,17 @@ pub fn bind_input_handlers(
 				}
 			}
 
-			event.skip(true); // pass through to default list navigation (Up/Down/PgUp/PgDn)
+			if !quick_action_keys_list.get() && !ctrl && !shift && !alt && k >= 32 && k <= 126 {
+				if let Some(ch) = char::from_u32(k as u32) {
+					if ch.is_alphanumeric() {
+						timeline_list_key.type_ahead(ch);
+						event.skip(false);
+						return;
+					}
+				}
+			}
+
+			event.skip(true);
 		} else {
 			event.skip(true);
 		}

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, Tree, TreeUpdate};
 use accesskit_windows::SubclassingAdapter;
@@ -23,6 +23,8 @@ pub const ROOT_ID: NodeId = NodeId(1);
 struct ListState {
 	entries: Vec<(NodeId, String)>,
 	selected_index: Option<usize>,
+	search_buffer: String,
+	last_search_time: Option<Instant>,
 }
 
 struct TimelineActivationHandler {
@@ -100,7 +102,12 @@ impl TimelineList {
 		}
 
 		let hwnd = HWND(panel.get_handle() as *mut _);
-		let list_state = Rc::new(RefCell::new(ListState { entries: Vec::new(), selected_index: None }));
+		let list_state = Rc::new(RefCell::new(ListState {
+			entries: Vec::new(),
+			selected_index: None,
+			search_buffer: String::new(),
+			last_search_time: None,
+		}));
 		let cb_ptr = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 		let adapter = SubclassingAdapter::new(
 			hwnd,
@@ -146,8 +153,9 @@ impl TimelineList {
 		let tl_clone = self.clone();
 		self.panel.on_key_down(move |event| {
 			let handled = tl_clone.handle_key_down(&event);
-			if let Some(cb) = &tl_clone.inner.borrow().on_key_down {
-				cb(&event);
+			let cb = tl_clone.inner.borrow().on_key_down.as_ref().map(|cb| std::ptr::from_ref(cb.as_ref()));
+			if let Some(cb_ptr) = cb {
+				unsafe { (*cb_ptr)(&event) };
 			}
 			if let WindowEventData::Keyboard(key_event) = event {
 				key_event.event.skip(!handled);
@@ -376,6 +384,86 @@ impl TimelineList {
 		let mut inner = self.inner.borrow_mut();
 		if let Some(events) = inner.adapter.update_if_active(|| update) {
 			events.raise();
+		}
+	}
+
+	pub fn type_ahead(&self, ch: char) {
+		let state_rc = { self.inner.borrow().state.clone() };
+		let mut state = state_rc.borrow_mut();
+		if state.entries.is_empty() {
+			return;
+		}
+
+		let now = Instant::now();
+		let expired = state.last_search_time.map_or(true, |t| now.duration_since(t).as_millis() > 1000);
+		if expired {
+			state.search_buffer.clear();
+		}
+		state.last_search_time = Some(now);
+
+		let lower_ch = ch.to_lowercase().next().unwrap_or(ch);
+		let is_repeat = state.search_buffer.len() == 1 && state.search_buffer.starts_with(lower_ch);
+
+		if is_repeat {
+			let start = state.selected_index.map_or(0, |i| i + 1);
+			let count = state.entries.len();
+			let prefix: String = [lower_ch].into_iter().collect();
+			let found = (0..count).find_map(|offset| {
+				let idx = (start + offset) % count;
+				let text = &state.entries[idx].1;
+				if text.to_lowercase().starts_with(&prefix) { Some(idx) } else { None }
+			});
+			if let Some(idx) = found {
+				state.selected_index = Some(idx);
+				let focus_id = state.entries[idx].0;
+				drop(state);
+				self.announce_selection(idx, focus_id);
+			}
+		} else {
+			state.search_buffer.push(lower_ch);
+			let prefix = state.search_buffer.clone();
+			let start = if prefix.len() == 1 {
+				state.selected_index.map_or(0, |i| i + 1)
+			} else {
+				state.selected_index.unwrap_or(0)
+			};
+			let count = state.entries.len();
+			let found = (0..count).find_map(|offset| {
+				let idx = (start + offset) % count;
+				let text = &state.entries[idx].1;
+				if text.to_lowercase().starts_with(&prefix) { Some(idx) } else { None }
+			});
+			if let Some(idx) = found {
+				state.selected_index = Some(idx);
+				let focus_id = state.entries[idx].0;
+				drop(state);
+				self.announce_selection(idx, focus_id);
+			}
+		}
+	}
+
+	fn announce_selection(&self, idx: usize, focus_id: NodeId) {
+		let state_rc = { self.inner.borrow().state.clone() };
+		let state = state_rc.borrow();
+		let mut nodes = Vec::new();
+		if let Some((id, text)) = state.entries.get(idx) {
+			let mut node = Node::new(Role::ListBoxOption);
+			node.set_label(text.clone());
+			node.add_action(accesskit::Action::Focus);
+			node.set_position_in_set(idx);
+			node.set_selected(true);
+			nodes.push((*id, node));
+		}
+		drop(state);
+		let update = TreeUpdate { nodes, tree: None, focus: focus_id, tree_id: accesskit::TreeId::ROOT };
+		let mut inner = self.inner.borrow_mut();
+		if let Some(events) = inner.adapter.update_if_active(|| update) {
+			events.raise();
+		}
+		let cb = inner.on_selection_changed.as_ref().map(|cb| std::ptr::from_ref(cb.as_ref()));
+		drop(inner);
+		if let Some(cb_ptr) = cb {
+			unsafe { (*cb_ptr)() };
 		}
 	}
 }
