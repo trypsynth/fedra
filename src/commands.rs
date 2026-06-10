@@ -2629,18 +2629,19 @@ fn close_timeline(
 	if !state.timeline_manager.close(&active_type, use_history) {
 		return;
 	}
+	let active_index = state.timeline_manager.active_index();
+	let active_name = state.timeline_manager.display_names().get(active_index).cloned();
+	if let Some(name) = &active_name {
+		live_region::announce(live_region, name);
+	}
+
 	selector.clear();
 	for name in state.timeline_manager.display_names() {
 		selector.append(&name);
 	}
-	let active_index = state.timeline_manager.active_index();
-	let active_name = state.timeline_manager.display_names().get(active_index).cloned();
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
-	if let Some(name) = active_name {
-		live_region::announce(live_region, &name);
-	}
 	{
 		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
 		if let Some(view_options) = view_options
