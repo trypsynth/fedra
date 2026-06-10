@@ -211,7 +211,6 @@ fn main() {
 		let frame = window_parts.frame;
 		let timelines_selector = window_parts.timelines_selector;
 		let timeline_list = window_parts.timeline_list.clone();
-		let live_region_label = window_parts.live_region_label;
 		let (ui_tx_raw, ui_rx) = mpsc::channel();
 		let is_shutting_down = Rc::new(Cell::new(false));
 		let suppress_selection = Rc::new(Cell::new(false));
@@ -240,16 +239,7 @@ fn main() {
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, &state);
 		}
-		switch_to_account(
-			&mut state,
-			&frame,
-			timelines_selector,
-			&timeline_list,
-			&suppress_selection,
-			live_region_label,
-			false,
-			None,
-		);
+		switch_to_account(&mut state, &frame, timelines_selector, &timeline_list, &suppress_selection, false, None);
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone(), &state.config.hotkey));
 		let app_shell_close = app_shell.clone();
 		state.app_shell = Some(app_shell);
@@ -265,7 +255,6 @@ fn main() {
 		let frame_wake = frame;
 		let timelines_selector_wake = timelines_selector;
 		let timeline_list_wake = timeline_list;
-		let live_region_wake = live_region_label;
 		let mut state = state;
 		let context_menu_state_for_handlers = state.context_menu_state.clone();
 		let ui_waker_handler = ui_waker.clone();
@@ -290,7 +279,7 @@ fn main() {
 					timelines_selector: timelines_selector_wake,
 					timeline_list: timeline_list_wake.clone(),
 					suppress_selection: &suppress_wake,
-					live_region: live_region_wake,
+					live_region: &timeline_list_wake,
 					quick_action_keys_enabled: &quick_action_keys_drain,
 					autoload_mode: &autoload_drain,
 					sort_order_cell: &sort_order_drain,
@@ -311,7 +300,7 @@ fn main() {
 					timelines_selector: timelines_selector_wake,
 					timeline_list: timeline_list_wake.clone(),
 					suppress_selection: &suppress_wake,
-					live_region: live_region_wake,
+					live_region: &timeline_list_wake,
 					quick_action_keys_enabled: &quick_action_keys_drain,
 					autoload_mode: &autoload_drain,
 					sort_order_cell: &sort_order_drain,
@@ -323,6 +312,7 @@ fn main() {
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
 				let view_options =
 					state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+				let active_index = state.timeline_manager.active_index();
 				if let Some(view_options) = view_options
 					&& let Some(active) = state.timeline_manager.active_mut()
 				{
@@ -332,6 +322,7 @@ fn main() {
 						&suppress_wake,
 						&view_options,
 						&state.cw_expanded,
+						active_index,
 					);
 				}
 				last_ui_refresh = Instant::now();

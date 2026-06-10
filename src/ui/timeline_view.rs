@@ -1,8 +1,4 @@
-use std::{
-	cell::Cell,
-	collections::{HashSet, hash_map::DefaultHasher},
-	hash::{Hash, Hasher},
-};
+use std::{cell::Cell, collections::HashSet};
 
 use accesskit::NodeId;
 
@@ -12,12 +8,8 @@ use crate::{
 	ui::timeline_list::TimelineList,
 };
 
-pub fn entry_id_to_node_id(id: &str) -> NodeId {
-	let mut hasher = DefaultHasher::new();
-	id.hash(&mut hasher);
-	let hash = hasher.finish();
-	let hash = if hash == 0 { 1 } else { hash };
-	NodeId(hash)
+pub fn list_index_to_node_id(timeline_index: usize, index: usize) -> NodeId {
+	NodeId((10 + timeline_index * 10000 + index) as u64)
 }
 
 #[derive(Debug, Clone)]
@@ -43,7 +35,8 @@ pub fn update_timeline_ui(
 	sort_order: SortOrder,
 	text_options: &TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
-	selected_id: Option<&str>,
+	timeline_index: usize,
+	selected_index: Option<usize>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
@@ -51,13 +44,13 @@ pub fn update_timeline_ui(
 	};
 
 	let mut list_entries = Vec::with_capacity(entries.len());
-	for entry in iter {
+	for (i, entry) in iter.enumerate() {
 		let is_expanded = cw_expanded.contains(entry.id());
 		let text = entry.display_text(text_options, is_expanded);
-		list_entries.push((entry_id_to_node_id(entry.id()), text));
+		list_entries.push((list_index_to_node_id(timeline_index, i), text));
 	}
 
-	let selected_node_id = selected_id.map(entry_id_to_node_id);
+	let selected_node_id = selected_index.map(|idx| list_index_to_node_id(timeline_index, idx));
 	timeline_list.update_entries(&list_entries, selected_node_id);
 }
 
@@ -138,8 +131,6 @@ pub fn apply_timeline_selection(timeline_list: &TimelineList, timeline: &mut Tim
 	timeline.selected_index = Some(selection);
 	timeline.selected_id = list_index_to_entry_index(selection, entries_len, sort_order)
 		.map(|entry_index| timeline.entries[entry_index].id().to_string());
-
-	timeline_list.set_selection(timeline.selected_id.as_deref().map(entry_id_to_node_id));
 }
 
 pub fn update_active_timeline_ui(
@@ -148,6 +139,7 @@ pub fn update_active_timeline_ui(
 	suppress_selection: &Cell<bool>,
 	options: &TimelineViewOptions,
 	cw_expanded: &HashSet<String>,
+	timeline_index: usize,
 ) {
 	let effective_sort_order =
 		if options.preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. }) {
@@ -166,7 +158,8 @@ pub fn update_active_timeline_ui(
 				effective_sort_order,
 				&options.text_options,
 				cw_expanded,
-				timeline.selected_id.as_deref(),
+				timeline_index,
+				timeline.selected_index,
 			);
 		});
 	});

@@ -227,11 +227,19 @@ pub fn process_stream_events(
 		active_needs_update = true;
 	}
 	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+	let active_index = state.timeline_manager.active_index();
 	if active_needs_update
 		&& let Some(view_options) = view_options
 		&& let Some(active) = state.timeline_manager.active_mut()
 	{
-		update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
+		update_active_timeline_ui(
+			timeline_list,
+			active,
+			suppress_selection,
+			&view_options,
+			&state.cw_expanded,
+			active_index,
+		);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
@@ -245,7 +253,7 @@ pub struct NetworkResponseContext<'a> {
 	pub timelines_selector: ListBox,
 	pub timeline_list: crate::ui::timeline_list::TimelineList,
 	pub suppress_selection: &'a Cell<bool>,
-	pub live_region: StaticText,
+	pub live_region: &'a crate::ui::timeline_list::TimelineList,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
 	pub autoload_mode: &'a Cell<AutoloadMode>,
 	pub sort_order_cell: &'a Cell<SortOrder>,
@@ -297,6 +305,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let view_options = state.timeline_view_options_for(&timeline_type);
 				let _text_options = &view_options.text_options;
 				// Extract any pending position restore for this timeline's initial load.
+				let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
 				let restore_id = if max_id.is_none() {
 					state
 						.pending_restore_post_id
@@ -371,19 +380,22 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						let filtered: Vec<TimelineEntry> =
 							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
 						if filtered.is_empty() {
-							live_region::announce(live_region, "No more posts");
+							live_region.announce("No more posts");
 						} else {
 							timeline.entries.extend(filtered.clone());
 						}
 
 						if is_active {
-							update_active_timeline_ui(
-								timeline_list,
-								timeline,
-								suppress_selection,
-								&view_options,
-								&state.cw_expanded,
-							);
+							if let Some(idx) = timeline_index_opt {
+								update_active_timeline_ui(
+									timeline_list,
+									timeline,
+									suppress_selection,
+									&view_options,
+									&state.cw_expanded,
+									idx,
+								);
+							}
 						}
 					} else {
 						timeline.entries = new_entries;
@@ -394,13 +406,16 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							}
 						}
 						if is_active {
-							update_active_timeline_ui(
-								timeline_list,
-								timeline,
-								suppress_selection,
-								&view_options,
-								&state.cw_expanded,
-							);
+							if let Some(idx) = timeline_index_opt {
+								update_active_timeline_ui(
+									timeline_list,
+									timeline,
+									suppress_selection,
+									&view_options,
+									&state.cw_expanded,
+									idx,
+								);
+							}
 						}
 					}
 					timeline.next_max_id = next_max_id;
@@ -429,6 +444,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					if merged_any {
 						let view_options =
 							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+						let active_index = state.timeline_manager.active_index();
 						if let Some(view_options) = view_options
 							&& let Some(active) = state.timeline_manager.active_mut()
 						{
@@ -438,6 +454,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								suppress_selection,
 								&view_options,
 								&state.cw_expanded,
+								active_index,
 							);
 						}
 					}
@@ -454,25 +471,22 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					timeline.loading_more = false;
 				}
 				if max_id.is_some() {
-					live_region::announce(live_region, "Failed to load more posts");
+					live_region.announce("Failed to load more posts");
 				} else {
-					live_region::announce(live_region, &spoken_failure("Failed to load timeline", err));
+					live_region.announce(&spoken_failure("Failed to load timeline", err));
 				}
 			}
 			NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
 				ui_tx.send(crate::commands::UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
 			}
 			NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to resolve thread: {}", summarize_api_error(&err)));
+				live_region.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
 				ui_tx.send(crate::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
 			}
 			NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
-				live_region::announce(
-					live_region,
-					&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)),
-				);
+				live_region.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
 				let action = state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);
@@ -503,7 +517,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							dlg.show();
 							state.profile_dialog = Some(dlg);
 						} else {
-							live_region::announce(live_region, "Network not available");
+							live_region.announce("Network not available");
 						}
 					}
 					UserLookupAction::Timeline => {
@@ -517,14 +531,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
 				state.pending_user_lookup_action = None;
-				live_region::announce(
-					live_region,
-					&format!("Failed to find user {handle}: {}", summarize_api_error(&err)),
-				);
+				live_region.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Published(status))) => {
 				state.pending_post = None;
-				live_region::announce(live_region, "Posted");
+				live_region.announce("Posted");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
 					dispatch_ui_command!(UiCommand::ContinueThread(status));
@@ -533,14 +544,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
 				state.pending_post = None;
 				state.pending_thread_continuation = false;
-				live_region::announce(
-					live_region,
-					&format!("Post scheduled for {}", crate::mastodon::friendly_time_local(&scheduled.scheduled_at)),
-				);
+				live_region.announce(&format!(
+					"Post scheduled for {}",
+					crate::mastodon::friendly_time_local(&scheduled.scheduled_at)
+				));
 			}
 			NetworkResponse::PostComplete(Err(ref err)) => {
 				state.pending_thread_continuation = false;
-				live_region::announce(live_region, &spoken_failure("Failed to post", err));
+				live_region.announce(&spoken_failure("Failed to post", err));
 				dispatch_ui_command!(UiCommand::RecoverDraft);
 			}
 			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
@@ -551,10 +562,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Favorited");
+				live_region.announce("Favorited");
 			}
 			NetworkResponse::Favorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to favorite", err));
+				live_region.announce(&spoken_failure("Failed to favorite", err));
 			}
 			NetworkResponse::Bookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -563,10 +574,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Bookmarked");
+				live_region.announce("Bookmarked");
 			}
 			NetworkResponse::Bookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to bookmark", err));
+				live_region.announce(&spoken_failure("Failed to bookmark", err));
 			}
 			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -576,10 +587,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unfavorited");
+				live_region.announce("Unfavorited");
 			}
 			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to unfavorite", err));
+				live_region.announce(&spoken_failure("Failed to unfavorite", err));
 			}
 			NetworkResponse::Unbookmarked { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -588,10 +599,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unbookmarked");
+				live_region.announce("Unbookmarked");
 			}
 			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to unbookmark", err));
+				live_region.announce(&spoken_failure("Failed to unbookmark", err));
 			}
 			NetworkResponse::Pinned { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -601,10 +612,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Post pinned");
+				live_region.announce("Post pinned");
 			}
 			NetworkResponse::Pinned { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to pin post", err));
+				live_region.announce(&spoken_failure("Failed to pin post", err));
 			}
 			NetworkResponse::Unpinned { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -614,10 +625,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Post unpinned");
+				live_region.announce("Post unpinned");
 			}
 			NetworkResponse::Unpinned { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to unpin post", err));
+				live_region.announce(&spoken_failure("Failed to unpin post", err));
 			}
 			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
 				// The returned status is the reblog wrapper, get the inner status
@@ -630,10 +641,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Boosted");
+				live_region.announce("Boosted");
 			}
 			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to boost", err));
+				live_region.announce(&spoken_failure("Failed to boost", err));
 			}
 			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
 				update_status_in_timelines(state, &status_id, |s| {
@@ -643,13 +654,13 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(mb) = frame.get_menu_bar() {
 					update_menu_labels(&mb, state);
 				}
-				live_region::announce(live_region, "Unboosted");
+				live_region.announce("Unboosted");
 			}
 			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to unboost", err));
+				live_region.announce(&spoken_failure("Failed to unboost", err));
 			}
 			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Published(status))) => {
-				live_region::announce(live_region, "Reply sent");
+				live_region.announce("Reply sent");
 				if state.pending_thread_continuation {
 					state.pending_thread_continuation = false;
 					dispatch_ui_command!(UiCommand::ContinueThread(status));
@@ -657,20 +668,21 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
 				state.pending_thread_continuation = false;
-				live_region::announce(
-					live_region,
-					&format!("Reply scheduled for {}", crate::mastodon::friendly_time_local(&scheduled.scheduled_at)),
-				);
+				live_region.announce(&format!(
+					"Reply scheduled for {}",
+					crate::mastodon::friendly_time_local(&scheduled.scheduled_at)
+				));
 			}
 			NetworkResponse::Replied(Err(ref err)) => {
 				state.pending_thread_continuation = false;
-				live_region::announce(live_region, &spoken_failure("Failed to reply", err));
+				live_region.announce(&spoken_failure("Failed to reply", err));
 			}
 			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
 				remove_status_from_timelines(state, &status_id);
 				{
 					let view_options =
 						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					let active_index = state.timeline_manager.active_index();
 					if let Some(view_options) = view_options
 						&& let Some(active) = state.timeline_manager.active_mut()
 					{
@@ -680,13 +692,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							suppress_selection,
 							&view_options,
 							&state.cw_expanded,
+							active_index,
 						);
 					}
 				}
-				live_region::announce(live_region, "Deleted");
+				live_region.announce("Deleted");
 			}
 			NetworkResponse::StatusDeleted { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to delete", err));
+				live_region.announce(&spoken_failure("Failed to delete", err));
 			}
 			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
 				let status_clone = status.clone();
@@ -694,6 +707,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				{
 					let view_options =
 						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					let active_index = state.timeline_manager.active_index();
 					if let Some(view_options) = view_options
 						&& let Some(active) = state.timeline_manager.active_mut()
 					{
@@ -703,36 +717,34 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							suppress_selection,
 							&view_options,
 							&state.cw_expanded,
+							active_index,
 						);
 					}
 				}
-				live_region::announce(live_region, "Edited");
+				live_region.announce("Edited");
 			}
 			NetworkResponse::StatusEdited { result: Err(ref err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to edit", err));
+				live_region.announce(&spoken_failure("Failed to edit", err));
 			}
 			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, true);
 				if let Some(dlg) = &state.hashtag_dialog {
 					dlg.update_tag(&name, true);
 				}
-				live_region::announce(live_region, &format!("Followed #{name}"));
+				live_region.announce(&format!("Followed #{name}"));
 			}
 			NetworkResponse::TagFollowed { name, result: Err(err) } => {
-				live_region::announce(live_region, &format!("Failed to follow #{name}: {}", summarize_api_error(&err)));
+				live_region.announce(&format!("Failed to follow #{name}: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Ok(_) } => {
 				update_tag_in_timelines(state, &name, false);
 				if let Some(dlg) = &state.hashtag_dialog {
 					dlg.update_tag(&name, false);
 				}
-				live_region::announce(live_region, &format!("Unfollowed #{name}"));
+				live_region.announce(&format!("Unfollowed #{name}"));
 			}
 			NetworkResponse::TagUnfollowed { name, result: Err(err) } => {
-				live_region::announce(
-					live_region,
-					&format!("Failed to unfollow #{name}: {}", summarize_api_error(&err)),
-				);
+				live_region.announce(&format!("Failed to unfollow #{name}: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::TagsInfoFetched { result: Ok(tags) } => {
 				if let Some(handle) = &state.network_handle {
@@ -746,7 +758,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
-				live_region::announce(live_region, &spoken_failure("Failed to load hashtags", &err));
+				live_region.announce(&spoken_failure("Failed to load hashtags", &err));
 			}
 			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -778,7 +790,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								dlg.show();
 								state.profile_dialog = Some(dlg);
 							} else {
-								live_region::announce(live_region, "Network not available");
+								live_region.announce("Network not available");
 							}
 						}
 						UserLookupAction::Timeline => {
@@ -792,7 +804,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::RebloggedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to load boosts", &err));
+				live_region.announce(&spoken_failure("Failed to load boosts", &err));
 			}
 			NetworkResponse::FavoritedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
@@ -824,7 +836,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								dlg.show();
 								state.profile_dialog = Some(dlg);
 							} else {
-								live_region::announce(live_region, "Network not available");
+								live_region.announce("Network not available");
 							}
 						}
 						UserLookupAction::Timeline => {
@@ -838,11 +850,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to load favorites", &err));
+				live_region.announce(&spoken_failure("Failed to load favorites", &err));
 			}
 			NetworkResponse::FollowersLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
 				if accounts.is_empty() && next_max_id.is_none() {
-					live_region::announce(live_region, "No followers found");
+					live_region.announce("No followers found");
 					continue;
 				}
 				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
@@ -888,7 +900,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to load followers", &err));
+				live_region.announce(&spoken_failure("Failed to load followers", &err));
 			}
 			NetworkResponse::FollowersNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
 				let should_fetch = if let Some(dlg) = &state.followers_dialog {
@@ -918,11 +930,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(dlg) = &state.followers_dialog {
 					dlg.mark_loaded();
 				}
-				live_region::announce(live_region, &spoken_failure("Failed to load more followers", &err));
+				live_region.announce(&spoken_failure("Failed to load more followers", &err));
 			}
 			NetworkResponse::FollowingLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
 				if accounts.is_empty() && next_max_id.is_none() {
-					live_region::announce(live_region, "No following found");
+					live_region.announce("No following found");
 					continue;
 				}
 				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
@@ -968,7 +980,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
-				live_region::announce(live_region, &spoken_failure("Failed to load following", &err));
+				live_region.announce(&spoken_failure("Failed to load following", &err));
 			}
 			NetworkResponse::FollowingNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
 				let should_fetch = if let Some(dlg) = &state.following_dialog {
@@ -998,7 +1010,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(dlg) = &state.following_dialog {
 					dlg.mark_loaded();
 				}
-				live_region::announce(live_region, &spoken_failure("Failed to load more following", &err));
+				live_region.announce(&spoken_failure("Failed to load more following", &err));
 			}
 			NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
 				let dialog = if for_followers { &state.followers_dialog } else { &state.following_dialog };
@@ -1038,10 +1050,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						}
 						crate::network::RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
 					};
-					live_region::announce(live_region, &msg);
+					live_region.announce(&msg);
 				}
 				Err(err) => {
-					live_region::announce(live_region, &spoken_failure("Failed to update relationship", &err));
+					live_region.announce(&spoken_failure("Failed to update relationship", &err));
 				}
 			},
 			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
@@ -1063,6 +1075,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					update_poll_in_timelines(state, &poll);
 					let view_options =
 						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+					let active_index = state.timeline_manager.active_index();
 					if let Some(view_options) = view_options
 						&& let Some(active) = state.timeline_manager.active_mut()
 					{
@@ -1072,12 +1085,13 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 							suppress_selection,
 							&view_options,
 							&state.cw_expanded,
+							active_index,
 						);
 					}
-					live_region::announce(live_region, "Vote submitted");
+					live_region.announce("Vote submitted");
 				}
 				Err(err) => {
-					live_region::announce(live_region, &spoken_failure("Failed to vote", &err));
+					live_region.announce(&spoken_failure("Failed to vote", &err));
 				}
 			},
 			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
@@ -1088,10 +1102,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::CredentialsFetched { result: Err(err) } => {
-				live_region::announce(live_region, &spoken_failure("Failed to fetch profile", &err));
+				live_region.announce(&spoken_failure("Failed to fetch profile", &err));
 			}
 			NetworkResponse::ProfileUpdated { result: Ok(account) } => {
-				live_region::announce(live_region, "Profile updated");
+				live_region.announce("Profile updated");
 				if let Some(active) = state.active_account_mut() {
 					active.default_post_visibility = account.source.and_then(|s| s.privacy);
 				}
@@ -1099,7 +1113,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let _ = ui_tx.send(UiCommand::Refresh);
 			}
 			NetworkResponse::ProfileUpdated { result: Err(err) } => {
-				live_region::announce(live_region, &spoken_failure("Failed to update profile", &err));
+				live_region.announce(&spoken_failure("Failed to update profile", &err));
 			}
 			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 				if let Some(dlg) = &state.manage_list_members_dialog
@@ -1130,6 +1144,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				let mut status_snapshots: Vec<Status> = Vec::new();
 				let view_options = state.timeline_view_options_for(&timeline_type);
 				let _text_options = &view_options.text_options;
+				let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					if is_active {
 						let effective_sort_order = timeline.effective_sort_order(&state.config);
@@ -1153,29 +1168,35 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
 					if is_load_more {
 						if new_entries.is_empty() {
-							live_region::announce(live_region, "No more results");
+							live_region.announce("No more results");
 						} else {
 							timeline.entries.extend(new_entries.clone());
 							if is_active {
+								if let Some(idx) = timeline_index_opt {
+									update_active_timeline_ui(
+										timeline_list,
+										timeline,
+										suppress_selection,
+										&view_options,
+										&state.cw_expanded,
+										idx,
+									);
+								}
+							}
+						}
+					} else {
+						timeline.entries = new_entries;
+						if is_active {
+							if let Some(idx) = timeline_index_opt {
 								update_active_timeline_ui(
 									timeline_list,
 									timeline,
 									suppress_selection,
 									&view_options,
 									&state.cw_expanded,
+									idx,
 								);
 							}
-						}
-					} else {
-						timeline.entries = new_entries;
-						if is_active {
-							update_active_timeline_ui(
-								timeline_list,
-								timeline,
-								suppress_selection,
-								&view_options,
-								&state.cw_expanded,
-							);
 						}
 					}
 					timeline.loading_more = false;
@@ -1190,6 +1211,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					if merged_any {
 						let view_options =
 							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+						let active_index = state.timeline_manager.active_index();
 						if let Some(view_options) = view_options
 							&& let Some(active) = state.timeline_manager.active_mut()
 						{
@@ -1199,6 +1221,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								suppress_selection,
 								&view_options,
 								&state.cw_expanded,
+								active_index,
 							);
 						}
 					}
@@ -1209,26 +1232,23 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 					timeline.loading_more = false;
 				}
-				live_region::announce(
-					live_region,
-					&format!("Search for '{query}' failed: {}", summarize_api_error(err)),
-				);
+				live_region.announce(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
 			}
 			NetworkResponse::ListsFetched { result: Ok(lists) } => {
 				if let Some(dlg) = &state.manage_lists_dialog {
 					dlg.update_lists(lists);
 				} else if lists.is_empty() {
-					live_region::announce(live_region, "No lists found");
+					live_region.announce("No lists found");
 				} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists) {
 					let timeline_type = TimelineType::List { id: list.id, title: list.title };
 					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 				}
 			}
 			NetworkResponse::ListsFetched { result: Err(err) } => {
-				live_region::announce(live_region, &spoken_failure("Failed to fetch lists", &err));
+				live_region.announce(&spoken_failure("Failed to fetch lists", &err));
 			}
 			NetworkResponse::ListCreated { result: Ok(list) } => {
-				live_region::announce(live_region, &format!("List '{}' created", list.title));
+				live_region.announce(&format!("List '{}' created", list.title));
 				if let Some(handle) = &state.network_handle {
 					handle.send(NetworkCommand::FetchLists);
 				}
@@ -1249,14 +1269,14 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				dialogs::show_error(parent, &err);
 			}
 			NetworkResponse::ListUpdated { result: Ok(list) } => {
-				live_region::announce(live_region, &format!("List '{}' updated", list.title));
+				live_region.announce(&format!("List '{}' updated", list.title));
 				if let Some(handle) = &state.network_handle {
 					handle.send(NetworkCommand::FetchLists);
 				}
 			}
 
 			NetworkResponse::ListDeleted { id: _, result: Ok(()) } => {
-				live_region::announce(live_region, "List deleted");
+				live_region.announce("List deleted");
 				if let Some(handle) = &state.network_handle {
 					handle.send(NetworkCommand::FetchLists);
 				}
@@ -1291,7 +1311,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 
 			NetworkResponse::ListAccountAdded { result: Ok(()), .. } => {
-				live_region::announce(live_region, "Member added");
+				live_region.announce("Member added");
 				if let Some(dlg) = &state.manage_list_members_dialog
 					&& let Some(handle) = &state.network_handle
 				{
@@ -1300,7 +1320,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			}
 
 			NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => {
-				live_region::announce(live_region, "Member removed");
+				live_region.announce("Member removed");
 				if let Some(dlg) = &state.manage_list_members_dialog
 					&& let Some(handle) = &state.network_handle
 				{

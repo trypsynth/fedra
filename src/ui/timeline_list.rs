@@ -20,9 +20,11 @@ impl ActionHandler for TimelineActionHandler {
 }
 
 pub const ROOT_ID: NodeId = NodeId(1);
+pub const ANNOUNCEMENT_ID: NodeId = NodeId(2);
 struct ListState {
 	entries: Vec<(NodeId, String)>,
 	selected_index: Option<usize>,
+	current_tree_announcement: Option<String>,
 	search_buffer: String,
 	last_search_time: Option<Instant>,
 }
@@ -33,7 +35,8 @@ struct TimelineActivationHandler {
 
 impl ActivationHandler for TimelineActivationHandler {
 	fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
-		let state = self.state.borrow();
+		let mut state = self.state.borrow_mut();
+		state.current_tree_announcement = Some(String::new());
 		let mut root = Node::new(Role::ListBox);
 		root.set_size_of_set(state.entries.len());
 		let mut children = Vec::with_capacity(state.entries.len());
@@ -54,6 +57,12 @@ impl ActivationHandler for TimelineActivationHandler {
 			}
 			nodes.push((*id, node));
 		}
+
+		children.push(ANNOUNCEMENT_ID);
+		let mut ann_node = Node::new(Role::Label);
+		ann_node.set_value("");
+		ann_node.set_live(accesskit::Live::Polite);
+		nodes.push((ANNOUNCEMENT_ID, ann_node));
 
 		root.set_children(children);
 		nodes.push((ROOT_ID, root));
@@ -105,6 +114,7 @@ impl TimelineList {
 		let list_state = Rc::new(RefCell::new(ListState {
 			entries: Vec::new(),
 			selected_index: None,
+			current_tree_announcement: None,
 			search_buffer: String::new(),
 			last_search_time: None,
 		}));
@@ -265,12 +275,11 @@ impl TimelineList {
 		state.entries.clear();
 		state.selected_index = None;
 		drop(state);
-		let update = TreeUpdate {
-			nodes: vec![(ROOT_ID, Node::new(Role::ListBox))],
-			tree: None,
-			focus: ROOT_ID,
-			tree_id: accesskit::TreeId::ROOT,
-		};
+		let mut root = Node::new(Role::ListBox);
+		root.set_size_of_set(0);
+		root.set_children(vec![ANNOUNCEMENT_ID]);
+		let update =
+			TreeUpdate { nodes: vec![(ROOT_ID, root)], tree: None, focus: ROOT_ID, tree_id: accesskit::TreeId::ROOT };
 		let mut inner = self.inner.borrow_mut();
 		if let Some(events) = inner.adapter.update_if_active(|| update) {
 			events.raise();
@@ -338,6 +347,8 @@ impl TimelineList {
 		} else {
 			state.selected_index = None;
 		}
+		children.push(ANNOUNCEMENT_ID);
+		// Do not push ANNOUNCEMENT_ID to nodes here, so AccessKit uses the existing node.
 		drop(state);
 
 		root.set_children(children);
@@ -464,6 +475,47 @@ impl TimelineList {
 		drop(inner);
 		if let Some(cb_ptr) = cb {
 			unsafe { (*cb_ptr)() };
+		}
+	}
+
+	pub fn announce(&self, text: &str) {
+		let state_rc = { self.inner.borrow().state.clone() };
+		let mut state = state_rc.borrow_mut();
+		let mut new_text = text.to_string();
+		if let Some(old) = &state.current_tree_announcement {
+			if old == &new_text {
+				new_text.push('\u{00A0}');
+			}
+		}
+		state.current_tree_announcement = Some(new_text.clone());
+
+		let mut node = Node::new(Role::Label);
+		node.set_value(new_text);
+		node.set_live(accesskit::Live::Polite);
+		let focus_id = if let Some(idx) = state.selected_index {
+			state.entries.get(idx).map(|(id, _)| *id).unwrap_or(ROOT_ID)
+		} else {
+			state.entries.first().map(|(id, _)| *id).unwrap_or(ROOT_ID)
+		};
+
+		let mut root = Node::new(Role::ListBox);
+		root.set_size_of_set(state.entries.len());
+		let mut children = Vec::with_capacity(state.entries.len() + 1);
+		children.push(ANNOUNCEMENT_ID);
+		for (id, _) in state.entries.iter() {
+			children.push(*id);
+		}
+		root.set_children(children);
+
+		let update = TreeUpdate {
+			nodes: vec![(ANNOUNCEMENT_ID, node), (ROOT_ID, root)],
+			tree: None,
+			focus: focus_id,
+			tree_id: accesskit::TreeId::ROOT,
+		};
+		let mut inner = self.inner.borrow_mut();
+		if let Some(events) = inner.adapter.update_if_active(|| update) {
+			events.raise();
 		}
 	}
 }

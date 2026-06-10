@@ -19,7 +19,6 @@ pub struct WindowParts {
 	pub frame: Frame,
 	pub timelines_selector: ListBox,
 	pub timeline_list: crate::ui::timeline_list::TimelineList,
-	pub live_region_label: StaticText,
 }
 
 pub fn build_main_window() -> WindowParts {
@@ -28,10 +27,6 @@ pub fn build_main_window() -> WindowParts {
 	let menu_bar = build_menu_bar();
 	frame.set_menu_bar(menu_bar);
 	let panel = Panel::builder(&frame).build();
-	// live region
-	let live_region_label = StaticText::builder(&panel).with_size(Size::new(1, 1)).build();
-	live_region_label.show(false);
-	live_region::set_live_region(&live_region_label);
 
 	let sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let timelines_label = StaticText::builder(&panel).with_label("Timelines").build();
@@ -53,7 +48,7 @@ pub fn build_main_window() -> WindowParts {
 	frame_sizer.add(&panel, 1, SizerFlag::Expand | SizerFlag::All, 0);
 	frame.set_sizer(frame_sizer, true);
 
-	WindowParts { frame, timelines_selector, timeline_list, live_region_label }
+	WindowParts { frame, timelines_selector, timeline_list }
 }
 
 pub fn bind_input_handlers(

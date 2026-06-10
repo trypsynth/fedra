@@ -93,7 +93,6 @@ pub fn switch_to_account(
 	timelines_selector: ListBox,
 	timeline_list: &crate::ui::timeline_list::TimelineList,
 	suppress_selection: &Cell<bool>,
-	live_region: StaticText,
 	should_announce: bool,
 	new_account_id: Option<String>,
 ) {
@@ -275,7 +274,14 @@ pub fn switch_to_account(
 		if let Some(view_options) = view_options
 			&& let Some(active) = state.timeline_manager.active_mut()
 		{
-			update_active_timeline_ui(timeline_list, active, suppress_selection, &view_options, &state.cw_expanded);
+			update_active_timeline_ui(
+				timeline_list,
+				active,
+				suppress_selection,
+				&view_options,
+				&state.cw_expanded,
+				active_index,
+			);
 		}
 	});
 	let (handle, title) = state.active_account().map_or_else(
@@ -291,7 +297,7 @@ pub fn switch_to_account(
 		},
 	);
 	if should_announce {
-		live_region::announce(live_region, &format!("Switched to {handle}"));
+		timeline_list.announce(&format!("Switched to {handle}"));
 	}
 	frame.set_label(&title);
 	if let Some(mb) = frame.get_menu_bar() {
