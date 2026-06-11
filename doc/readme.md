@@ -248,17 +248,28 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 * Added an actions button to the follower/following dialogs, working the exact same way as it does in the view profile dialog.
 * Find in timeline now respects your timeline sort direction.
 * Fixed a bug where going to the bottom of a thread, hitting home, and then performing an action would perform that action on the post you were previously on, not the newly focused one.
+* Fixed Fedra crashing when exiting from the system tray.
+* Fixed hashtags showing in the mentions dialog as @tags@instance.domain.
 * Fixed modal dialogs not stacking how you'd expect, leading to you sometimes ending up with a bunch of ghost dialogs that you'd only discover when hiding Fedra's window.
+* Fixed quote posts not rendering properly in the webview.
 * Fixed streaming not working on instances such as mastodon.social.
+* Fixed the compose dialog closing and taking your post content with it on error.
+* Fixed your list position being randomly moved up a few items sometimes.
 * Follower relationships are now shown in the follower/following dialogs.
+* It is now possible to mark media as sensitive.
 * It is now possible to mute/unmute hashtags directly in Fedra.
-* made Fedra expand quote posts much more reliably.
+* Made Fedra expand quote posts much more reliably.
+* Opening a thread will now put you on the post you selected from that thread, not the first post.
+* Sensitive media in posts is now properly handled by Fedra.
+* Swapped the open link and view thread hotkeys, so now enter opens links in posts and alt+enter opens the thread.
+* Switched to a fully custom list control, backed by [AccessKit](https://accesskit.dev), to prevent screen readers from rereading the focused item every minute among other things.
 * The followers/following dialogs now properly fetch users from remote instances, and give you progress as they load the lists.
+* The media player dialog will now be properly focused after downloading media.
 * Various little UI tweaks, for example adding accelerators where there previously were none.
 
 ### Version 0.3.1
 * Added a mentions timeline.
-* Added an option to open the local timeline for a spisific instence.
+* Added an option to open the local timeline for a specific instence.
 * Added the ability to play back and download media in posts!
 * Fixed quick keys not disabling properly until you changed your list position.
 * You will no longer get a select user dialog with two of the same entry for posts where a user boosts their own post.
