@@ -59,7 +59,7 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(ID_VIEW_HASHTAGS, "View &Hashtags\tCtrl+H", "View hashtags in selected post", ItemKind::Normal)
 		.expect("Failed to append view hashtags menu item");
 	post_menu
-		.append(ID_OPEN_LINKS, "Open &Links\tAlt+Enter", "Open links in selected post", ItemKind::Normal)
+		.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal)
 		.expect("Failed to append open links menu item");
 	post_menu
 		.append(ID_PLAY_MEDIA, "Play &Media\tCtrl+I", "Play media attached to selected post", ItemKind::Normal)
@@ -84,7 +84,12 @@ pub fn build_menu_bar() -> MenuBar {
 		)
 		.expect("Failed to append view post menu item");
 	post_menu
-		.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread for selected post", ItemKind::Normal)
+		.append(
+			ID_VIEW_THREAD,
+			"View &Thread\tAlt+Enter",
+			"View conversation thread for selected post",
+			ItemKind::Normal,
+		)
 		.expect("Failed to append view thread menu item");
 	post_menu
 		.append(

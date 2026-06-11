@@ -187,7 +187,7 @@ pub fn bind_input_handlers(
 			if k == 13 {
 				// Enter
 				if alt {
-					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
+					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
 					event.skip(false);
 					return;
 				}
@@ -197,7 +197,7 @@ pub fn bind_input_handlers(
 					return;
 				}
 				if !ctrl && !alt {
-					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
+					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
 					event.skip(false);
 					return;
 				}
@@ -579,14 +579,14 @@ pub fn bind_input_handlers(
 		}
 		menu.append_separator();
 		menu.append(ID_VIEW_POST, "View &Post Details\tShift+Enter", "View post content in a dialog", ItemKind::Normal);
-		menu.append(ID_VIEW_THREAD, "View &Thread\tEnter", "View conversation thread", ItemKind::Normal);
+		menu.append(ID_VIEW_THREAD, "View &Thread\tAlt+Enter", "View conversation thread", ItemKind::Normal);
 		menu.append(
 			ID_VIEW_QUOTED_THREAD,
 			"View &Quoted Thread",
 			"View conversation thread for quoted post",
 			ItemKind::Normal,
 		);
-		menu.append(ID_OPEN_LINKS, "Open &Links\tAlt+Enter", "Open links in selected post", ItemKind::Normal);
+		menu.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal);
 		menu.append(ID_PLAY_MEDIA, "Play &Media", "Play media attached to selected post", ItemKind::Normal);
 		menu.append(
 			ID_VIEW_IN_BROWSER,

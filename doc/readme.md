@@ -244,6 +244,18 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 
 ## Changelog
 
+### Version 0.4.0
+* Added an actions button to the follower/following dialogs, working the exact same way as it does in the view profile dialog.
+* Find in timeline now respects your timeline sort direction.
+* Fixed a bug where going to the bottom of a thread, hitting home, and then performing an action would perform that action on the post you were previously on, not the newly focused one.
+* Fixed modal dialogs not stacking how you'd expect, leading to you sometimes ending up with a bunch of ghost dialogs that you'd only discover when hiding Fedra's window.
+* Fixed streaming not working on instances such as mastodon.social.
+* Follower relationships are now shown in the follower/following dialogs.
+* It is now possible to mute/unmute hashtags directly in Fedra.
+* made Fedra expand quote posts much more reliably.
+* The followers/following dialogs now properly fetch users from remote instances, and give you progress as they load the lists.
+* Various little UI tweaks, for example adding accelerators where there previously were none.
+
 ### Version 0.3.1
 * Added a mentions timeline.
 * Added an option to open the local timeline for a spisific instence.
