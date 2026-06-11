@@ -11,8 +11,8 @@ use url::Url;
 
 use crate::{
 	mastodon::{
-		Account, Conversation, MastodonClient, Notification, PostSubmission, Relationship, SearchResults, SearchType,
-		Status, StatusContext,
+		Account, Conversation, FilterAction, FilterContext, MastodonClient, Notification, PostSubmission, Relationship,
+		SearchResults, SearchType, Status, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -265,6 +265,12 @@ pub enum NetworkCommand {
 		list_id: String,
 		account_id: String,
 	},
+	MuteTag {
+		name: String,
+	},
+	UnmuteTag {
+		name: String,
+	},
 	Shutdown,
 }
 
@@ -390,6 +396,14 @@ pub enum NetworkResponse {
 	},
 	TagsInfoFetched {
 		result: Result<Vec<crate::mastodon::Tag>>,
+	},
+	TagMuted {
+		name: String,
+		result: Result<()>,
+	},
+	TagUnmuted {
+		name: String,
+		result: Result<()>,
 	},
 	RebloggedByLoaded {
 		result: Result<Vec<Account>>,
@@ -967,13 +981,71 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::FetchTagsInfo { names }) => {
 				let mut tags = Vec::new();
-				for name in names {
-					if let Ok(tag) = client.get_tag(access_token, &name) {
+				for name in &names {
+					if let Ok(tag) = client.get_tag(access_token, name) {
 						tags.push(tag);
+					}
+				}
+				if let Ok(filters) = client.get_filters(access_token) {
+					for tag in &mut tags {
+						let with_hash = format!("#{}", tag.name);
+						tag.muted = filters.iter().any(|f| {
+							f.action == FilterAction::Hide
+								&& f.keywords.iter().any(|kw| {
+									kw.keyword.eq_ignore_ascii_case(&with_hash)
+										|| kw.keyword.eq_ignore_ascii_case(&tag.name)
+								})
+						});
 					}
 				}
 				let result = Ok(tags);
 				send_response(responses, ui_waker, NetworkResponse::TagsInfoFetched { result });
+			}
+			Ok(NetworkCommand::MuteTag { name }) => {
+				let result = (|| -> Result<()> {
+					let filters = client.get_filters(access_token)?;
+					let keyword = format!("#{name}");
+					if let Some(filter) =
+						filters.into_iter().find(|f| f.title == "Muted hashtags" && f.action == FilterAction::Hide)
+					{
+						if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+							client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
+						}
+					} else {
+						client.create_filter(
+							access_token,
+							"Muted hashtags",
+							&[
+								FilterContext::Home,
+								FilterContext::Notifications,
+								FilterContext::Public,
+								FilterContext::Thread,
+								FilterContext::Account,
+							],
+							&FilterAction::Hide,
+							&[(keyword, true)],
+							None,
+						)?;
+					}
+					Ok(())
+				})();
+				send_response(responses, ui_waker, NetworkResponse::TagMuted { name, result });
+			}
+			Ok(NetworkCommand::UnmuteTag { name }) => {
+				let result = (|| -> Result<()> {
+					let filters = client.get_filters(access_token)?;
+					let keyword = format!("#{name}");
+					for filter in &filters {
+						for kw in &filter.keywords {
+							if kw.keyword.eq_ignore_ascii_case(&keyword) {
+								client.delete_filter_keyword(access_token, &kw.id)?;
+								return Ok(());
+							}
+						}
+					}
+					Ok(())
+				})();
+				send_response(responses, ui_waker, NetworkResponse::TagUnmuted { name, result });
 			}
 			Ok(NetworkCommand::FetchRebloggedBy { status_id }) => {
 				let result = client.get_reblogged_by(access_token, &status_id);

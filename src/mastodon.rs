@@ -260,6 +260,8 @@ pub struct Tag {
 	#[serde(default)]
 	pub following: bool,
 	#[serde(default)]
+	pub muted: bool,
+	#[serde(default)]
 	pub history: Vec<TagHistory>,
 }
 
@@ -2210,6 +2212,40 @@ impl MastodonClient {
 			.context("Failed to delete filter")?
 			.error_for_status()
 			.context("Instance rejected filter deletion")?;
+		Ok(())
+	}
+
+	pub fn add_filter_keyword(
+		&self,
+		access_token: &str,
+		filter_id: &str,
+		keyword: &str,
+		whole_word: bool,
+	) -> Result<FilterKeyword> {
+		let url = self.base_url.join(&format!("api/v2/filters/{filter_id}/keywords"))?;
+		let response = self
+			.http
+			.post(url)
+			.bearer_auth(access_token)
+			.form(&[("keyword", keyword), ("whole_word", if whole_word { "true" } else { "false" })])
+			.send()
+			.context("Failed to add filter keyword")?
+			.error_for_status()
+			.context("Instance rejected adding filter keyword")?;
+		let kw: FilterKeyword = response.json().context("Invalid filter keyword response")?;
+		Ok(kw)
+	}
+
+	pub fn delete_filter_keyword(&self, access_token: &str, keyword_id: &str) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v2/filters/keywords/{keyword_id}"))?;
+		let _ = self
+			.http
+			.delete(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to delete filter keyword")?
+			.error_for_status()
+			.context("Instance rejected deleting filter keyword")?;
 		Ok(())
 	}
 }

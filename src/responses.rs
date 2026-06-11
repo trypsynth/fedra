@@ -760,6 +760,24 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
 				live_region.announce(&spoken_failure("Failed to load hashtags", &err));
 			}
+			NetworkResponse::TagMuted { name, result: Ok(()) } => {
+				if let Some(dlg) = &state.hashtag_dialog {
+					dlg.update_tag_muted(&name, true);
+				}
+				live_region.announce(&format!("Muted #{name}"));
+			}
+			NetworkResponse::TagMuted { name, result: Err(err) } => {
+				live_region.announce(&format!("Failed to mute #{name}: {}", summarize_api_error(&err)));
+			}
+			NetworkResponse::TagUnmuted { name, result: Ok(()) } => {
+				if let Some(dlg) = &state.hashtag_dialog {
+					dlg.update_tag_muted(&name, false);
+				}
+				live_region.announce(&format!("Unmuted #{name}"));
+			}
+			NetworkResponse::TagUnmuted { name, result: Err(err) } => {
+				live_region.announce(&format!("Failed to unmute #{name}: {}", summarize_api_error(&err)));
+			}
 			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
 				if let Some((account, action)) =
 					dialogs::prompt_for_account_list(frame, "Boosts", "Users who boosted this post", &accounts)

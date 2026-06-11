@@ -304,6 +304,7 @@ pub struct HashtagDialog {
 	dialog: Dialog,
 	list: ListBox,
 	action_button: Button,
+	mute_button: Button,
 	tags: Rc<RefCell<Vec<crate::mastodon::Tag>>>,
 }
 
@@ -318,7 +319,13 @@ impl HashtagDialog {
 		let list_label = StaticText::builder(&panel).with_label("Hashtags in post:").build();
 		let tag_list = ListBox::builder(&panel).build();
 		let format_tag = |tag: &crate::mastodon::Tag| -> String {
-			let status = if tag.following { " (Following)" } else { "" };
+			let mut status = String::new();
+			if tag.following {
+				status.push_str(" (Following)");
+			}
+			if tag.muted {
+				status.push_str(" (Muted)");
+			}
 			format!("#{}{}", tag.name, status)
 		};
 		for tag in &tags {
@@ -329,9 +336,11 @@ impl HashtagDialog {
 		}
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let action_button = Button::builder(&panel).with_label("Follow").build();
+		let mute_button = Button::builder(&panel).with_label("Mute").build();
 		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
 		close_button.set_default();
 		button_sizer.add(&action_button, 0, SizerFlag::Right, 8);
+		button_sizer.add(&mute_button, 0, SizerFlag::Right, 8);
 		button_sizer.add_stretch_spacer(1);
 		button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
 		main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -342,25 +351,34 @@ impl HashtagDialog {
 		dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 		dialog.set_sizer(dialog_sizer, true);
 		let tags_rc = Rc::new(RefCell::new(tags));
-		let handle = Self { dialog, list: tag_list, action_button, tags: tags_rc.clone() };
+		let handle = Self { dialog, list: tag_list, action_button, mute_button, tags: tags_rc.clone() };
 		let update_button_state = {
 			let tags = tags_rc.clone();
 			let btn = action_button;
+			let mute_btn = mute_button;
 			let list = tag_list;
 			move || {
 				if let Some(sel) = list.get_selection() {
 					if let Some(tag) = tags.borrow().get(sel as usize) {
 						btn.enable(true);
+						mute_btn.enable(true);
 						if tag.following {
 							btn.set_label("Unfollow");
 						} else {
 							btn.set_label("Follow");
 						}
+						if tag.muted {
+							mute_btn.set_label("Unmute");
+						} else {
+							mute_btn.set_label("Mute");
+						}
 					} else {
 						btn.enable(false);
+						mute_btn.enable(false);
 					}
 				} else {
 					btn.enable(false);
+					mute_btn.enable(false);
 				}
 			}
 		};
@@ -369,9 +387,9 @@ impl HashtagDialog {
 		tag_list.on_selection_changed(move |_| {
 			update_on_sel();
 		});
-		let tags_action = tags_rc;
+		let tags_action = tags_rc.clone();
 		let list_action = tag_list;
-		let net_tx_action = net_tx;
+		let net_tx_action = net_tx.clone();
 		action_button.on_click(move |_| {
 			if let Some(sel) = list_action.get_selection() {
 				let index = sel as usize;
@@ -383,6 +401,23 @@ impl HashtagDialog {
 						NetworkCommand::FollowTag { name: tag.name.clone() }
 					};
 					let _ = net_tx_action.send(cmd);
+				}
+			}
+		});
+		let tags_mute = tags_rc;
+		let list_mute = tag_list;
+		let net_tx_mute = net_tx;
+		mute_button.on_click(move |_| {
+			if let Some(sel) = list_mute.get_selection() {
+				let index = sel as usize;
+				let tags_borrow = tags_mute.borrow();
+				if let Some(tag) = tags_borrow.get(index) {
+					let cmd = if tag.muted {
+						NetworkCommand::UnmuteTag { name: tag.name.clone() }
+					} else {
+						NetworkCommand::MuteTag { name: tag.name.clone() }
+					};
+					let _ = net_tx_mute.send(cmd);
 				}
 			}
 		});
@@ -412,8 +447,14 @@ impl HashtagDialog {
 		}
 		if let Some(i) = index {
 			let format_tag = |tag: &crate::mastodon::Tag| -> String {
-				let status = if tag.following { " (Following)" } else { "" };
-				format!("#{} {}", tag.name, status)
+				let mut status = String::new();
+				if tag.following {
+					status.push_str(" (Following)");
+				}
+				if tag.muted {
+					status.push_str(" (Muted)");
+				}
+				format!("#{}{}", tag.name, status)
 			};
 			let sel = self.list.get_selection();
 			self.list.clear();
@@ -430,6 +471,46 @@ impl HashtagDialog {
 					self.action_button.set_label("Unfollow");
 				} else {
 					self.action_button.set_label("Follow");
+				}
+			}
+		}
+	}
+
+	pub fn update_tag_muted(&self, name: &str, muted: bool) {
+		let mut tags = self.tags.borrow_mut();
+		let mut index = None;
+		for (i, tag) in tags.iter_mut().enumerate() {
+			if tag.name.eq_ignore_ascii_case(name) {
+				tag.muted = muted;
+				index = Some(i);
+			}
+		}
+		if let Some(i) = index {
+			let format_tag = |tag: &crate::mastodon::Tag| -> String {
+				let mut status = String::new();
+				if tag.following {
+					status.push_str(" (Following)");
+				}
+				if tag.muted {
+					status.push_str(" (Muted)");
+				}
+				format!("#{}{}", tag.name, status)
+			};
+			let sel = self.list.get_selection();
+			self.list.clear();
+			for t in tags.iter() {
+				self.list.append(&format_tag(t));
+			}
+			if let Some(s) = sel {
+				self.list.set_selection(s, true);
+			}
+			if let Ok(i_u32) = u32::try_from(i)
+				&& sel == Some(i_u32)
+			{
+				if muted {
+					self.mute_button.set_label("Unmute");
+				} else {
+					self.mute_button.set_label("Mute");
 				}
 			}
 		}
