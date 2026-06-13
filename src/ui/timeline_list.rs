@@ -501,10 +501,10 @@ impl TimelineList {
 		let mut root = Node::new(Role::ListBox);
 		root.set_size_of_set(state.entries.len());
 		let mut children = Vec::with_capacity(state.entries.len() + 1);
-		children.push(ANNOUNCEMENT_ID);
 		for (id, _) in state.entries.iter() {
 			children.push(*id);
 		}
+		children.push(ANNOUNCEMENT_ID);
 		root.set_children(children);
 
 		let update = TreeUpdate {

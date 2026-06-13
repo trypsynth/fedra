@@ -1,4 +1,8 @@
-use std::{cell::Cell, collections::HashSet};
+use std::{
+	cell::Cell,
+	collections::{HashSet, hash_map::DefaultHasher},
+	hash::{Hash, Hasher},
+};
 
 use accesskit::NodeId;
 
@@ -8,8 +12,12 @@ use crate::{
 	ui::timeline_list::TimelineList,
 };
 
-pub fn list_index_to_node_id(timeline_index: usize, index: usize) -> NodeId {
-	NodeId((10 + timeline_index * 10000 + index) as u64)
+pub fn entry_id_to_node_id(id: &str) -> NodeId {
+	let mut hasher = DefaultHasher::new();
+	id.hash(&mut hasher);
+	let hash = hasher.finish();
+	let hash = if hash == 0 { 1 } else { hash };
+	NodeId(hash)
 }
 
 #[derive(Debug, Clone)]
@@ -35,8 +43,8 @@ pub fn update_timeline_ui(
 	sort_order: SortOrder,
 	text_options: &TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
-	timeline_index: usize,
-	selected_index: Option<usize>,
+	_timeline_index: usize,
+	selected_id: Option<&str>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
 		SortOrder::NewestToOldest => Box::new(entries.iter()),
@@ -44,13 +52,13 @@ pub fn update_timeline_ui(
 	};
 
 	let mut list_entries = Vec::with_capacity(entries.len());
-	for (i, entry) in iter.enumerate() {
+	for entry in iter {
 		let is_expanded = cw_expanded.contains(entry.id());
 		let text = entry.display_text(text_options, is_expanded);
-		list_entries.push((list_index_to_node_id(timeline_index, i), text));
+		list_entries.push((entry_id_to_node_id(entry.id()), text));
 	}
 
-	let selected_node_id = selected_index.map(|idx| list_index_to_node_id(timeline_index, idx));
+	let selected_node_id = selected_id.map(entry_id_to_node_id);
 	timeline_list.update_entries(&list_entries, selected_node_id);
 }
 
@@ -159,7 +167,7 @@ pub fn update_active_timeline_ui(
 				&options.text_options,
 				cw_expanded,
 				timeline_index,
-				timeline.selected_index,
+				timeline.selected_id.as_deref(),
 			);
 		});
 	});

@@ -526,9 +526,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::HomePressed => {
 			if timeline_list.get_selection() != Some(0) {
-				let active_index = state.timeline_manager.active_index();
 				if let Some(active) = state.timeline_manager.active_mut() {
-					timeline_list.set_selection(Some(crate::ui::timeline_view::list_index_to_node_id(active_index, 0)));
 					let effective_sort_order = if state.config.preserve_thread_order
 						&& matches!(active.timeline_type, TimelineType::Thread { .. })
 					{
@@ -536,6 +534,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					} else {
 						state.config.sort_order
 					};
+					let node_id = crate::ui::timeline_view::list_index_to_entry_index(
+						0,
+						active.entries.len(),
+						effective_sort_order,
+					)
+					.map(|entry_index| crate::ui::timeline_view::entry_id_to_node_id(active.entries[entry_index].id()));
+					timeline_list.set_selection(node_id);
+
 					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 				}
 			}
@@ -2088,9 +2094,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(active.selected_index.map(|idx| {
-							crate::ui::timeline_view::list_index_to_node_id(state.timeline_manager.active_index(), idx)
-						}));
+						timeline_list.set_selection(
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
+						);
 					}
 				} else {
 					live_region.announce("Not found");
@@ -2098,7 +2104,6 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::FindNext => {
-			let active_index = state.timeline_manager.active_index();
 			if let Some(active) = state.timeline_manager.active_mut()
 				&& active.find_query.is_some()
 			{
@@ -2127,9 +2132,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						.map(|entry_index| active.entries[entry_index].id().to_string());
 
 						timeline_list.set_selection(
-							active
-								.selected_index
-								.map(|idx| crate::ui::timeline_view::list_index_to_node_id(active_index, idx)),
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
 						);
 						live_region.announce("Found next");
 					}
@@ -2152,12 +2155,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									)
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
-									timeline_list.set_selection(active.selected_index.map(|idx| {
-										crate::ui::timeline_view::list_index_to_node_id(
-											state.timeline_manager.active_index(),
-											idx,
-										)
-									}));
+									timeline_list.set_selection(
+										active
+											.selected_id
+											.as_deref()
+											.map(crate::ui::timeline_view::entry_id_to_node_id),
+									);
 									live_region.announce("Wrapped to top");
 								}
 							} else {
@@ -2165,9 +2168,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								active.selected_id = active.entries.first().map(|e| e.id().to_string());
 
 								timeline_list.set_selection(
-									active
-										.selected_index
-										.map(|idx| crate::ui::timeline_view::list_index_to_node_id(active_index, idx)),
+									active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
 								);
 								live_region.announce("Wrapped to top");
 							}
@@ -2184,7 +2185,6 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::FindPrev => {
-			let active_index = state.timeline_manager.active_index();
 			if let Some(active) = state.timeline_manager.active_mut()
 				&& active.find_query.is_some()
 			{
@@ -2205,9 +2205,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							effective_sort_order,
 						)
 						.map(|entry_index| active.entries[entry_index].id().to_string());
-						timeline_list.set_selection(active.selected_index.map(|idx| {
-							crate::ui::timeline_view::list_index_to_node_id(state.timeline_manager.active_index(), idx)
-						}));
+						timeline_list.set_selection(
+							active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
+						);
 					}
 				} else {
 					let effective_sort_order = active.effective_sort_order(&state.config);
@@ -2230,9 +2230,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 									.map(|entry_index| active.entries[entry_index].id().to_string());
 
 									timeline_list.set_selection(
-										active.selected_index.map(|idx| {
-											crate::ui::timeline_view::list_index_to_node_id(active_index, idx)
-										}),
+										active
+											.selected_id
+											.as_deref()
+											.map(crate::ui::timeline_view::entry_id_to_node_id),
 									);
 									live_region.announce("Wrapped to bottom");
 								}
@@ -2241,9 +2242,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								active.selected_id = active.entries.last().map(|e| e.id().to_string());
 
 								timeline_list.set_selection(
-									active
-										.selected_index
-										.map(|idx| crate::ui::timeline_view::list_index_to_node_id(active_index, idx)),
+									active.selected_id.as_deref().map(crate::ui::timeline_view::entry_id_to_node_id),
 								);
 								live_region.announce("Wrapped to bottom");
 							}
@@ -2269,12 +2268,12 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 										)
 										.map(|entry_index| active.entries[entry_index].id().to_string());
 
-										timeline_list.set_selection(active.selected_index.map(|idx| {
-											crate::ui::timeline_view::list_index_to_node_id(
-												state.timeline_manager.active_index(),
-												idx,
-											)
-										}));
+										timeline_list.set_selection(
+											active
+												.selected_id
+												.as_deref()
+												.map(crate::ui::timeline_view::entry_id_to_node_id),
+										);
 										live_region.announce("Wrapped to bottom");
 									}
 								} else {
