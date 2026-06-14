@@ -20,6 +20,7 @@ pub(crate) const ID_ACTION_VIEW_FOLLOWERS: i32 = 6010;
 pub(crate) const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 pub(crate) const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
 pub(crate) const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
+pub(crate) const ID_ACTION_ADD_TO_LIST: i32 = 6014;
 
 pub(crate) fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	text.push_str("\r\n\r\nRelationship:\r\n");
@@ -62,6 +63,7 @@ pub(crate) fn setup_actions_button(
 	account: Rc<RefCell<Account>>,
 	relationship: Rc<RefCell<Option<Relationship>>>,
 	net_tx: Sender<NetworkCommand>,
+	ui_tx: crate::ui_wake::UiCommandSender,
 ) {
 	let relationship_click = relationship.clone();
 	button.on_click(move |_| {
@@ -102,6 +104,8 @@ pub(crate) fn setup_actions_button(
 		menu.append_separator();
 		menu.append(ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
 		menu.append(ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
+		menu.append_separator();
+		menu.append(ID_ACTION_ADD_TO_LIST, "Add to List...", "", ItemKind::Normal);
 		panel.popup_menu(&mut menu, None);
 	});
 
@@ -124,6 +128,10 @@ pub(crate) fn setup_actions_button(
 			let acct = account.acct.clone();
 			let total_count = account.following_count;
 			let _ = net_tx.send(NetworkCommand::FetchFollowing { account_id, acct, total_count });
+			return;
+		}
+		if id == ID_ACTION_ADD_TO_LIST {
+			let _ = ui_tx.send(crate::commands::UiCommand::AddUserToList(account_id));
 			return;
 		}
 		let cmd = match id {

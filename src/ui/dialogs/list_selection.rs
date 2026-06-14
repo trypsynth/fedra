@@ -2,8 +2,8 @@ use wxdragon::prelude::*;
 
 use crate::mastodon::List;
 
-pub fn show_list_selection_dialog(frame: &Frame, lists: &[List]) -> Option<List> {
-	let dialog = Dialog::builder(frame, "Open List").with_size(300, 400).build();
+pub fn show_list_selection_dialog(frame: &Frame, lists: &[List], title: &str, button_label: &str) -> Option<List> {
+	let dialog = Dialog::builder(frame, title).with_size(300, 400).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let list_label = StaticText::builder(&panel).with_label("Select a list").build();
@@ -15,7 +15,7 @@ pub fn show_list_selection_dialog(frame: &Frame, lists: &[List]) -> Option<List>
 		list_box.set_selection(0, true);
 	}
 	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("Open").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(button_label).build();
 	ok_button.set_default();
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	button_sizer.add_stretch_spacer(1);

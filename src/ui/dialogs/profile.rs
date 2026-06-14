@@ -23,6 +23,7 @@ impl ProfileDialog {
 		account: MastodonAccount,
 		current_user_id: Option<&str>,
 		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
+		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
 	) -> Self
@@ -40,7 +41,7 @@ impl ProfileDialog {
 			.build();
 		profile_text.set_value(&account.profile_display());
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-		let actions_button = Button::builder(&panel).with_label("Actions...").build();
+		let actions_button = Button::builder(&panel).with_label("&Actions...").build();
 		let timeline_button = Button::builder(&panel).with_id(ID_OK).with_label("View &Timeline").build();
 		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("&Close").build();
 		close_button.set_default();
@@ -64,7 +65,14 @@ impl ProfileDialog {
 		let relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>> = Rc::new(RefCell::new(None));
 		let account_rc = Rc::new(RefCell::new(account));
 
-		user_actions::setup_actions_button(panel, actions_button, account_rc.clone(), relationship.clone(), net_tx);
+		user_actions::setup_actions_button(
+			panel,
+			actions_button,
+			account_rc.clone(),
+			relationship.clone(),
+			net_tx,
+			ui_tx,
+		);
 		let dlg_timeline = dialog;
 		let on_view_timeline = on_view_timeline;
 		timeline_button.on_click(move |_| {

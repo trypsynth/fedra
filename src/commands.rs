@@ -133,6 +133,7 @@ pub enum UiCommand {
 	ManageListsDialogClosed,
 	ManageListMembersDialogClosed,
 	OpenList,
+	AddUserToList(String),
 	ContinueThread(Box<Status>),
 	Find(String),
 	FindNext,
@@ -1095,6 +1096,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							account,
 							state.current_user_id.as_deref(),
 							net_tx,
+							ui_tx.clone(),
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 							},
@@ -1188,6 +1190,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							account,
 							state.current_user_id.as_deref(),
 							net_tx,
+							ui_tx.clone(),
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 							},
@@ -1407,6 +1410,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								account,
 								state.current_user_id.as_deref(),
 								net_tx,
+								ui_tx.clone(),
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 								},
@@ -1727,6 +1731,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							account.clone(),
 							state.current_user_id.as_deref(),
 							net_tx,
+							ui_tx.clone(),
 							move || {
 								let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 							},
@@ -2072,6 +2077,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 
 					handle.send(NetworkCommand::FetchLists);
 				}
+			} else {
+				live_region.announce("Network not available");
+			}
+		}
+		UiCommand::AddUserToList(account_id) => {
+			state.pending_add_to_list_user = Some(account_id);
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchLists);
 			} else {
 				live_region.announce("Network not available");
 			}

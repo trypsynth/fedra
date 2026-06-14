@@ -507,6 +507,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 								account.clone(),
 								state.current_user_id.as_deref(),
 								net_tx,
+								ui_tx.clone(),
 								move || {
 									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 								},
@@ -798,6 +799,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 									account.clone(),
 									state.current_user_id.as_deref(),
 									net_tx,
+									ui_tx.clone(),
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 									},
@@ -844,6 +846,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 									account.clone(),
 									state.current_user_id.as_deref(),
 									net_tx,
+									ui_tx.clone(),
 									move || {
 										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
 									},
@@ -881,6 +884,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				};
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
+				let ui_tx_dlg = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
 				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
 				let followers_parent: &dyn wxdragon::window::WxWidget =
@@ -893,6 +897,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					total_count,
 					account_id_opt,
 					net_tx_dlg,
+					ui_tx_dlg,
 					move |account| {
 						let timeline_type = TimelineType::User {
 							id: account.id.clone(),
@@ -961,6 +966,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				};
 				let ui_tx_timeline = ui_tx.clone();
 				let ui_tx_close = ui_tx.clone();
+				let ui_tx_dlg = ui_tx.clone();
 				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
 				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
 				let following_parent: &dyn wxdragon::window::WxWidget =
@@ -973,6 +979,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					total_count,
 					account_id_opt,
 					net_tx_dlg,
+					ui_tx_dlg,
 					move |account| {
 						let timeline_type = TimelineType::User {
 							id: account.id.clone(),
@@ -1253,11 +1260,20 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				live_region.announce(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
 			}
 			NetworkResponse::ListsFetched { result: Ok(lists) } => {
-				if let Some(dlg) = &state.manage_lists_dialog {
+				if let Some(account_id) = state.pending_add_to_list_user.take() {
+					if lists.is_empty() {
+						live_region.announce("No lists found to add user to");
+					} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists, "Add to List", "Add")
+					{
+						if let Some(handle) = &state.network_handle {
+							handle.send(NetworkCommand::AddListAccount { list_id: list.id, account_id });
+						}
+					}
+				} else if let Some(dlg) = &state.manage_lists_dialog {
 					dlg.update_lists(lists);
 				} else if lists.is_empty() {
 					live_region.announce("No lists found");
-				} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists) {
+				} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists, "Open List", "Open") {
 					let timeline_type = TimelineType::List { id: list.id, title: list.title };
 					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
 				}
@@ -1277,6 +1293,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
 			| NetworkResponse::ListAccountAdded { result: Err(err), .. }
 			| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => {
+				state.pending_add_to_list_user = None;
 				let parent: &dyn WxWidget = if let Some(dlg) = &state.manage_list_members_dialog {
 					dlg.get_dialog()
 				} else if let Some(dlg) = &state.manage_lists_dialog {

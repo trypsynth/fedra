@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
 
-use wxdragon::prelude::*;
+use wxdragon::{event::MenuEvents, prelude::*};
 
 use super::user_actions;
 use crate::{
@@ -29,6 +29,7 @@ impl FollowListDialog {
 		total_count: u64,
 		account_id: Option<String>,
 		net_tx: Sender<NetworkCommand>,
+		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
 	) -> Self
@@ -57,7 +58,7 @@ impl FollowListDialog {
 		}
 
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-		let actions_button = Button::builder(&panel).with_label("Actions...").build();
+		let actions_button = Button::builder(&panel).with_label("&Actions...").build();
 		let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
 		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
 		button_sizer.add(&actions_button, 0, SizerFlag::Right, 8);
@@ -100,7 +101,9 @@ impl FollowListDialog {
 
 		let relationships_click = relationships_rc.clone();
 		let current_account_click = current_account_rc.clone();
-		actions_button.on_click(move |_| {
+		let panel_clone = panel.clone();
+
+		let show_menu = Rc::new(move || {
 			let current = current_account_click.borrow();
 			let Some(account) = current.as_ref() else { return };
 			let rel = relationships_click.borrow().get(&account.id).cloned();
@@ -148,7 +151,19 @@ impl FollowListDialog {
 			menu.append_separator();
 			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
 			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
-			panel.popup_menu(&mut menu, None);
+			menu.append_separator();
+			menu.append(user_actions::ID_ACTION_ADD_TO_LIST, "Add to List...", "", ItemKind::Normal);
+			panel_clone.popup_menu(&mut menu, None);
+		});
+
+		let show_menu_btn = show_menu.clone();
+		actions_button.on_click(move |_| {
+			show_menu_btn();
+		});
+
+		let show_menu_ctx = show_menu.clone();
+		panel.on_context_menu(move |_| {
+			show_menu_ctx();
 		});
 
 		let relationships_handler = relationships_rc.clone();
@@ -174,6 +189,10 @@ impl FollowListDialog {
 				let acct = account.acct.clone();
 				let total_count = account.following_count;
 				let _ = net_tx.send(NetworkCommand::FetchFollowing { account_id, acct, total_count });
+				return;
+			}
+			if id == user_actions::ID_ACTION_ADD_TO_LIST {
+				let _ = ui_tx.send(crate::commands::UiCommand::AddUserToList(account_id));
 				return;
 			}
 			let rel = relationships_handler.borrow().get(&account_id).cloned();

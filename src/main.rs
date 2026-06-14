@@ -112,6 +112,7 @@ pub(crate) struct AppState {
 	pub(crate) pending_thread_continuation: bool,
 	pub(crate) pending_restore_post_id: Option<(crate::timeline::TimelineType, String)>,
 	pub(crate) pending_post: Option<PendingPost>,
+	pub(crate) pending_add_to_list_user: Option<String>,
 }
 
 impl AppState {
@@ -145,6 +146,7 @@ impl AppState {
 			pending_thread_continuation: false,
 			pending_restore_post_id: None,
 			pending_post: None,
+			pending_add_to_list_user: None,
 		}
 	}
 
