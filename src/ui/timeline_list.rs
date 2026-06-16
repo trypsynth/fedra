@@ -217,6 +217,20 @@ impl TimelineList {
 				// END
 				new_idx = count - 1;
 			}
+			366 => {
+				if current >= 20 {
+					new_idx = current - 20;
+				} else {
+					new_idx = 0;
+				}
+			}
+			367 => {
+				if current + 20 < count {
+					new_idx = current + 20;
+				} else {
+					new_idx = count - 1;
+				}
+			}
 			_ => return false,
 		}
 		if new_idx != current || state.selected_index.is_none() {
