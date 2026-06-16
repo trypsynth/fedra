@@ -469,19 +469,47 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::CopyPost => {
-			let Some(status) = get_selected_status(state) else {
+			let Some(entry) = get_selected_entry(state) else {
 				live_region.announce("No post selected");
 				return;
 			};
-			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-			let mut text = String::new();
-			let spoiler = target.spoiler_text.trim();
-			if !spoiler.is_empty() {
-				text.push_str("Content warning: ");
-				text.push_str(spoiler);
-				text.push_str("\r\n");
-			}
-			text.push_str(&target.display_text());
+			let mut options = state.timeline_manager.active().map_or_else(
+				|| TimelineTextOptions::from_config_default(&state.config),
+				|a| TimelineTextOptions::from_config(&state.config, &a.timeline_type),
+			);
+			let strip_stats = |template: &str| -> String {
+				let mut t = template.to_string();
+				let to_remove = [
+					" - {{ relative_time }}",
+					" - {{ absolute_time }}",
+					"{{ relative_time }}",
+					"{{ absolute_time }}",
+					", {{ visibility }}",
+					"{{ visibility }}",
+					"{% if reply_count %}, {{ reply_count }}{% endif %}",
+					"{% if boost_count %}, {{ boost_count }}{% endif %}",
+					"{% if favorite_count %}, {{ favorite_count }}{% endif %}",
+					"{% if client %}, via {{ client }}{% endif %}",
+				];
+				for s in to_remove {
+					t = t.replace(s, "");
+				}
+				t = t.replace(" - ,", " -");
+				t = t.replace(", ,", ",");
+				let mut cleaned = t.trim().to_string();
+				if cleaned.ends_with(" -") {
+					cleaned.truncate(cleaned.len() - 2);
+				}
+				if cleaned.ends_with(',') {
+					cleaned.pop();
+				}
+				cleaned.trim().to_string()
+			};
+			options.post_template = strip_stats(&options.post_template);
+			options.boost_template = strip_stats(&options.boost_template);
+			options.quote_template = strip_stats(&options.quote_template);
+			let is_expanded = state.cw_expanded.contains(entry.id());
+			let text = entry.display_text(&options, is_expanded);
 			if text.trim().is_empty() {
 				live_region.announce("Post has no text");
 				return;
