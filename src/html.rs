@@ -64,8 +64,17 @@ fn normalize_text(input: &str) -> String {
 				last_was_space = false;
 				last_was_newline = true;
 			}
+			// Non-breaking space: always preserve (Mastodon uses &nbsp; for indentation)
+			'\u{00A0}' => {
+				output.push(ch);
+				last_was_space = false;
+				last_was_newline = false;
+			}
 			c if c.is_whitespace() => {
-				if !last_was_space && !last_was_newline {
+				if last_was_newline {
+					// Preserve indentation at the start of a line
+					output.push(c);
+				} else if !last_was_space {
 					output.push(' ');
 					last_was_space = true;
 				}
@@ -82,7 +91,7 @@ fn normalize_text(input: &str) -> String {
 		if !cleaned.is_empty() {
 			cleaned.push('\n');
 		}
-		cleaned.push_str(line.trim());
+		cleaned.push_str(line.trim_end()); // trim_end preserves leading indentation
 	}
 	let mut final_out = String::new();
 	let mut blank_run = 0;

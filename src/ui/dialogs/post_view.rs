@@ -117,6 +117,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 				body {{ font-family: sans-serif; padding: 10px; }}
 				img {{ max-width: 100%; height: auto; }}
 				video {{ max-width: 100%; height: auto; }}
+				p, span, div, pre, code {{ white-space: pre-wrap; }}
 			</style>
 		</head>
 		<body>
