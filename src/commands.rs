@@ -73,6 +73,7 @@ pub enum UiCommand {
 	DeletePost,
 	EditPost,
 	CopyPost,
+	CopyPostLink,
 	Favorite,
 	Bookmark,
 	Boost,
@@ -517,6 +518,24 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			let clipboard = Clipboard::get();
 			let _ = clipboard.set_text(&text);
 			live_region.announce("Post copied");
+		}
+		UiCommand::CopyPostLink => {
+			let Some(entry) = get_selected_entry(state) else {
+				live_region.announce("No post selected");
+				return;
+			};
+			if let Some(status) = entry.as_status() {
+				let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+				if let Some(url) = &target.url {
+					let clipboard = Clipboard::get();
+					let _ = clipboard.set_text(url);
+					live_region.announce("Post link copied");
+				} else {
+					live_region.announce("Post has no link");
+				}
+			} else {
+				live_region.announce("Selected item is not a post");
+			}
 		}
 		UiCommand::Favorite => {
 			do_favorite(state, live_region);

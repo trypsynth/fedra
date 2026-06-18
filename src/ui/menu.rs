@@ -2,12 +2,12 @@ use wxdragon::prelude::*;
 
 use crate::{
 	AppState, ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST,
-	ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
-	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT,
-	ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH,
-	ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
-	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD,
-	ID_VIEW_USER_TIMELINE, commands::get_selected_status,
+	ID_COPY_POST_LINK, ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
+	ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST,
+	ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST,
+	ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS,
+	ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_PROFILE,
+	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, commands::get_selected_status,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -75,6 +75,9 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu
 		.append(ID_COPY_POST, "&Copy Post\tCtrl+Shift+C", "Copy selected post text", ItemKind::Normal)
 		.expect("Failed to append copy post menu item");
+	post_menu
+		.append(ID_COPY_POST_LINK, "Copy Post &Link\tCtrl+C", "Copy selected post URL", ItemKind::Normal)
+		.expect("Failed to append copy post link menu item");
 	post_menu
 		.append(
 			crate::ui::ids::ID_VIEW_POST,
@@ -270,6 +273,10 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	}
 	if let Some(copy_post_item) = menu_bar.find_item(ID_COPY_POST) {
 		copy_post_item.enable(status.is_some());
+	}
+	if let Some(copy_post_link_item) = menu_bar.find_item(ID_COPY_POST_LINK) {
+		let enable = status.map_or(false, |s| s.reblog.as_ref().map_or(s, std::convert::AsRef::as_ref).url.is_some());
+		copy_post_link_item.enable(enable);
 	}
 	if let Some((_, post_menu)) = menu_bar.find_item_and_menu(ID_VIEW_HASHTAGS) {
 		let mut anchor_pos = None;
