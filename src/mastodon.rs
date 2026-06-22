@@ -877,6 +877,19 @@ impl Account {
 		if self.display_name.is_empty() { &self.username } else { &self.display_name }
 	}
 
+	pub fn full_acct(&self) -> String {
+		if self.acct.contains('@') {
+			self.acct.clone()
+		} else {
+			if let Ok(url) = reqwest::Url::parse(&self.url) {
+				if let Some(host) = url.host_str() {
+					return format!("{}@{}", self.acct, host);
+				}
+			}
+			self.acct.clone()
+		}
+	}
+
 	pub fn timeline_display_name(&self, mode: DisplayNameEmojiMode) -> String {
 		if mode == DisplayNameEmojiMode::None {
 			return self.display_name_or_username().to_string();

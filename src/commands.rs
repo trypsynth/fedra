@@ -1126,6 +1126,15 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					return;
 				}
 			};
+
+			if let Some(url) = foreign_url(state, Some(&account.url)) {
+				state.pending_user_lookup_action = Some(action);
+				if let Some(net) = &state.network_handle {
+					net.send(NetworkCommand::ResolveAccount { url });
+				}
+				return;
+			}
+
 			match action {
 				dialogs::UserLookupAction::Profile => {
 					if let Some(net) = &state.network_handle {
@@ -1283,9 +1292,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				|suggestions: &mut Vec<String>,
 				 status: &Status,
 				 push_unique: &mut dyn FnMut(&mut Vec<String>, String)| {
-					push_unique(suggestions, format!("@{}", status.account.acct));
+					push_unique(suggestions, format!("@{}", status.account.full_acct()));
 					if let Some(reblog) = &status.reblog {
-						push_unique(suggestions, format!("@{}", reblog.account.acct));
+						push_unique(suggestions, format!("@{}", reblog.account.full_acct()));
 						for mention in &reblog.mentions {
 							push_unique(suggestions, format!("@{}", mention.acct));
 						}
@@ -1299,11 +1308,11 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			if let Some(entry) = get_selected_entry(state) {
 				match entry {
 					TimelineEntry::Status(status) => {
-						default_value = Some(format!("@{}", status.account.acct));
+						default_value = Some(format!("@{}", status.account.full_acct()));
 						collect_status_users(&mut suggestions, status, &mut push_unique);
 					}
 					TimelineEntry::Notification(notification) => {
-						let handle = format!("@{}", notification.account.acct);
+						let handle = format!("@{}", notification.account.full_acct());
 						default_value = Some(handle.clone());
 						push_unique(&mut suggestions, handle);
 						if let Some(status) = &notification.status {
@@ -1311,7 +1320,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 						}
 					}
 					TimelineEntry::Account(account) => {
-						let handle = format!("@{}", account.acct);
+						let handle = format!("@{}", account.full_acct());
 						default_value = Some(handle.clone());
 						push_unique(&mut suggestions, handle);
 					}
@@ -1327,13 +1336,13 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							collect_status_users(&mut suggestions, status, &mut push_unique);
 						}
 						TimelineEntry::Notification(notification) => {
-							push_unique(&mut suggestions, format!("@{}", notification.account.acct));
+							push_unique(&mut suggestions, format!("@{}", notification.account.full_acct()));
 							if let Some(status) = &notification.status {
 								collect_status_users(&mut suggestions, status, &mut push_unique);
 							}
 						}
 						TimelineEntry::Account(account) => {
-							push_unique(&mut suggestions, format!("@{}", account.acct));
+							push_unique(&mut suggestions, format!("@{}", account.full_acct()));
 						}
 						TimelineEntry::Hashtag(_) => {}
 					}
@@ -1407,6 +1416,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				return;
 			}
 			if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &all_mentions) {
+				if let Some(url) = foreign_url(state, Some(&mention.url)) {
+					state.pending_user_lookup_action = Some(action);
+					if let Some(net) = &state.network_handle {
+						net.send(NetworkCommand::ResolveAccount { url });
+					}
+					return;
+				}
+
 				// Resolution chain: get_account by ID → lookup_account by acct → synthetic fallback
 				let account = if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
 					let by_id = if mention.id.is_empty() { None } else { client.get_account(token, &mention.id).ok() };
@@ -1763,6 +1780,14 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			};
 			match &entry {
 				TimelineEntry::Account(account) => {
+					if let Some(url) = foreign_url(state, Some(&account.url)) {
+						state.pending_user_lookup_action = Some(dialogs::UserLookupAction::Profile);
+						if let Some(net) = &state.network_handle {
+							net.send(NetworkCommand::ResolveAccount { url });
+						}
+						return;
+					}
+
 					if let Some(net) = &state.network_handle {
 						net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
 						net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
