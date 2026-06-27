@@ -317,7 +317,13 @@ pub struct HashtagDialog {
 }
 
 impl HashtagDialog {
-	pub fn new<F>(frame: &Frame, tags: Vec<Tag>, net_tx: Sender<NetworkCommand>, on_close: F) -> Self
+	pub fn new<F>(
+		frame: &Frame,
+		tags: Vec<Tag>,
+		net_tx: Sender<NetworkCommand>,
+		ui_tx: crate::ui_wake::UiCommandSender,
+		on_close: F,
+	) -> Self
 	where
 		F: Fn() + 'static + Clone,
 	{
@@ -343,10 +349,12 @@ impl HashtagDialog {
 			tag_list.set_selection(0, true);
 		}
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+		let view_timeline_button = Button::builder(&panel).with_label("View Timeline").build();
 		let action_button = Button::builder(&panel).with_label("Follow").build();
 		let mute_button = Button::builder(&panel).with_label("Mute").build();
 		let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
 		close_button.set_default();
+		button_sizer.add(&view_timeline_button, 0, SizerFlag::Right, 8);
 		button_sizer.add(&action_button, 0, SizerFlag::Right, 8);
 		button_sizer.add(&mute_button, 0, SizerFlag::Right, 8);
 		button_sizer.add_stretch_spacer(1);
@@ -362,12 +370,14 @@ impl HashtagDialog {
 		let handle = Self { dialog, list: tag_list, action_button, mute_button, tags: tags_rc.clone() };
 		let update_button_state = {
 			let tags = tags_rc.clone();
+			let view_btn = view_timeline_button.clone();
 			let btn = action_button;
 			let mute_btn = mute_button;
 			let list = tag_list;
 			move || {
 				if let Some(sel) = list.get_selection() {
 					if let Some(tag) = tags.borrow().get(sel as usize) {
+						view_btn.enable(true);
 						btn.enable(true);
 						mute_btn.enable(true);
 						if tag.following {
@@ -381,10 +391,12 @@ impl HashtagDialog {
 							mute_btn.set_label("Mute");
 						}
 					} else {
+						view_btn.enable(false);
 						btn.enable(false);
 						mute_btn.enable(false);
 					}
 				} else {
+					view_btn.enable(false);
 					btn.enable(false);
 					mute_btn.enable(false);
 				}
@@ -394,6 +406,22 @@ impl HashtagDialog {
 		let update_on_sel = update_button_state;
 		tag_list.on_selection_changed(move |_| {
 			update_on_sel();
+		});
+		let tags_view = tags_rc.clone();
+		let list_view = tag_list;
+		let ui_tx_view = ui_tx.clone();
+		let dlg_view = dialog;
+		view_timeline_button.on_click(move |_| {
+			if let Some(sel) = list_view.get_selection() {
+				let index = sel as usize;
+				let tags_borrow = tags_view.borrow();
+				if let Some(tag) = tags_borrow.get(index) {
+					let _ = ui_tx_view.send(crate::commands::UiCommand::OpenTimeline(
+						crate::timeline::TimelineType::Hashtag { name: tag.name.clone() },
+					));
+					dlg_view.close(true);
+				}
+			}
 		});
 		let tags_action = tags_rc.clone();
 		let list_action = tag_list;

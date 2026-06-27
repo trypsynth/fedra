@@ -810,14 +810,14 @@ pub fn prompt_for_compose(
 		main_sizer.add(&quote_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	}
 
-	let content_label = StaticText::builder(&panel).with_label("What's on your mind?").build();
+	let content_label = StaticText::builder(&panel).with_label("&What's on your mind?").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
-	let cw_checkbox = CheckBox::builder(&panel).with_label("Content warning").build();
+	let cw_checkbox = CheckBox::builder(&panel).with_label("&Content warning").build();
 	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
 	let cw_text = TextCtrl::builder(&panel).build();
 	cw_label.show(false);
 	cw_text.show(false);
-	let content_type_label = StaticText::builder(&panel).with_label("Content type (if supported):").build();
+	let content_type_label = StaticText::builder(&panel).with_label("Content &type (if supported):").build();
 	let content_type_options = [
 		("Default".to_string(), None),
 		("Plain text (text/plain)".to_string(), Some("text/plain".to_string())),
@@ -827,7 +827,7 @@ pub fn prompt_for_compose(
 	let content_type_labels: Vec<String> = content_type_options.iter().map(|(label, _)| label.clone()).collect();
 	let content_type_choice = Choice::builder(&panel).with_choices(content_type_labels).build();
 	content_type_choice.set_selection(0);
-	let visibility_label = StaticText::builder(&panel).with_label("Visibility:").build();
+	let visibility_label = StaticText::builder(&panel).with_label("&Visibility:").build();
 	let visibility_choices: Vec<String> = PostVisibility::all().iter().map(|v| v.display_name().to_string()).collect();
 	let visibility_choice = Choice::builder(&panel).with_choices(visibility_choices).build();
 	if let Ok(selection) = u32::try_from(visibility_index(default_visibility)) {
@@ -855,7 +855,7 @@ pub fn prompt_for_compose(
 		"ko".to_string(),
 		"zh".to_string(),
 	];
-	let language_label = StaticText::builder(&panel).with_label("Post language (ISO code):").build();
+	let language_label = StaticText::builder(&panel).with_label("Post &language (ISO code):").build();
 	let language_combo = ComboBox::builder(&panel).with_choices(language_choices).build();
 	let initial_language_value =
 		config.initial_language.as_deref().and_then(normalize_language_code).unwrap_or_default();
@@ -863,12 +863,12 @@ pub fn prompt_for_compose(
 	let language_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	language_sizer.add(&language_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	language_sizer.add(&language_combo, 1, SizerFlag::Expand, 0);
-	let media_button = Button::builder(&panel).with_label("Manage Media...").build();
-	let poll_button = Button::builder(&panel).with_label("Add Poll...").build();
-	let schedule_button = Button::builder(&panel).with_label("Schedule...").build();
+	let media_button = Button::builder(&panel).with_label("Manage &Media...").build();
+	let poll_button = Button::builder(&panel).with_label("Add &Poll...").build();
+	let schedule_button = Button::builder(&panel).with_label("&Schedule...").build();
 	let clear_schedule_button = Button::builder(&panel).with_label("Clear Schedule").build();
 	clear_schedule_button.enable(false);
-	let thread_checkbox = CheckBox::builder(&panel).with_label("Thread mode").build();
+	let thread_checkbox = CheckBox::builder(&panel).with_label("T&hread mode").build();
 	if !config.show_thread_checkbox {
 		thread_checkbox.show(false);
 	}

@@ -751,7 +751,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				if let Some(handle) = &state.network_handle {
 					let net_tx = handle.command_tx.clone();
 					let ui_tx_dlg = ui_tx.clone();
-					let dlg = dialogs::HashtagDialog::new(frame, tags, net_tx, move || {
+					let dlg = dialogs::HashtagDialog::new(frame, tags, net_tx, ui_tx.clone(), move || {
 						let _ = ui_tx_dlg.send(UiCommand::HashtagDialogClosed);
 					});
 					dlg.show();
