@@ -680,9 +680,9 @@ fn schedule_button_label(scheduled_at: Option<&str>) -> String {
 		&& let Ok(dt) = DateTime::parse_from_rfc3339(iso)
 	{
 		let local = dt.with_timezone(&Local);
-		return format!("Edit schedule, currently {}", local.format("%Y-%m-%d %H:%M"));
+		return format!("Edit &schedule, currently {}", local.format("%Y-%m-%d %H:%M"));
 	}
-	"Schedule...".to_string()
+	"&Schedule...".to_string()
 }
 
 fn parse_schedule_inputs(date_value: &str, time_value: &str) -> Option<DateTime<Utc>> {
@@ -975,7 +975,7 @@ pub fn prompt_for_compose(
 		let clear_schedule_button_clear = clear_schedule_button;
 		clear_schedule_button.on_click(move |_| {
 			*scheduled_state_clear.borrow_mut() = None;
-			schedule_button_clear.set_label("Schedule...");
+			schedule_button_clear.set_label("&Schedule...");
 			clear_schedule_button_clear.enable(false);
 		});
 	}
