@@ -8,7 +8,9 @@ use wxdragon::prelude::*;
 
 use crate::{
 	AppState,
-	accounts::{start_add_account_flow, start_streaming_for_timeline, switch_to_account, try_oob_oauth},
+	accounts::{
+		start_add_account_flow, start_streaming_for_timeline, switch_to_account, try_oob_oauth, update_window_title,
+	},
 	auth,
 	config::{self, Account, AutoloadMode, ContentWarningDisplay, SortOrder},
 	html,
@@ -728,6 +730,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					sync_timeline_selection_from_list(active, timeline_list, effective_sort_order);
 				}
 				state.timeline_manager.set_active(index);
+				update_window_title(state, frame);
 				let current_selection = timelines_selector.get_selection().map(|s| s as usize);
 				if current_selection != Some(index) {
 					with_suppressed_selection(suppress_selection, || {
@@ -791,6 +794,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					templates: state.config.templates.clone(),
 					filters: state.config.filters.clone(),
 					find_loading_mode: state.config.find_loading_mode,
+					window_title_template: state.config.window_title_template.clone(),
 				},
 			) {
 				let dialogs::OptionsDialogResult {
@@ -814,6 +818,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					templates,
 					filters,
 					find_loading_mode,
+					window_title_template,
 				} = options;
 				let needs_refresh = state.config.sort_order != sort_order
 					|| state.config.content_warning_display != content_warning_display
@@ -821,7 +826,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					|| state.config.preserve_thread_order != preserve_thread_order
 					|| state.config.show_link_previews != show_link_previews
 					|| state.config.templates != templates
-					|| state.config.filters != filters;
+					|| state.config.filters != filters
+					|| state.config.window_title_template != window_title_template;
 				let hotkey_changed = state.config.hotkey != hotkey;
 				state.config.enter_to_send = enter_to_send;
 				state.config.always_show_link_dialog = always_show_link_dialog;
@@ -843,6 +849,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.templates = templates;
 				state.config.filters = filters;
 				state.config.find_loading_mode = find_loading_mode;
+				state.config.window_title_template = window_title_template;
+				update_window_title(state, frame);
 				if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 					state.cw_expanded.clear();
 				}
@@ -2657,6 +2665,7 @@ fn open_timeline(
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		if let Some(index) = state.timeline_manager.index_of(timeline_type) {
 			state.timeline_manager.set_active(index);
+			update_window_title(state, frame);
 			with_suppressed_selection(suppress_selection, || {
 				selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
@@ -2687,6 +2696,7 @@ fn open_timeline(
 	selector.append(&timeline_type.display_name());
 	let new_index = state.timeline_manager.len() - 1;
 	state.timeline_manager.set_active(new_index);
+	update_window_title(state, frame);
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(new_index).unwrap(), true);
 	});

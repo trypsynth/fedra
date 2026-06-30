@@ -8,6 +8,7 @@ use std::{
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use url::Url;
 
 use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE};
 
@@ -59,6 +60,8 @@ pub struct Config {
 	pub filters: TimelineFilters,
 	#[serde(default)]
 	pub find_loading_mode: FindLoadingMode,
+	#[serde(default = "default_window_title_template")]
+	pub window_title_template: String,
 	#[serde(default = "default_restore_open_timelines")]
 	pub restore_open_timelines: bool,
 	#[serde(default)]
@@ -71,6 +74,10 @@ pub struct Config {
 
 const fn default_restore_open_timelines() -> bool {
 	false
+}
+
+fn default_window_title_template() -> String {
+	crate::template::DEFAULT_WINDOW_TITLE_TEMPLATE.to_string()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -344,6 +351,7 @@ impl Default for Config {
 			templates: PostTemplates::default(),
 			filters: TimelineFilters::default(),
 			find_loading_mode: FindLoadingMode::default(),
+			window_title_template: default_window_title_template(),
 			restore_open_timelines: default_restore_open_timelines(),
 			saved_timelines: Vec::new(),
 			saved_active_timeline: None,
@@ -379,6 +387,13 @@ impl Account {
 			user_id: None,
 			default_post_visibility: None,
 		}
+	}
+
+	pub fn full_handle(&self) -> String {
+		let host =
+			Url::parse(&self.instance).ok().and_then(|u| u.host_str().map(ToString::to_string)).unwrap_or_default();
+		let username = self.acct.as_deref().unwrap_or("?");
+		if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") }
 	}
 }
 

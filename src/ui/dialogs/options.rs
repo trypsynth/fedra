@@ -160,6 +160,7 @@ pub struct OptionsDialogInput {
 	pub templates: PostTemplates,
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
+	pub window_title_template: String,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -184,6 +185,7 @@ pub struct OptionsDialogResult {
 	pub templates: PostTemplates,
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
+	pub window_title_template: String,
 }
 
 type TemplateState = HashMap<String, (String, String, String)>;
@@ -210,6 +212,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		templates,
 		filters,
 		find_loading_mode,
+		window_title_template,
 	} = input;
 	let dialog = Dialog::builder(frame, "Options").with_size(500, 520).build();
 	let panel = Panel::builder(&dialog).build();
@@ -383,6 +386,9 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		"Hashtag Timelines",
 	];
 	let timeline_key_strings: Vec<String> = timeline_keys.iter().map(|s| (*s).to_string()).collect();
+	let window_title_template_label =
+		StaticText::builder(&template_panel).with_label("&Window title template:").build();
+	let window_title_template_text = TextCtrl::builder(&template_panel).with_value(&window_title_template).build();
 	let template_timeline_label = StaticText::builder(&template_panel).with_label("&Timeline:").build();
 	let template_timeline_choice = ComboBox::builder(&template_panel)
 		.with_choices(timeline_key_strings)
@@ -420,6 +426,13 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let reset_button = Button::builder(&template_panel).with_label("Reset to default").build();
 	template_button_sizer.add(&reset_button, 0, SizerFlag::empty(), 0);
+	template_sizer.add(
+		&window_title_template_label,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+		8,
+	);
+	template_sizer.add(&window_title_template_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	template_sizer.add_sizer(&template_timeline_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	template_sizer.add(
 		&post_template_label,
@@ -790,5 +803,6 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		templates: new_templates,
 		filters: filters_state.borrow().clone(),
 		find_loading_mode: new_find_loading_mode,
+		window_title_template: window_title_template_text.get_value(),
 	})
 }

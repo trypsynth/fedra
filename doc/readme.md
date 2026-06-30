@@ -73,7 +73,7 @@ Open options with `Ctrl+,`.
 Customize how posts appear in each timeline using [Jinja2-style](https://jinja.palletsprojects.com/en/stable/templates/) templates.
 
 - Select a timeline from the dropdown (or **Global Default** to set the fallback used by all timelines without their own override).
-- Edit the **Post template**, **Boost template**, and **Quote template** text fields.
+- Edit the **Window title template**, **Post template**, **Boost template**, and **Quote template** text fields.
 - Click **Reset to default** to restore the selected timeline's templates to the global default (or restore the global default to the built-in default).
 
 Templates are rendered per-entry each time a timeline is displayed. If a template contains a syntax error, the entry falls back to `author: content`.
@@ -102,6 +102,9 @@ Templates are rendered per-entry each time a timeline is displayed. If a templat
 | `{{ quote_content }}` | Text content of the quoted post (quote/boost templates) |
 | `{{ quote_media }}` | Media summary of the quoted post (quote/boost templates) |
 | `{{ quote_poll }}` | Poll summary of the quoted post (quote/boost templates) |
+| `{{ app }}` | The application name (window title template only) |
+| `{{ timeline }}` | The active timeline name (window title template only) |
+| `{{ account }}` | Your `@acct` handle (window title template only) |
 
 #### Conditionals
 

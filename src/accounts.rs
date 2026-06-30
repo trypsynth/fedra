@@ -18,6 +18,22 @@ use crate::{
 	ui_wake::UiCommandSender,
 };
 
+pub fn update_window_title(state: &AppState, frame: &Frame) {
+	let handle = state.active_account().map_or_else(|| "Unknown".to_string(), |account| account.full_handle());
+
+	let timeline = state
+		.timeline_manager
+		.active()
+		.map(|t| t.timeline_type.display_name())
+		.unwrap_or_else(|| "Unknown".to_string());
+
+	let title = crate::template::render_window_title(
+		&state.config.window_title_template,
+		&crate::template::WindowTitleTemplateVars { app: "Fedra".to_string(), account: handle, timeline },
+	);
+	frame.set_label(&title);
+}
+
 pub fn start_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: &mut AppState) -> bool {
 	let Some(instance_url) = dialogs::prompt_for_instance(frame) else { return false };
 	let client = match MastodonClient::new(instance_url.clone()) {
@@ -284,22 +300,11 @@ pub fn switch_to_account(
 			);
 		}
 	});
-	let (handle, title) = state.active_account().map_or_else(
-		|| ("Unknown".to_string(), "Fedra".to_string()),
-		|account| {
-			let host = Url::parse(&account.instance)
-				.ok()
-				.and_then(|u| u.host_str().map(ToString::to_string))
-				.unwrap_or_default();
-			let username = account.acct.as_deref().unwrap_or("?");
-			let h = if username.contains('@') { format!("@{username}") } else { format!("@{username}@{host}") };
-			(h.clone(), format!("Fedra - {h}"))
-		},
-	);
 	if should_announce {
+		let handle = state.active_account().map_or_else(|| "Unknown".to_string(), |account| account.full_handle());
 		timeline_list.announce(&format!("Switched to {handle}"));
 	}
-	frame.set_label(&title);
+	update_window_title(state, frame);
 	if let Some(mb) = frame.get_menu_bar() {
 		update_menu_labels(&mb, state);
 	}
