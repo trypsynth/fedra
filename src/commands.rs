@@ -512,8 +512,16 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			options.boost_template = strip_stats(&options.boost_template);
 			options.quote_template = strip_stats(&options.quote_template);
 			let is_expanded = state.cw_expanded.contains(entry.id());
-			let text = entry.display_text(&options, is_expanded);
-			if text.trim().is_empty() {
+			let mut text = entry.display_text(&options, is_expanded).trim().to_string();
+			while text.ends_with(" -") || text.ends_with(',') {
+				if text.ends_with(" -") {
+					text.truncate(text.len() - 2);
+				} else if text.ends_with(',') {
+					text.pop();
+				}
+				text = text.trim().to_string();
+			}
+			if text.is_empty() {
 				live_region.announce("Post has no text");
 				return;
 			}
