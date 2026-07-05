@@ -1166,11 +1166,11 @@ pub fn prompt_for_reply(
 		let mut accts = Vec::new();
 		let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
 		if let Some(self_acct) = self_acct {
-			if !self_acct.eq_ignore_ascii_case(replying_to.account.acct.trim().trim_start_matches('@')) {
-				accts.push(replying_to.account.acct.clone());
+			if !self_acct.eq_ignore_ascii_case(replying_to.account.full_acct().trim().trim_start_matches('@')) {
+				accts.push(replying_to.account.full_acct());
 			}
 		} else {
-			accts.push(replying_to.account.acct.clone());
+			accts.push(replying_to.account.full_acct());
 		}
 		for m in &replying_to.mentions {
 			if let Some(self_acct) = self_acct
@@ -1178,13 +1178,14 @@ pub fn prompt_for_reply(
 			{
 				continue;
 			}
-			if !accts.iter().any(|a| a == &m.acct) {
-				accts.push(m.acct.clone());
+			let m_full_acct = m.full_acct();
+			if !accts.iter().any(|a| a == &m_full_acct) {
+				accts.push(m_full_acct);
 			}
 		}
 		accts.iter().map(|a| format!("@{a}")).collect::<Vec<_>>().join(" ") + " "
 	} else {
-		format!("@{} ", replying_to.account.acct)
+		format!("@{} ", replying_to.account.full_acct())
 	};
 	let default_visibility = match replying_to.visibility.as_str() {
 		"unlisted" => PostVisibility::Unlisted,
@@ -1309,7 +1310,8 @@ pub fn prompt_for_quote(
 }
 
 fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool {
-	let mention_acct = mention.acct.trim().trim_start_matches('@');
+	let mention_acct = mention.full_acct();
+	let mention_acct = mention_acct.trim().trim_start_matches('@');
 	if self_acct.eq_ignore_ascii_case(mention_acct) {
 		return true;
 	}

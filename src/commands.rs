@@ -1312,11 +1312,11 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					if let Some(reblog) = &status.reblog {
 						push_unique(suggestions, format!("@{}", reblog.account.full_acct()));
 						for mention in &reblog.mentions {
-							push_unique(suggestions, format!("@{}", mention.acct));
+							push_unique(suggestions, format!("@{}", mention.full_acct()));
 						}
 					}
 					for mention in &status.mentions {
-						push_unique(suggestions, format!("@{}", mention.acct));
+						push_unique(suggestions, format!("@{}", mention.full_acct()));
 					}
 				};
 
@@ -1440,24 +1440,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					return;
 				}
 
-				// Resolution chain: get_account by ID → lookup_account by acct → synthetic fallback
 				let account = if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
 					let by_id = if mention.id.is_empty() { None } else { client.get_account(token, &mention.id).ok() };
-					by_id.or_else(|| client.lookup_account(token, &mention.acct).ok())
+					by_id.or_else(|| client.lookup_account(token, &mention.full_acct()).ok())
 				} else {
 					None
 				};
 				let account = match account {
 					Some(acc) => acc,
 					None if mention.id.is_empty() => {
-						// HTML-derived mention: no local ID and lookup failed — nothing we can do
-						live_region.announce(&format!("Could not resolve account @{}", mention.acct));
+						live_region.announce(&format!("Could not resolve account @{}", mention.full_acct()));
 						return;
 					}
 					None => crate::mastodon::Account {
 						id: mention.id.clone(),
 						username: mention.username.clone(),
-						acct: mention.acct.clone(),
+						acct: mention.full_acct(),
 						display_name: String::new(),
 						url: mention.url,
 						note: String::new(),
@@ -1635,11 +1633,11 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				all_mentions.push(crate::mastodon::Mention { id: String::new(), username, acct, url });
 			}
 			for mention in all_mentions {
-				if !all_users.iter().any(|u| u.acct == mention.acct) {
+				if !all_users.iter().any(|u| u.acct == mention.full_acct()) {
 					all_users.push(crate::mastodon::Account {
 						id: mention.id.clone(),
 						username: mention.username.clone(),
-						acct: mention.acct.clone(),
+						acct: mention.full_acct(),
 						display_name: String::new(),
 						url: mention.url,
 						note: String::new(),
