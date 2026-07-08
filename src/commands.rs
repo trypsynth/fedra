@@ -575,7 +575,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			);
 		}
 		UiCommand::CloseTimeline => {
-			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false);
+			close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false, frame);
 		}
 		UiCommand::LoadMoreBackground => {
 			if let Some(active) = state.timeline_manager.active_mut() {
@@ -2733,6 +2733,7 @@ fn close_timeline(
 	suppress_selection: &Cell<bool>,
 	live_region: &crate::ui::timeline_list::TimelineList,
 	use_history: bool,
+	frame: &Frame,
 ) {
 	let active_type = match state.timeline_manager.active() {
 		Some(t) => t.timeline_type.clone(),
@@ -2774,4 +2775,5 @@ fn close_timeline(
 			);
 		}
 	}
+	update_window_title(state, frame);
 }
