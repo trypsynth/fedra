@@ -9,7 +9,10 @@ use std::{
 	time::Duration,
 };
 
+use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, Tree, TreeUpdate};
+use accesskit_windows::SubclassingAdapter;
 use url::Url;
+use windows::Win32::Foundation::HWND;
 use wxdragon::{prelude::*, widgets::media_ctrl::SeekMode};
 
 thread_local! {
@@ -20,9 +23,83 @@ thread_local! {
 
 static DOWNLOAD_TASK_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+const LR_ROOT_ID: NodeId = NodeId(1);
+const LR_ANNOUNCEMENT_ID: NodeId = NodeId(2);
+
+struct MediaActivationHandler;
+
+impl ActivationHandler for MediaActivationHandler {
+	fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
+		let mut root = Node::new(Role::Window);
+		root.set_children(vec![LR_ANNOUNCEMENT_ID]);
+
+		let mut ann_node = Node::new(Role::Label);
+		ann_node.set_value("");
+		ann_node.set_live(accesskit::Live::Polite);
+
+		Some(TreeUpdate {
+			nodes: vec![(LR_ANNOUNCEMENT_ID, ann_node), (LR_ROOT_ID, root)],
+			tree: Some(Tree::new(LR_ROOT_ID)),
+			focus: LR_ROOT_ID,
+			tree_id: accesskit::TreeId::ROOT,
+		})
+	}
+}
+
+struct MediaActionHandler;
+
+impl ActionHandler for MediaActionHandler {
+	fn do_action(&mut self, _request: ActionRequest) {}
+}
+
+#[derive(Clone)]
+struct MediaLiveRegion {
+	adapter: Rc<RefCell<SubclassingAdapter>>,
+	last_announcement: Rc<RefCell<Option<String>>>,
+}
+
+impl MediaLiveRegion {
+	fn new(frame: &Frame) -> Self {
+		let hwnd = HWND(frame.get_handle() as *mut _);
+		let last_announcement = Rc::new(RefCell::new(None::<String>));
+		let adapter = SubclassingAdapter::new(hwnd, MediaActivationHandler, MediaActionHandler);
+		Self { adapter: Rc::new(RefCell::new(adapter)), last_announcement }
+	}
+
+	fn announce(&self, text: &str) {
+		let mut new_text = text.to_string();
+		let mut last = self.last_announcement.borrow_mut();
+		if let Some(old) = last.as_ref() {
+			if *old == new_text {
+				new_text.push('\u{00A0}');
+			}
+		}
+		*last = Some(new_text.clone());
+
+		let mut node = Node::new(Role::Label);
+		node.set_value(new_text);
+		node.set_live(accesskit::Live::Polite);
+
+		let mut root = Node::new(Role::Window);
+		root.set_children(vec![LR_ANNOUNCEMENT_ID]);
+
+		let update = TreeUpdate {
+			nodes: vec![(LR_ANNOUNCEMENT_ID, node), (LR_ROOT_ID, root)],
+			tree: None,
+			focus: LR_ROOT_ID,
+			tree_id: accesskit::TreeId::ROOT,
+		};
+		let mut adapter = self.adapter.borrow_mut();
+		if let Some(events) = adapter.update_if_active(|| update) {
+			events.raise();
+		}
+	}
+}
+
 pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Option<String>) {
 	const ID_MEDIA_CTRL: i32 = 10000;
 	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(800, 600)).build();
+	let lr = MediaLiveRegion::new(&frame);
 	let sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let media_ctrl = wxdragon::widgets::MediaCtrl::builder(&frame)
 		.with_id(ID_MEDIA_CTRL)
@@ -39,12 +116,19 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	const ID_VOL_DOWN: i32 = 10005;
 	const ID_DOWNLOAD: i32 = 10006;
 	const ID_CLOSE: i32 = 10007;
+	const ID_ELAPSED: i32 = 10008;
+	const ID_REMAINING: i32 = 10009;
+	const ID_TOTAL: i32 = 10010;
 	let menu = Menu::builder()
 		.append_item(ID_PLAY_PAUSE, "Play/Pause\tSpace", "Play or pause the media")
 		.append_item(ID_SEEK_BACK, "Seek Backward\tLeft", "Seek backward 10 seconds")
 		.append_item(ID_SEEK_FWD, "Seek Forward\tRight", "Seek forward 10 seconds")
 		.append_item(ID_VOL_UP, "Volume Up\tUp", "Increase volume")
 		.append_item(ID_VOL_DOWN, "Volume Down\tDown", "Decrease volume")
+		.append_separator()
+		.append_item(ID_ELAPSED, "Elapsed Time\tE", "Announce elapsed time")
+		.append_item(ID_REMAINING, "Remaining Time\tR", "Announce remaining time")
+		.append_item(ID_TOTAL, "Total Time\tT", "Announce total duration")
 		.append_separator()
 		.append_item(ID_DOWNLOAD, "Download\tD", "Download this media file")
 		.append_separator()
@@ -57,6 +141,7 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 		let is_playing = is_playing.clone();
 		let frm = frame.clone();
 		let url = url.clone();
+		let lr = lr.clone();
 		move |event| match event.get_id() {
 			ID_PLAY_PAUSE => {
 				if is_playing.get() {
@@ -235,6 +320,20 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 				}
 				dialog.destroy();
 			}
+			ID_ELAPSED => {
+				let pos = mc.tell();
+				lr.announce(&format!("Elapsed: {}", format_duration(pos)));
+			}
+			ID_REMAINING => {
+				let pos = mc.tell();
+				let total = mc.length();
+				let remaining = (total - pos).max(0);
+				lr.announce(&format!("Remaining: {}", format_duration(remaining)));
+			}
+			ID_TOTAL => {
+				let total = mc.length();
+				lr.announce(&format!("Total: {}", format_duration(total)));
+			}
 			ID_CLOSE => {
 				frm.close(true);
 			}
@@ -256,4 +355,25 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	}
 	frame.show(true);
 	media_ctrl.set_focus();
+}
+
+fn format_duration(ms: i64) -> String {
+	let total_secs = ms / 1000;
+	let hours = total_secs / 3600;
+	let minutes = (total_secs % 3600) / 60;
+	let seconds = total_secs % 60;
+
+	let mut parts = Vec::new();
+
+	if hours > 0 {
+		parts.push(if hours == 1 { "1 hour".to_string() } else { format!("{} hours", hours) });
+	}
+
+	if minutes > 0 {
+		parts.push(if minutes == 1 { "1 minute".to_string() } else { format!("{} minutes", minutes) });
+	}
+
+	parts.push(if seconds == 1 { "1 second".to_string() } else { format!("{} seconds", seconds) });
+
+	parts.join(", ")
 }

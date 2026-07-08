@@ -511,6 +511,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			options.post_template = strip_stats(&options.post_template);
 			options.boost_template = strip_stats(&options.boost_template);
 			options.quote_template = strip_stats(&options.quote_template);
+			options.show_link_previews = false;
 			let is_expanded = state.cw_expanded.contains(entry.id());
 			let mut text = entry.display_text(&options, is_expanded).trim().to_string();
 			while text.ends_with(" -") || text.ends_with(',') {
