@@ -485,6 +485,24 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 			NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
 				ui_tx.send(crate::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
 			}
+			NetworkResponse::StatusSourceFetched { mut status, result } => {
+				let source_text = match result {
+					Ok(source) => {
+						if !source.spoiler_text.is_empty() {
+							status.spoiler_text = source.spoiler_text;
+						}
+						Some(source.text)
+					}
+					Err(err) => {
+						live_region.announce(&format!(
+							"Could not fetch source text, editing with stripped HTML: {}",
+							summarize_api_error(&err)
+						));
+						None
+					}
+				};
+				crate::commands::run_edit_post_dialog(frame, state, &status, source_text.as_deref());
+			}
 			NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
 				live_region.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
 			}

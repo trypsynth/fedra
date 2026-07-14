@@ -75,6 +75,9 @@ pub enum NetworkCommand {
 		timeline_type: TimelineType,
 		status_id: String,
 	},
+	FetchStatusSource {
+		status: Box<Status>,
+	},
 	ResolveStatusForThread {
 		url: String,
 	},
@@ -319,6 +322,10 @@ pub enum NetworkResponse {
 	},
 	StatusResolvedForQuote {
 		result: Result<Status>,
+	},
+	StatusSourceFetched {
+		status: Box<Status>,
+		result: Result<crate::mastodon::StatusSource>,
 	},
 	AccountLookupResult {
 		handle: String,
@@ -754,6 +761,10 @@ fn network_loop(
 					ui_waker,
 					NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None },
 				);
+			}
+			Ok(NetworkCommand::FetchStatusSource { status }) => {
+				let result = client.fetch_status_source(access_token, &status.id);
+				send_response(responses, ui_waker, NetworkResponse::StatusSourceFetched { status, result });
 			}
 			Ok(NetworkCommand::ResolveStatusForThread { url }) => {
 				let result = client

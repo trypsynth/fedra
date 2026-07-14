@@ -1222,6 +1222,7 @@ pub fn prompt_for_reply(
 pub fn prompt_for_edit(
 	frame: &Frame,
 	status: &Status,
+	source_text: Option<&str>,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
@@ -1253,7 +1254,7 @@ pub fn prompt_for_edit(
 		ComposeDialogConfig {
 			title_prefix: "Edit Post".to_string(),
 			ok_label: "Save".to_string(),
-			initial_content: status.display_text(),
+			initial_content: source_text.map(ToOwned::to_owned).unwrap_or_else(|| status.display_text()),
 			initial_cw,
 			initial_sensitive: status.sensitive,
 			initial_language: status.language.clone(),

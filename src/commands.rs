@@ -411,8 +411,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			}
 		}
 		UiCommand::EditPost => {
-			let (status, max_post_chars, enter_to_send) =
-				(get_selected_status(state).cloned(), state.max_post_chars, state.config.enter_to_send);
+			let status = get_selected_status(state).cloned();
 			let Some(status) = status else {
 				live_region.announce("No post selected");
 				return;
@@ -427,46 +426,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				live_region.announce("Cannot verify ownership");
 				return;
 			}
-			let Some((edit, config)) =
-				dialogs::prompt_for_edit(frame, target, max_post_chars, &state.poll_limits, enter_to_send)
-			else {
-				return;
-			};
 			if let Some(handle) = &state.network_handle {
-				state.pending_post = Some(crate::PendingPost {
-					config,
-					operation: crate::PostOperation::Edit { status_id: target.id.clone() },
-					last_result: edit.clone(),
-				});
-				let media = edit
-					.media
-					.into_iter()
-					.map(|item| {
-						if item.is_existing {
-							network::EditMedia::Existing(item.path)
-						} else {
-							network::EditMedia::New(network::MediaUpload {
-								path: item.path,
-								description: item.description,
-							})
-						}
-					})
-					.collect();
-
-				handle.send(NetworkCommand::EditStatus {
-					status_id: target.id.clone(),
-					content: edit.content,
-					sensitive: edit.sensitive,
-					spoiler_text: edit.spoiler_text,
-					language: edit.language,
-					media,
-					poll: edit.poll.map(|poll| network::PollData {
-						options: poll.options,
-						expires_in: poll.expires_in,
-						multiple: poll.multiple,
-						hide_totals: poll.hide_totals,
-					}),
-				});
+				handle.send(NetworkCommand::FetchStatusSource { status: Box::new(target.clone()) });
 			} else {
 				live_region.announce("Network not available");
 			}
@@ -2776,4 +2737,52 @@ fn close_timeline(
 		}
 	}
 	update_window_title(state, frame);
+}
+
+pub fn run_edit_post_dialog(
+	frame: &Frame,
+	state: &mut AppState,
+	target: &crate::mastodon::Status,
+	source_text: Option<&str>,
+) {
+	let max_post_chars = state.max_post_chars;
+	let enter_to_send = state.config.enter_to_send;
+	let Some((edit, config)) =
+		dialogs::prompt_for_edit(frame, target, source_text, max_post_chars, &state.poll_limits, enter_to_send)
+	else {
+		return;
+	};
+	if let Some(handle) = &state.network_handle {
+		state.pending_post = Some(crate::PendingPost {
+			config,
+			operation: crate::PostOperation::Edit { status_id: target.id.clone() },
+			last_result: edit.clone(),
+		});
+		let media = edit
+			.media
+			.into_iter()
+			.map(|item| {
+				if item.is_existing {
+					network::EditMedia::Existing(item.path)
+				} else {
+					network::EditMedia::New(network::MediaUpload { path: item.path, description: item.description })
+				}
+			})
+			.collect();
+
+		handle.send(NetworkCommand::EditStatus {
+			status_id: target.id.clone(),
+			content: edit.content,
+			sensitive: edit.sensitive,
+			spoiler_text: edit.spoiler_text,
+			language: edit.language,
+			media,
+			poll: edit.poll.map(|poll| network::PollData {
+				options: poll.options,
+				expires_in: poll.expires_in,
+				multiple: poll.multiple,
+				hide_totals: poll.hide_totals,
+			}),
+		});
+	}
 }

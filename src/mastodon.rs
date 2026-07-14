@@ -109,6 +109,16 @@ pub struct Status {
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
+pub struct StatusSource {
+	pub id: String,
+	#[serde(default)]
+	pub text: String,
+	#[serde(default)]
+	pub spoiler_text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct FilterResult {
 	pub filter: Filter,
 }
@@ -1961,6 +1971,20 @@ impl MastodonClient {
 			.context("Instance rejected credentials update")?;
 		let account: Account = response.json().context("Invalid account response")?;
 		Ok(account)
+	}
+
+	pub fn fetch_status_source(&self, access_token: &str, status_id: &str) -> Result<StatusSource> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/source"))?;
+		let response = self
+			.http
+			.get(url)
+			.bearer_auth(access_token)
+			.send()
+			.context("Failed to fetch status source")?
+			.error_for_status()
+			.context("Instance rejected request")?;
+		let source: StatusSource = response.json().context("Invalid source response")?;
+		Ok(source)
 	}
 
 	pub fn edit_status(
