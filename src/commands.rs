@@ -144,6 +144,7 @@ pub enum UiCommand {
 	AppClosing,
 	ExitApp,
 	RecoverDraft,
+	PollNonStreaming,
 }
 
 /// Refreshes the current timeline by re-fetching from the network.
@@ -158,6 +159,19 @@ pub fn refresh_timeline(state: &AppState, live_region: &crate::ui::timeline_list
 		}
 		None => {
 			live_region.announce("Network not available");
+		}
+	}
+}
+
+pub fn poll_non_streaming_timelines(state: &AppState) {
+	let Some(handle) = &state.network_handle else { return };
+	for timeline in state.timeline_manager.timelines() {
+		if timeline.stream_handle.is_none() && timeline.timeline_type.stream_params().is_some() {
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type: timeline.timeline_type.clone(),
+				limit: Some(40),
+				max_id: None,
+			});
 		}
 	}
 }
@@ -523,6 +537,9 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		}
 		UiCommand::Refresh => {
 			refresh_timeline(state, live_region);
+		}
+		UiCommand::PollNonStreaming => {
+			poll_non_streaming_timelines(state);
 		}
 		UiCommand::OpenTimeline(timeline_type) => {
 			open_timeline(

@@ -468,6 +468,10 @@ impl TimelineManager {
 		self.timelines.iter().position(|t| t.timeline_type == *timeline_type)
 	}
 
+	pub fn timelines(&self) -> &[Timeline] {
+		&self.timelines
+	}
+
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Timeline> {
 		self.timelines.iter_mut()
 	}
