@@ -166,7 +166,7 @@ pub fn refresh_timeline(state: &AppState, live_region: &crate::ui::timeline_list
 pub fn poll_non_streaming_timelines(state: &AppState) {
 	let Some(handle) = &state.network_handle else { return };
 	for timeline in state.timeline_manager.timelines() {
-		if timeline.stream_handle.is_none() && timeline.timeline_type.stream_params().is_some() {
+		if timeline.timeline_type.stream_params().is_some() {
 			handle.send(NetworkCommand::FetchTimeline {
 				timeline_type: timeline.timeline_type.clone(),
 				limit: Some(40),
