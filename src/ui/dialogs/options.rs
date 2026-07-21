@@ -15,9 +15,8 @@ pub fn prompt_for_default_timelines(frame: &Frame, initial: &[DefaultTimeline]) 
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
-	let info_label = StaticText::builder(&panel)
-		.with_label("Select timelines to open automatically on startup:\n(Home and Notifications are always included)")
-		.build();
+	let info_label =
+		StaticText::builder(&panel).with_label("Select additional timelines to open automatically on startup:").build();
 	main_sizer.add(&info_label, 0, SizerFlag::Expand | SizerFlag::All, 10);
 
 	let mut checkboxes = Vec::new();

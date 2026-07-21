@@ -2717,8 +2717,8 @@ fn close_timeline(
 		Some(t) => t.timeline_type.clone(),
 		None => return,
 	};
-	if !active_type.is_closeable() {
-		live_region.announce(&format!("Cannot close the {} timeline", active_type.display_name()));
+	if state.timeline_manager.len() <= 1 {
+		live_region.announce("Cannot close the only open timeline");
 		return;
 	}
 	if !state.timeline_manager.close(&active_type, use_history) {

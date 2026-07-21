@@ -108,10 +108,6 @@ impl TimelineType {
 		}
 	}
 
-	pub const fn is_closeable(&self) -> bool {
-		!matches!(self, Self::Home | Self::Notifications)
-	}
-
 	pub const fn supports_paging(&self) -> bool {
 		!matches!(self, Self::Thread { .. })
 	}
@@ -392,7 +388,7 @@ impl TimelineManager {
 	}
 
 	pub fn close(&mut self, timeline_type: &TimelineType, use_history: bool) -> bool {
-		if !timeline_type.is_closeable() {
+		if self.timelines.len() <= 1 {
 			return false;
 		}
 
