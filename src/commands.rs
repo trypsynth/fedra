@@ -1102,11 +1102,32 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								format!("{} (booster)", booster.display_name_or_username()),
 								format!("{} (author)", author.display_name_or_username()),
 							];
-							let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
+							let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
 							match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
 								Some((acc, act)) => (acc, act),
 								None => return,
 							}
+						}
+					} else if let Some(quote) = &status.quote {
+						if let Some(quoted_status) = &quote.quoted_status {
+							let quoter = &status.account;
+							let author = &quoted_status.account;
+							if quoter.id == author.id {
+								(author.clone(), dialogs::UserLookupAction::Profile)
+							} else {
+								let accounts = [quoter, author];
+								let labels = [
+									format!("{} (quoter)", quoter.display_name_or_username()),
+									format!("{} (author)", author.display_name_or_username()),
+								];
+								let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+								match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
+									Some((acc, act)) => (acc, act),
+									None => return,
+								}
+							}
+						} else {
+							(status.account.clone(), dialogs::UserLookupAction::Profile)
 						}
 					} else {
 						(status.account.clone(), dialogs::UserLookupAction::Profile)
@@ -1196,11 +1217,32 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 								format!("{} (booster)", booster.display_name_or_username()),
 								format!("{} (author)", author.display_name_or_username()),
 							];
-							let label_refs: Vec<&str> = labels.iter().map(std::string::String::as_str).collect();
+							let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
 							match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
 								Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
 								None => return,
 							}
+						}
+					} else if let Some(quote) = &status.quote {
+						if let Some(quoted_status) = &quote.quoted_status {
+							let quoter = &status.account;
+							let author = &quoted_status.account;
+							if quoter.id == author.id {
+								(author.clone(), dialogs::UserLookupAction::Timeline)
+							} else {
+								let accounts = [quoter, author];
+								let labels = [
+									format!("{} (quoter)", quoter.display_name_or_username()),
+									format!("{} (author)", author.display_name_or_username()),
+								];
+								let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+								match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
+									Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
+									None => return,
+								}
+							}
+						} else {
+							(status.account.clone(), dialogs::UserLookupAction::Timeline)
 						}
 					} else {
 						(status.account.clone(), dialogs::UserLookupAction::Timeline)
