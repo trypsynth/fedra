@@ -1,16 +1,21 @@
-use std::{cell::Cell, rc::Rc};
+use std::{
+	cell::{Cell, RefCell},
+	rc::Rc,
+};
 
 use wxdragon::prelude::*;
 
 use crate::{
-	ContextMenuState, ID_BOOKMARK, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_COPY_POST_LINK,
-	ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FEDERATED_TIMELINE,
-	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT,
-	ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH,
-	ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
-	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD,
-	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, KEY_DELETE, UiCommand,
-	config::{AutoloadMode, SortOrder},
+	ContextMenuState, ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE,
+	ID_COPY_POST, ID_COPY_POST_LINK, ID_CUSTOMIZE_SHORTCUTS, ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST,
+	ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_FIND, ID_FIND_NEXT, ID_FIND_PREV,
+	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_MANAGE_FILTERS, ID_MANAGE_LISTS, ID_MENTIONS_TIMELINE,
+	ID_NEW_POST, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_LIST, ID_OPEN_USER_TIMELINE_BY_INPUT,
+	ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH,
+	ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
+	ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
+	ID_VOTE, UiCommand,
+	config::{ActionId, AutoloadMode, ShortcutsConfig, SortOrder},
 	ui::{dialogs, menu::build_menu_bar},
 	ui_wake::UiCommandSender,
 };
@@ -44,8 +49,9 @@ pub fn build_main_window() -> WindowParts {
 	sizer.add_sizer(&timelines_sizer, 1, SizerFlag::Expand, 0);
 	sizer.add(&timeline_list, 3, SizerFlag::Expand | SizerFlag::All, 8);
 	panel.set_sizer(sizer, true);
+
 	let frame_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	frame_sizer.add(&panel, 1, SizerFlag::Expand | SizerFlag::All, 0);
+	frame_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	frame.set_sizer(frame_sizer, true);
 
 	WindowParts { frame, timelines_selector, timeline_list }
@@ -60,6 +66,7 @@ pub fn bind_input_handlers(
 	autoload_mode: Rc<Cell<AutoloadMode>>,
 	sort_order_cell: Rc<Cell<SortOrder>>,
 	context_menu_state: Rc<Cell<ContextMenuState>>,
+	shortcuts_cell: Rc<RefCell<ShortcutsConfig>>,
 ) {
 	let ui_tx_selector = ui_tx.clone();
 	let shutdown_selector = is_shutting_down.clone();
@@ -83,86 +90,76 @@ pub fn bind_input_handlers(
 	let shutdown_delete = is_shutting_down.clone();
 	let quick_action_keys_selector = quick_action_keys_enabled.clone();
 	let timelines_selector_delete = parts.timelines_selector;
+	let shortcuts_selector = shortcuts_cell.clone();
 	timelines_selector_delete.on_key_down(move |event| {
 		if shutdown_delete.get() {
 			return;
 		}
 		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.control_down() {
-				match key_event.get_key_code() {
-					Some(91) => {
-						let _ = ui_tx_delete.send(UiCommand::SwitchPrevAccount);
-						event.skip(false);
-						return;
+			let ctrl = key_event.control_down();
+			let shift = key_event.shift_down();
+			let alt = key_event.alt_down();
+			if let Some(k) = key_event.get_key_code() {
+				let quick_mode = quick_action_keys_selector.get();
+				if ctrl && (49..=57).contains(&k) {
+					if let Ok(index) = usize::try_from(k - 49) {
+						let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
 					}
-					Some(93) => {
-						let _ = ui_tx_delete.send(UiCommand::SwitchNextAccount);
-						event.skip(false);
-						return;
-					}
-					Some(k) if (49..=57).contains(&k) => {
-						// Ctrl+1-9
-						if let Ok(index) = usize::try_from(k - 49) {
-							let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
-						}
-						event.skip(false);
-						return;
-					}
-					_ => {}
+					event.skip(false);
+					return;
 				}
-			}
-			if key_event.control_down() && key_event.shift_down() && !key_event.alt_down() {
-				match key_event.get_key_code() {
-					Some(314) => {
-						// Left Arrow
-						let _ = ui_tx_delete.send(UiCommand::MoveTimelineLeft);
-						event.skip(false);
-						return;
+				if quick_mode && !ctrl && !shift && !alt && (49..=57).contains(&k) {
+					if let Ok(index) = usize::try_from(k - 49) {
+						let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
 					}
-					Some(316) => {
-						// Right Arrow
-						let _ = ui_tx_delete.send(UiCommand::MoveTimelineRight);
-						event.skip(false);
-						return;
-					}
-					_ => {}
+					event.skip(false);
+					return;
 				}
-			}
-			if !key_event.control_down() && !key_event.shift_down() && !key_event.alt_down() {
-				match key_event.get_key_code() {
-					Some(KEY_DELETE) => {
-						let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
-						event.skip(false);
-						return;
-					}
-					Some(314) => {
-						// Left Arrow
-						let _ = ui_tx_delete.send(UiCommand::SwitchPrevTimeline);
-						event.skip(false);
-						return;
-					}
-					Some(316) => {
-						// Right Arrow
-						let _ = ui_tx_delete.send(UiCommand::SwitchNextTimeline);
-						event.skip(false);
-						return;
-					}
-					Some(k) if (49..=57).contains(&k) && quick_action_keys_selector.get() => {
-						// 1-9 in quick keys mode
-						if let Ok(index) = usize::try_from(k - 49) {
-							let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
+				if let Some(action) = shortcuts_selector.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
+					match action {
+						ActionId::SwitchPrevAccount => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchPrevAccount);
+							event.skip(false);
+							return;
 						}
-						event.skip(false);
-						return;
+						ActionId::SwitchNextAccount => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchNextAccount);
+							event.skip(false);
+							return;
+						}
+						ActionId::MoveTimelineLeft => {
+							let _ = ui_tx_delete.send(UiCommand::MoveTimelineLeft);
+							event.skip(false);
+							return;
+						}
+						ActionId::MoveTimelineRight => {
+							let _ = ui_tx_delete.send(UiCommand::MoveTimelineRight);
+							event.skip(false);
+							return;
+						}
+						ActionId::CloseTimeline => {
+							let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
+							event.skip(false);
+							return;
+						}
+						ActionId::SwitchPrevTimeline => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchPrevTimeline);
+							event.skip(false);
+							return;
+						}
+						ActionId::SwitchNextTimeline => {
+							let _ = ui_tx_delete.send(UiCommand::SwitchNextTimeline);
+							event.skip(false);
+							return;
+						}
+						_ => {}
 					}
-					_ => {}
 				}
 			}
 		}
 		event.skip(true);
 	});
 
-	// ── Timeline list key handler ──────────────────────────────────────────
 	let ui_tx_list_key = ui_tx.clone();
 	let shutdown_list_key = is_shutting_down.clone();
 	let quick_action_keys_list = quick_action_keys_enabled.clone();
@@ -170,6 +167,7 @@ pub fn bind_input_handlers(
 	let sort_order_list = sort_order_cell.clone();
 	let timeline_list_key = parts.timeline_list.clone();
 	let find_frame = parts.frame;
+	let shortcuts_list_key = shortcuts_cell.clone();
 	parts.timeline_list.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(key_event) = event {
 			if shutdown_list_key.get() {
@@ -184,100 +182,25 @@ pub fn bind_input_handlers(
 				return;
 			};
 
-			if k == 13 {
-				// Enter
-				if alt {
-					let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
-					event.skip(false);
-					return;
+			let quick_mode = quick_action_keys_list.get();
+
+			if ctrl && (49..=57).contains(&k) {
+				if let Ok(index) = usize::try_from(k - 49) {
+					let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
 				}
-				if shift {
-					let _ = ui_tx_list_key.send(UiCommand::ViewPost);
-					event.skip(false);
-					return;
-				}
-				if !ctrl && !alt {
-					let _ = ui_tx_list_key.send(UiCommand::ViewThread);
-					event.skip(false);
-					return;
-				}
+				event.skip(false);
+				return;
 			}
 
-			if !ctrl && !shift && alt {
-				if k == 70 {
-					let _ = ui_tx_list_key.send(UiCommand::ToggleFollow);
-					event.skip(false);
-					return;
+			if quick_mode && !ctrl && !shift && !alt && (49..=57).contains(&k) {
+				if let Ok(index) = usize::try_from(k - 49) {
+					let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
 				}
-			}
-
-			if !ctrl && shift && !alt {
-				if quick_action_keys_list.get() && k == 73 {
-					let _ = ui_tx_list_key.send(UiCommand::OpenInstanceTimelineByInput);
-					event.skip(false);
-					return;
-				}
-				match k {
-					314 => {
-						let _ = ui_tx_list_key.send(UiCommand::MoveTimelineLeft);
-						event.skip(false);
-						return;
-					}
-					316 => {
-						let _ = ui_tx_list_key.send(UiCommand::MoveTimelineRight);
-						event.skip(false);
-						return;
-					}
-					_ => {}
-				}
+				event.skip(false);
+				return;
 			}
 
 			if !ctrl && !shift && !alt {
-				match k {
-					KEY_DELETE => {
-						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
-						event.skip(false);
-						return;
-					}
-					8 => {
-						// Backspace
-						if quick_action_keys_list.get() {
-							let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
-						}
-						event.skip(false);
-						return;
-					}
-					313 => {
-						// Home
-						if sort_order_list.get() == SortOrder::OldestToNewest {
-							let _ = ui_tx_list_key.send(UiCommand::HomePressed);
-							event.skip(false);
-							return;
-						}
-					}
-					314 => {
-						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevTimeline);
-						event.skip(false);
-						return;
-					}
-					316 => {
-						let _ = ui_tx_list_key.send(UiCommand::SwitchNextTimeline);
-						event.skip(false);
-						return;
-					}
-					342 => {
-						// F3
-						if shift {
-							let _ = ui_tx_list_key.send(UiCommand::FindPrev);
-						} else {
-							let _ = ui_tx_list_key.send(UiCommand::FindNext);
-						}
-						event.skip(false);
-						return;
-					}
-					_ => {}
-				}
-
 				let mode = autoload_mode_list.get();
 				if mode == AutoloadMode::AtBoundary || mode == AutoloadMode::AtEnd {
 					let sort_order = sort_order_list.get();
@@ -285,14 +208,12 @@ pub fn bind_input_handlers(
 					let count = timeline_list_key.get_count();
 					if let Some(index) = selection {
 						if k == 315 {
-							// Up
 							if sort_order == SortOrder::OldestToNewest && index == 0 {
 								let _ = ui_tx_list_key.send(UiCommand::LoadMore);
 								event.skip(false);
 								return;
 							}
 						} else if k == 317 {
-							// Down
 							if mode == AutoloadMode::AtBoundary
 								&& sort_order == SortOrder::NewestToOldest
 								&& index + 1 == count
@@ -304,211 +225,199 @@ pub fn bind_input_handlers(
 						}
 					}
 				}
-			}
-
-			if ctrl && shift {
-				match k {
-					81 => {
-						let new_value = !quick_action_keys_list.get();
-						quick_action_keys_list.set(new_value);
-						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(new_value));
-						event.skip(false);
-						return;
-					}
-					70 => {
-						let _ = ui_tx_list_key.send(UiCommand::Favorite);
-						event.skip(false);
-						return;
-					}
-					66 => {
-						let _ = ui_tx_list_key.send(UiCommand::Boost);
-						event.skip(false);
-						return;
-					}
-					75 => {
-						let _ = ui_tx_list_key.send(UiCommand::Bookmark);
-						event.skip(false);
-						return;
-					}
-					_ => {}
+				if k == 313 && sort_order_list.get() == SortOrder::OldestToNewest {
+					let _ = ui_tx_list_key.send(UiCommand::HomePressed);
+					event.skip(false);
+					return;
 				}
 			}
 
-			if ctrl && k == 81 {
-				let _ = ui_tx_list_key.send(UiCommand::Quote);
+			if let Some(action) = shortcuts_list_key.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
+				match action {
+					ActionId::NewPost => {
+						let _ = ui_tx_list_key.send(UiCommand::NewPost);
+					}
+					ActionId::Reply => {
+						let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
+					}
+					ActionId::ReplyAuthor => {
+						let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: false });
+					}
+					ActionId::Quote => {
+						let _ = ui_tx_list_key.send(UiCommand::Quote);
+					}
+					ActionId::ToggleFollow => {
+						let _ = ui_tx_list_key.send(UiCommand::ToggleFollow);
+					}
+					ActionId::ViewProfile => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewProfile);
+					}
+					ActionId::ViewMentions => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewMentions);
+					}
+					ActionId::ViewHashtags => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewHashtags);
+					}
+					ActionId::OpenLinks => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenLinks);
+					}
+					ActionId::PlayMedia => {
+						let _ = ui_tx_list_key.send(UiCommand::PlayMedia);
+					}
+					ActionId::ViewInBrowser => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewInBrowser);
+					}
+					ActionId::CopyPost => {
+						let _ = ui_tx_list_key.send(UiCommand::CopyPost);
+					}
+					ActionId::CopyPostLink => {
+						let _ = ui_tx_list_key.send(UiCommand::CopyPostLink);
+					}
+					ActionId::ViewPost => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewPost);
+					}
+					ActionId::ViewThread => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewThread);
+					}
+					ActionId::ViewQuotedThread => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewQuotedThread);
+					}
+					ActionId::EditPost => {
+						let _ = ui_tx_list_key.send(UiCommand::EditPost);
+					}
+					ActionId::DeletePost => {
+						let _ = ui_tx_list_key.send(UiCommand::DeletePost);
+					}
+					ActionId::PinPost => {
+						let _ = ui_tx_list_key.send(UiCommand::Pin);
+					}
+					ActionId::Vote => {
+						let _ = ui_tx_list_key.send(UiCommand::Vote);
+					}
+					ActionId::Favorite => {
+						let _ = ui_tx_list_key.send(UiCommand::Favorite);
+					}
+					ActionId::Bookmark => {
+						let _ = ui_tx_list_key.send(UiCommand::Bookmark);
+					}
+					ActionId::Boost => {
+						let _ = ui_tx_list_key.send(UiCommand::Boost);
+					}
+					ActionId::ViewBoosts => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewBoosts);
+					}
+					ActionId::ViewFavorites => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewFavorites);
+					}
+					ActionId::OpenUserTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimeline);
+					}
+					ActionId::OpenUserTimelineByInput => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
+					}
+					ActionId::Search => {
+						let _ = ui_tx_list_key.send(UiCommand::Search);
+					}
+					ActionId::Find => {
+						if let Some(query) = dialogs::show_find_dialog(&find_frame) {
+							let _ = ui_tx_list_key.send(UiCommand::Find(query));
+						}
+					}
+					ActionId::FindNext => {
+						let _ = ui_tx_list_key.send(UiCommand::FindNext);
+					}
+					ActionId::FindPrev => {
+						let _ = ui_tx_list_key.send(UiCommand::FindPrev);
+					}
+					ActionId::LocalTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Local));
+					}
+					ActionId::OpenInstanceTimelineByInput => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenInstanceTimelineByInput);
+					}
+					ActionId::FederatedTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Federated));
+					}
+					ActionId::DirectTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Direct));
+					}
+					ActionId::MentionsTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Mentions));
+					}
+					ActionId::BookmarksTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Bookmarks));
+					}
+					ActionId::FavoritesTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Favorites));
+					}
+					ActionId::OpenList => {
+						let _ = ui_tx_list_key.send(UiCommand::OpenList);
+					}
+					ActionId::LoadMore => {
+						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+					}
+					ActionId::CloseTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
+					}
+					ActionId::Refresh => {
+						let _ = ui_tx_list_key.send(UiCommand::Refresh);
+					}
+					ActionId::SwitchPrevTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevTimeline);
+					}
+					ActionId::SwitchNextTimeline => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchNextTimeline);
+					}
+					ActionId::MoveTimelineLeft => {
+						let _ = ui_tx_list_key.send(UiCommand::MoveTimelineLeft);
+					}
+					ActionId::MoveTimelineRight => {
+						let _ = ui_tx_list_key.send(UiCommand::MoveTimelineRight);
+					}
+					ActionId::SwitchPrevAccount => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
+					}
+					ActionId::SwitchNextAccount => {
+						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
+					}
+					ActionId::ToggleContentWarning => {
+						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
+					}
+					ActionId::ToggleQuickActionKeys => {
+						let new_value = !quick_action_keys_list.get();
+						quick_action_keys_list.set(new_value);
+						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(new_value));
+					}
+					ActionId::ManageAccounts => {
+						let _ = ui_tx_list_key.send(UiCommand::ManageAccounts);
+					}
+					ActionId::ManageFilters => {
+						let _ = ui_tx_list_key.send(UiCommand::ManageFilters);
+					}
+					ActionId::ManageLists => {
+						let _ = ui_tx_list_key.send(UiCommand::ManageLists);
+					}
+					ActionId::EditProfile => {
+						let _ = ui_tx_list_key.send(UiCommand::EditProfile);
+					}
+					ActionId::Options => {
+						let _ = ui_tx_list_key.send(UiCommand::ShowOptions);
+					}
+					ActionId::CustomizeShortcuts => {
+						let _ = ui_tx_list_key.send(UiCommand::CustomizeShortcuts);
+					}
+					ActionId::CheckForUpdates => {
+						let _ = ui_tx_list_key.send(UiCommand::CheckForUpdates);
+					}
+					ActionId::ViewHelp => {
+						let _ = ui_tx_list_key.send(UiCommand::ViewHelp);
+					}
+				}
 				event.skip(false);
 				return;
 			}
 
-			if ctrl {
-				match k {
-					73 => {
-						if !quick_action_keys_list.get() {
-							let _ = ui_tx_list_key.send(UiCommand::PlayMedia);
-							event.skip(false);
-							return;
-						}
-					}
-					87 => {
-						// w
-						if !quick_action_keys_list.get() {
-							let _ = ui_tx_list_key.send(UiCommand::CloseTimeline);
-							event.skip(false);
-							return;
-						}
-					}
-					k if (49..=57).contains(&k) => {
-						if let Ok(index) = usize::try_from(k - 49) {
-							let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
-						}
-						event.skip(false);
-						return;
-					}
-					88 => {
-						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
-						event.skip(false);
-						return;
-					}
-					69 => {
-						let _ = ui_tx_list_key.send(UiCommand::EditPost);
-						event.skip(false);
-						return;
-					}
-					91 => {
-						let _ = ui_tx_list_key.send(UiCommand::SwitchPrevAccount);
-						event.skip(false);
-						return;
-					}
-					93 => {
-						let _ = ui_tx_list_key.send(UiCommand::SwitchNextAccount);
-						event.skip(false);
-						return;
-					}
-					85 => {
-						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimelineByInput);
-						event.skip(false);
-						return;
-					}
-					86 => {
-						let _ = ui_tx_list_key.send(UiCommand::Vote);
-						event.skip(false);
-						return;
-					}
-					46 => {
-						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
-						event.skip(false);
-						return;
-					}
-					70 => {
-						if let Some(query) = dialogs::show_find_dialog(&find_frame) {
-							let _ = ui_tx_list_key.send(UiCommand::Find(query));
-						}
-						event.skip(false);
-						return;
-					}
-					_ => {}
-				}
-			}
-
-			if quick_action_keys_list.get() && !ctrl && !shift && !alt {
-				match k {
-					73 => {
-						let _ = ui_tx_list_key.send(UiCommand::PlayMedia);
-						event.skip(false);
-						return;
-					}
-					81 => {
-						let _ = ui_tx_list_key.send(UiCommand::Quote);
-						event.skip(false);
-						return;
-					}
-					70 => {
-						let _ = ui_tx_list_key.send(UiCommand::Favorite);
-						event.skip(false);
-						return;
-					}
-					75 => {
-						let _ = ui_tx_list_key.send(UiCommand::Bookmark);
-						event.skip(false);
-						return;
-					}
-					66 => {
-						let _ = ui_tx_list_key.send(UiCommand::Boost);
-						event.skip(false);
-						return;
-					}
-					67 => {
-						let _ = ui_tx_list_key.send(UiCommand::NewPost);
-						event.skip(false);
-						return;
-					}
-					69 => {
-						let _ = ui_tx_list_key.send(UiCommand::EditPost);
-						event.skip(false);
-						return;
-					}
-					82 => {
-						let _ = ui_tx_list_key.send(UiCommand::Reply { reply_all: true });
-						event.skip(false);
-						return;
-					}
-					84 => {
-						let _ = ui_tx_list_key.send(UiCommand::OpenUserTimeline);
-						event.skip(false);
-						return;
-					}
-					77 => {
-						let _ = ui_tx_list_key.send(UiCommand::ViewMentions);
-						event.skip(false);
-						return;
-					}
-					80 => {
-						let _ = ui_tx_list_key.send(UiCommand::ViewProfile);
-						event.skip(false);
-						return;
-					}
-					72 => {
-						let _ = ui_tx_list_key.send(UiCommand::ViewHashtags);
-						event.skip(false);
-						return;
-					}
-					79 => {
-						let _ = ui_tx_list_key.send(UiCommand::ViewInBrowser);
-						event.skip(false);
-						return;
-					}
-					86 => {
-						let _ = ui_tx_list_key.send(UiCommand::Vote);
-						event.skip(false);
-						return;
-					}
-					88 => {
-						let _ = ui_tx_list_key.send(UiCommand::ToggleContentWarning);
-						event.skip(false);
-						return;
-					}
-					46 => {
-						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
-						event.skip(false);
-						return;
-					}
-					47 | 191 => {
-						let _ = ui_tx_list_key.send(UiCommand::Search);
-						event.skip(false);
-						return;
-					}
-					k if (49..=57).contains(&k) => {
-						if let Ok(index) = usize::try_from(k - 49) {
-							let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
-						}
-						event.skip(false);
-						return;
-					}
-					_ => {}
-				}
-			}
-
-			if !quick_action_keys_list.get() && !ctrl && !shift && !alt && k >= 32 && k <= 126 {
+			if !quick_mode && !ctrl && !shift && !alt && k >= 32 && k <= 126 {
 				if let Some(ch) = char::from_u32(k as u32) {
 					if ch.is_alphanumeric() {
 						timeline_list_key.type_ahead(ch);
@@ -524,115 +433,107 @@ pub fn bind_input_handlers(
 		}
 	});
 
-	// ── Timeline list context menu ─────────────────────────────────────────
 	let shutdown_ctx = is_shutting_down.clone();
 	let context_menu_state_ctx = context_menu_state;
 	let timeline_list_ctx = parts.timeline_list.clone();
+	let shortcuts_ctx = shortcuts_cell;
 	let _ = parts.timeline_list.bind_internal(EventType::CONTEXT_MENU, move |_event| {
 		if shutdown_ctx.get() {
 			return;
 		}
 		let cms = context_menu_state_ctx.get();
 		let q = cms.quick_action_keys;
+		let sc = shortcuts_ctx.borrow();
 		let mut menu = Menu::builder().build();
-		menu.append(
-			ID_REPLY,
-			if q { "&Reply...\tR" } else { "&Reply...\tCtrl+R" },
-			"Reply to all mentioned users",
-			ItemKind::Normal,
-		);
-		menu.append(
-			ID_REPLY_AUTHOR,
-			if q { "Reply to &Author...\tCtrl+R" } else { "Reply to &Author...\tCtrl+Shift+R" },
-			"Reply to author only",
-			ItemKind::Normal,
-		);
-		menu.append(
-			ID_QUOTE,
-			if q { "&Quote...\tQ" } else { "&Quote...\tCtrl+Q" },
-			"Quote this post",
-			ItemKind::Normal,
-		);
+
+		let append_item = |menu: &mut Menu, id: i32, base: &str, action: ActionId, help: &str| {
+			let shortcut = sc.get_menu_str(q, action);
+			let label = if shortcut.is_empty() { base.to_string() } else { format!("{base}\t{shortcut}") };
+			menu.append(id, &label, help, ItemKind::Normal);
+		};
+
+		append_item(&mut menu, ID_REPLY, "&Reply...", ActionId::Reply, "Reply to all mentioned users");
+		append_item(&mut menu, ID_REPLY_AUTHOR, "Reply to &Author...", ActionId::ReplyAuthor, "Reply to author only");
+		append_item(&mut menu, ID_QUOTE, "&Quote...", ActionId::Quote, "Quote this post");
 		menu.append_separator();
-		let fav_label = match (cms.favourited, q) {
-			(true, true) => "Un&favorite\tF",
-			(true, false) => "Un&favorite\tCtrl+Shift+F",
-			(false, true) => "&Favorite\tF",
-			(false, false) => "&Favorite\tCtrl+Shift+F",
-		};
-		menu.append(ID_FAVORITE, fav_label, "Favorite or unfavorite selected post", ItemKind::Normal);
-		let bookmark_label = match (cms.bookmarked, q) {
-			(true, true) => "Un&bookmark\tK",
-			(true, false) => "Un&bookmark\tCtrl+Shift+K",
-			(false, true) => "&Bookmark\tK",
-			(false, false) => "&Bookmark\tCtrl+Shift+K",
-		};
-		menu.append(ID_BOOKMARK, bookmark_label, "Bookmark or unbookmark selected post", ItemKind::Normal);
+
+		let fav_base = if cms.favourited { "Un&favorite" } else { "&Favorite" };
+		append_item(&mut menu, ID_FAVORITE, fav_base, ActionId::Favorite, "Favorite or unfavorite selected post");
+
+		let bookmark_base = if cms.bookmarked { "Un&bookmark" } else { "&Bookmark" };
+		append_item(&mut menu, ID_BOOKMARK, bookmark_base, ActionId::Bookmark, "Bookmark or unbookmark selected post");
+
 		if !cms.is_direct {
-			let boost_label = match (cms.reblogged, q) {
-				(true, true) => "Un&boost\tB",
-				(true, false) => "Un&boost\tCtrl+Shift+B",
-				(false, true) => "&Boost\tB",
-				(false, false) => "&Boost\tCtrl+Shift+B",
-			};
-			menu.append(ID_BOOST, boost_label, "Boost or unboost selected post", ItemKind::Normal);
+			let boost_base = if cms.reblogged { "Un&boost" } else { "&Boost" };
+			append_item(&mut menu, ID_BOOST, boost_base, ActionId::Boost, "Boost or unboost selected post");
 		}
 		menu.append_separator();
-		menu.append(ID_VIEW_POST, "View &Post Details\tShift+Enter", "View post content in a dialog", ItemKind::Normal);
-		menu.append(ID_VIEW_THREAD, "View &Thread\tAlt+Enter", "View conversation thread", ItemKind::Normal);
-		menu.append(
+		append_item(&mut menu, ID_VIEW_POST, "View &Post Details", ActionId::ViewPost, "View post content in a dialog");
+		append_item(&mut menu, ID_VIEW_THREAD, "View &Thread", ActionId::ViewThread, "View conversation thread");
+		append_item(
+			&mut menu,
 			ID_VIEW_QUOTED_THREAD,
 			"View &Quoted Thread",
+			ActionId::ViewQuotedThread,
 			"View conversation thread for quoted post",
-			ItemKind::Normal,
 		);
-		menu.append(ID_OPEN_LINKS, "Open &Links\tEnter", "Open links in selected post", ItemKind::Normal);
-		menu.append(ID_PLAY_MEDIA, "Play &Media", "Play media attached to selected post", ItemKind::Normal);
-		menu.append(
+		append_item(&mut menu, ID_OPEN_LINKS, "Open &Links", ActionId::OpenLinks, "Open links in selected post");
+		append_item(
+			&mut menu,
+			ID_PLAY_MEDIA,
+			"Play &Media",
+			ActionId::PlayMedia,
+			"Play media attached to selected post",
+		);
+		append_item(
+			&mut menu,
 			ID_VIEW_IN_BROWSER,
-			if q { "&Open in Browser\tO" } else { "&Open in Browser\tCtrl+Shift+O" },
+			"&Open in Browser",
+			ActionId::ViewInBrowser,
 			"Open selected post in web browser",
-			ItemKind::Normal,
 		);
-		menu.append(ID_COPY_POST, "&Copy Post\tCtrl+Shift+C", "Copy selected post text", ItemKind::Normal);
-		menu.append(ID_COPY_POST_LINK, "Copy Post &Link\tCtrl+C", "Copy selected post URL", ItemKind::Normal);
+		append_item(&mut menu, ID_COPY_POST, "&Copy Post", ActionId::CopyPost, "Copy selected post text");
+		append_item(&mut menu, ID_COPY_POST_LINK, "Copy Post &Link", ActionId::CopyPostLink, "Copy selected post URL");
 		menu.append_separator();
-		menu.append(
+		append_item(
+			&mut menu,
 			ID_VIEW_PROFILE,
-			if q { "View &Profile\tP" } else { "View &Profile\tCtrl+P" },
+			"View &Profile",
+			ActionId::ViewProfile,
 			"View profile of selected post's author",
-			ItemKind::Normal,
 		);
-		menu.append(
+		append_item(
+			&mut menu,
 			ID_VIEW_USER_TIMELINE,
-			if q { "&User Timeline\tT" } else { "&User Timeline\tCtrl+T" },
+			"&User Timeline",
+			ActionId::OpenUserTimeline,
 			"Open timeline of selected post's author",
-			ItemKind::Normal,
 		);
-		menu.append(
+		append_item(
+			&mut menu,
 			ID_VIEW_MENTIONS,
-			if q { "View &Mentions\tM" } else { "View &Mentions\tCtrl+M" },
+			"View &Mentions",
+			ActionId::ViewMentions,
 			"View mentions in selected post",
-			ItemKind::Normal,
 		);
-		menu.append(
+		append_item(
+			&mut menu,
 			ID_VIEW_HASHTAGS,
-			if q { "View &Hashtags\tH" } else { "View &Hashtags\tCtrl+H" },
+			"View &Hashtags",
+			ActionId::ViewHashtags,
 			"View hashtags in selected post",
-			ItemKind::Normal,
 		);
+
 		if cms.is_own {
 			menu.append_separator();
-			let edit_label = if q { "&Edit Post...\tE" } else { "&Edit Post...\tCtrl+E" };
-			menu.append(ID_EDIT_POST, edit_label, "Edit selected post", ItemKind::Normal);
-			menu.append(ID_DELETE_POST, "&Delete Post\tDel", "Delete selected post", ItemKind::Normal);
-			let pin_label = if cms.pinned { "&Unpin Post" } else { "&Pin Post" };
-			menu.append(ID_PIN_POST, pin_label, "Pin or unpin this post on your profile", ItemKind::Normal);
+			append_item(&mut menu, ID_EDIT_POST, "&Edit Post...", ActionId::EditPost, "Edit selected post");
+			append_item(&mut menu, ID_DELETE_POST, "&Delete Post", ActionId::DeletePost, "Delete selected post");
+			let pin_base = if cms.pinned { "&Unpin Post" } else { "&Pin Post" };
+			append_item(&mut menu, ID_PIN_POST, pin_base, ActionId::PinPost, "Pin or unpin this post on your profile");
 		}
 		let _ = timeline_list_ctx.popup_menu(&mut menu, None);
 	});
 
-	// ── Timeline list selection handler ───────────────────────────────────
 	let ui_tx_list = ui_tx.clone();
 	let shutdown_list = is_shutting_down.clone();
 	let suppress_list = suppress_selection;
@@ -711,19 +612,25 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::ShowOptions);
 		}
+		ID_CUSTOMIZE_SHORTCUTS => {
+			if shutdown_menu.get() {
+				return;
+			}
+			let _ = ui_tx_menu.send(UiCommand::CustomizeShortcuts);
+		}
 		ID_MANAGE_ACCOUNTS => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::ManageAccounts);
 		}
-		crate::ui::ids::ID_MANAGE_FILTERS => {
+		ID_MANAGE_FILTERS => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::ManageFilters);
 		}
-		crate::ui::ids::ID_MANAGE_LISTS => {
+		ID_MANAGE_LISTS => {
 			if shutdown_menu.get() {
 				return;
 			}
@@ -837,25 +744,25 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Direct));
 		}
-		crate::ui::ids::ID_OPEN_LIST => {
+		ID_OPEN_LIST => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenList);
 		}
-		crate::ui::ids::ID_MENTIONS_TIMELINE => {
+		ID_MENTIONS_TIMELINE => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Mentions));
 		}
-		crate::ID_BOOKMARKS_TIMELINE => {
+		ID_BOOKMARKS_TIMELINE => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::OpenTimeline(crate::timeline::TimelineType::Bookmarks));
 		}
-		crate::ID_FAVORITES_TIMELINE => {
+		ID_FAVORITES_TIMELINE => {
 			if shutdown_menu.get() {
 				return;
 			}
@@ -945,7 +852,7 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::LoadMore);
 		}
-		crate::ID_VOTE => {
+		ID_VOTE => {
 			if shutdown_menu.get() {
 				return;
 			}
@@ -963,7 +870,7 @@ pub fn bind_input_handlers(
 			}
 			let _ = ui_tx_menu.send(UiCommand::Search);
 		}
-		crate::ui::ids::ID_FIND => {
+		ID_FIND => {
 			if shutdown_menu.get() {
 				return;
 			}
@@ -971,13 +878,13 @@ pub fn bind_input_handlers(
 				let _ = ui_tx_menu.send(UiCommand::Find(query));
 			}
 		}
-		crate::ui::ids::ID_FIND_NEXT => {
+		ID_FIND_NEXT => {
 			if shutdown_menu.get() {
 				return;
 			}
 			let _ = ui_tx_menu.send(UiCommand::FindNext);
 		}
-		crate::ui::ids::ID_FIND_PREV => {
+		ID_FIND_PREV => {
 			if shutdown_menu.get() {
 				return;
 			}

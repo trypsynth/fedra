@@ -89,6 +89,7 @@ pub enum UiCommand {
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
 	ShowOptions,
+	CustomizeShortcuts,
 	ManageAccounts,
 	SwitchAccount(String),
 	SwitchNextAccount,
@@ -188,6 +189,7 @@ pub struct UiCommandContext<'a> {
 	pub autoload_mode: &'a Cell<AutoloadMode>,
 	pub sort_order_cell: &'a Cell<SortOrder>,
 	pub tray_hidden: &'a Cell<bool>,
+	pub shortcuts_cell: &'a std::cell::RefCell<crate::config::ShortcutsConfig>,
 	pub ui_tx: &'a UiCommandSender,
 }
 
@@ -204,6 +206,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 	let autoload_mode = ctx.autoload_mode;
 	let sort_order_cell = ctx.sort_order_cell;
 	let tray_hidden = ctx.tray_hidden;
+	let shortcuts_cell = ctx.shortcuts_cell;
 	let ui_tx = ctx.ui_tx;
 	match cmd {
 		UiCommand::NewPost => {
@@ -778,6 +781,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					restore_open_timelines: state.config.restore_open_timelines,
 					notification_preference: state.config.notification_preference,
 					hotkey: state.config.hotkey.clone(),
+					shortcuts: state.config.shortcuts.clone(),
 					templates: state.config.templates.clone(),
 					filters: state.config.filters.clone(),
 					find_loading_mode: state.config.find_loading_mode,
@@ -802,6 +806,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 					restore_open_timelines,
 					notification_preference,
 					hotkey,
+					shortcuts,
 					templates,
 					filters,
 					find_loading_mode,
@@ -833,6 +838,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 				state.config.restore_open_timelines = restore_open_timelines;
 				state.config.notification_preference = notification_preference;
 				state.config.hotkey = hotkey;
+				state.config.shortcuts = shortcuts;
+				*shortcuts_cell.borrow_mut() = state.config.shortcuts.clone();
 				state.config.templates = templates;
 				state.config.filters = filters;
 				state.config.find_loading_mode = find_loading_mode;
@@ -873,6 +880,19 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 							active_index,
 						);
 					}
+				}
+			}
+		}
+		UiCommand::CustomizeShortcuts => {
+			if let Some(new_shortcuts) = dialogs::prompt_for_shortcuts(frame, &state.config.shortcuts) {
+				state.config.shortcuts = new_shortcuts;
+				*shortcuts_cell.borrow_mut() = state.config.shortcuts.clone();
+				let store = config::ConfigStore::new();
+				if let Err(err) = store.save(&state.config) {
+					dialogs::show_error(frame, &err);
+				}
+				if let Some(mb) = frame.get_menu_bar() {
+					update_menu_labels(&mb, state);
 				}
 			}
 		}

@@ -258,6 +258,7 @@ pub struct NetworkResponseContext<'a> {
 	pub autoload_mode: &'a Cell<AutoloadMode>,
 	pub sort_order_cell: &'a Cell<SortOrder>,
 	pub tray_hidden: &'a Cell<bool>,
+	pub shortcuts_cell: &'a std::cell::RefCell<crate::config::ShortcutsConfig>,
 	pub ui_tx: &'a UiCommandSender,
 }
 
@@ -274,6 +275,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	let autoload_mode = ctx.autoload_mode;
 	let sort_order_cell = ctx.sort_order_cell;
 	let tray_hidden = ctx.tray_hidden;
+	let shortcuts_cell = ctx.shortcuts_cell;
 	let ui_tx = ctx.ui_tx;
 	let Some(handle) = &state.network_handle else { return };
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
@@ -290,6 +292,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				autoload_mode,
 				sort_order_cell,
 				tray_hidden,
+				shortcuts_cell,
 				ui_tx,
 			};
 			crate::commands::handle_ui_command($cmd, &mut ctx);

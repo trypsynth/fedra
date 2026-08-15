@@ -15,6 +15,7 @@ mod options;
 mod post_view;
 mod profile;
 mod profile_edit;
+mod shortcuts;
 mod user_actions;
 
 pub use accounts::{ManageAccountsResult, show_manage_accounts_dialog};
@@ -34,3 +35,4 @@ pub use options::*;
 pub use post_view::show_post_view_dialog;
 pub use profile::*;
 pub use profile_edit::show_profile_edit_dialog;
+pub use shortcuts::*;

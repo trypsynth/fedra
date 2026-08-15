@@ -156,6 +156,7 @@ pub struct OptionsDialogInput {
 	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
+	pub shortcuts: crate::config::ShortcutsConfig,
 	pub templates: PostTemplates,
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
@@ -181,6 +182,7 @@ pub struct OptionsDialogResult {
 	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
 	pub hotkey: HotkeyConfig,
+	pub shortcuts: crate::config::ShortcutsConfig,
 	pub templates: PostTemplates,
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
@@ -208,6 +210,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		restore_open_timelines,
 		notification_preference,
 		hotkey,
+		shortcuts,
 		templates,
 		filters,
 		find_loading_mode,
@@ -271,6 +274,17 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	let shortcuts_button = Button::builder(&general_panel).with_label("Customize &Keyboard Shortcuts...").build();
+	let current_shortcuts = Rc::new(RefCell::new(shortcuts));
+	let shortcuts_clone = current_shortcuts.clone();
+	let shortcuts_frame = *frame;
+	shortcuts_button.on_click(move |_| {
+		let initial = shortcuts_clone.borrow().clone();
+		if let Some(updated) = crate::ui::dialogs::prompt_for_shortcuts(&shortcuts_frame, &initial) {
+			*shortcuts_clone.borrow_mut() = updated;
+		}
+	});
+	general_sizer.add(&shortcuts_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let hotkey_button = Button::builder(&general_panel).with_label("Customize Window Hotkey...").build();
 	let current_hotkey = Rc::new(RefCell::new(hotkey));
 	let hotkey_clone = current_hotkey.clone();
@@ -799,6 +813,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		default_timelines: current_defaults.borrow().clone(),
 		notification_preference: new_notification_preference,
 		hotkey: current_hotkey.borrow().clone(),
+		shortcuts: current_shortcuts.borrow().clone(),
 		templates: new_templates,
 		filters: filters_state.borrow().clone(),
 		find_loading_mode: new_find_loading_mode,

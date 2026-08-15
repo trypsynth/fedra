@@ -46,6 +46,7 @@ seq_ids! {
 	ID_LOAD_MORE,
 	// Account/settings
 	ID_OPTIONS,
+	ID_CUSTOMIZE_SHORTCUTS,
 	ID_MANAGE_ACCOUNTS,
 	ID_MANAGE_FILTERS,
 	ID_MANAGE_LISTS,
@@ -63,6 +64,3 @@ seq_ids! {
 	// Internal
 	ID_UI_WAKE,
 }
-
-// Key codes
-pub const KEY_DELETE: i32 = 127;

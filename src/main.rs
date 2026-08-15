@@ -34,13 +34,14 @@ use wxdragon::prelude::*;
 
 pub(crate) use crate::ui::ids::{
 	ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE, ID_COPY_POST,
-	ID_COPY_POST_LINK, ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE,
-	ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_NEW_POST,
-	ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST,
-	ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_TRAY_EXIT,
-	ID_TRAY_TOGGLE, ID_UI_WAKE, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
-	ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	ID_VOTE, KEY_DELETE,
+	ID_COPY_POST_LINK, ID_CUSTOMIZE_SHORTCUTS, ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE,
+	ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_FIND, ID_FIND_NEXT, ID_FIND_PREV, ID_LOAD_MORE,
+	ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_MANAGE_FILTERS, ID_MANAGE_LISTS, ID_MENTIONS_TIMELINE, ID_NEW_POST,
+	ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_LIST, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS,
+	ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW,
+	ID_TRAY_EXIT, ID_TRAY_TOGGLE, ID_UI_WAKE, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP,
+	ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD,
+	ID_VIEW_USER_TIMELINE, ID_VOTE,
 };
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
@@ -227,6 +228,7 @@ fn main() {
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
+		let shortcuts_cell = Rc::new(std::cell::RefCell::new(config.shortcuts.clone()));
 		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
 		let mc = MediaCtrl::builder(&frame).with_size(Size::new(0, 0)).build();
 		let sound_path = get_sound_path();
@@ -264,6 +266,7 @@ fn main() {
 		let autoload_drain = autoload_mode.clone();
 		let sort_order_drain = sort_order_cell.clone();
 		let tray_hidden_drain = tray_hidden;
+		let shortcuts_drain = shortcuts_cell.clone();
 		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = Instant::now();
 		frame.bind_with_id_internal(EventType::MENU, ID_UI_WAKE, move |_| {
@@ -286,6 +289,7 @@ fn main() {
 					autoload_mode: &autoload_drain,
 					sort_order_cell: &sort_order_drain,
 					tray_hidden: &tray_hidden_drain,
+					shortcuts_cell: &shortcuts_drain,
 					ui_tx: &ui_tx_timer,
 				};
 				drain_ui_commands(&ui_rx, &mut ui_ctx);
@@ -307,6 +311,7 @@ fn main() {
 					autoload_mode: &autoload_drain,
 					sort_order_cell: &sort_order_drain,
 					tray_hidden: &tray_hidden_drain,
+					shortcuts_cell: &shortcuts_drain,
 					ui_tx: &ui_tx_timer,
 				};
 				process_network_responses(&mut network_ctx);
@@ -359,6 +364,7 @@ fn main() {
 			autoload_mode,
 			sort_order_cell,
 			context_menu_state_for_handlers,
+			shortcuts_cell,
 		);
 		let shutdown_close = is_shutting_down;
 		let frame_close = frame;
