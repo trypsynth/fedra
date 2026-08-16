@@ -371,89 +371,16 @@ fn prompt_for_key_chord(
 	main_sizer.add_sizer(&mod_sizer, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 8);
 
 	let key_label = StaticText::builder(&panel).with_label("&Key:").build();
-	let key_choices = vec![
-		"Enter".to_string(),
-		"Space".to_string(),
-		"Tab".to_string(),
-		"Backspace".to_string(),
-		"Delete".to_string(),
-		"Escape".to_string(),
-		"F1".to_string(),
-		"F2".to_string(),
-		"F3".to_string(),
-		"F4".to_string(),
-		"F5".to_string(),
-		"F6".to_string(),
-		"F7".to_string(),
-		"F8".to_string(),
-		"F9".to_string(),
-		"F10".to_string(),
-		"F11".to_string(),
-		"F12".to_string(),
-		"Left".to_string(),
-		"Right".to_string(),
-		"Up".to_string(),
-		"Down".to_string(),
-		"Home".to_string(),
-		"End".to_string(),
-		"PageUp".to_string(),
-		"PageDown".to_string(),
-		"A".to_string(),
-		"B".to_string(),
-		"C".to_string(),
-		"D".to_string(),
-		"E".to_string(),
-		"F".to_string(),
-		"G".to_string(),
-		"H".to_string(),
-		"I".to_string(),
-		"J".to_string(),
-		"K".to_string(),
-		"L".to_string(),
-		"M".to_string(),
-		"N".to_string(),
-		"O".to_string(),
-		"P".to_string(),
-		"Q".to_string(),
-		"R".to_string(),
-		"S".to_string(),
-		"T".to_string(),
-		"U".to_string(),
-		"V".to_string(),
-		"W".to_string(),
-		"X".to_string(),
-		"Y".to_string(),
-		"Z".to_string(),
-		"0".to_string(),
-		"1".to_string(),
-		"2".to_string(),
-		"3".to_string(),
-		"4".to_string(),
-		"5".to_string(),
-		"6".to_string(),
-		"7".to_string(),
-		"8".to_string(),
-		"9".to_string(),
-		",".to_string(),
-		".".to_string(),
-		"/".to_string(),
-		"[".to_string(),
-		"]".to_string(),
-		"\\".to_string(),
-		"-".to_string(),
-		"=".to_string(),
-		";".to_string(),
-		"'".to_string(),
-		"`".to_string(),
-	];
-	let key_combo = ComboBox::builder(&panel).with_choices(key_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let key_text_ctrl = TextCtrl::builder(&panel)
+		.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly | TextCtrlStyle::DontWrap)
+		.build();
 	if let Some(chord) = initial {
-		key_combo.set_value(&chord.key);
+		key_text_ctrl.set_value(&chord.key);
 	}
 
 	let key_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	key_sizer.add(&key_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
-	key_sizer.add(&key_combo, 1, SizerFlag::Expand, 0);
+	key_sizer.add(&key_text_ctrl, 1, SizerFlag::Expand, 0);
 	main_sizer.add_sizer(&key_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 
 	let hint_label = StaticText::builder(&panel)
@@ -468,9 +395,9 @@ fn prompt_for_key_chord(
 		let ctrl_cb = ctrl_cb;
 		let alt_cb = alt_cb;
 		let shift_cb = shift_cb;
-		let key_combo = key_combo;
+		let key_text_ctrl = key_text_ctrl;
 		move || {
-			let key = key_combo.get_value();
+			let key = key_text_ctrl.get_value();
 			let trimmed = key.trim().to_string();
 			if trimmed.is_empty() {
 				None
@@ -492,8 +419,6 @@ fn prompt_for_key_chord(
 	};
 	refresh_preview_label();
 
-	// Only the live region should announce user-driven changes, not the dialog's
-	// initial state, so it starts out separate from `refresh_preview_label`.
 	let update_preview = {
 		let current_shortcut_text = current_shortcut_text;
 		let refresh_preview_label = refresh_preview_label.clone();
@@ -509,12 +434,12 @@ fn prompt_for_key_chord(
 	let ctrl_cb_cap = ctrl_cb;
 	let alt_cb_cap = alt_cb;
 	let shift_cb_cap = shift_cb;
-	let key_combo_cap = key_combo;
+	let key_text_cap = key_text_ctrl;
 	let update_preview_key = update_preview.clone();
-	key_combo.on_key_down(move |event| {
+	key_text_ctrl.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			if let Some(k) = key_event.get_key_code() {
-				if k != 9 {
+				if k != 9 && k != 27 && !matches!(k, 314 | 315 | 316 | 317 | 378 | 380 | 382 | 383) {
 					if let Some(parsed) = KeyChord::from_key_code(
 						k,
 						key_event.control_down(),
@@ -524,7 +449,7 @@ fn prompt_for_key_chord(
 						ctrl_cb_cap.set_value(parsed.ctrl);
 						alt_cb_cap.set_value(parsed.alt);
 						shift_cb_cap.set_value(parsed.shift);
-						key_combo_cap.set_value(&parsed.key);
+						key_text_cap.set_value(&parsed.key);
 						update_preview_key();
 						event.skip(false);
 						return;
@@ -533,11 +458,6 @@ fn prompt_for_key_chord(
 			}
 		}
 		event.skip(true);
-	});
-
-	let update_preview_combo = update_preview.clone();
-	key_combo.on_selection_changed(move |_| {
-		update_preview_combo();
 	});
 
 	let update_preview_ctrl = update_preview.clone();
@@ -572,13 +492,13 @@ fn prompt_for_key_chord(
 	});
 
 	dialog.centre();
-	key_combo.set_focus();
+	key_text_ctrl.set_focus();
 
 	let res = dialog.show_modal();
 	if res == ID_CLEAR_SHORTCUT {
 		Some(None)
 	} else if res == ID_OK {
-		let key_text = key_combo.get_value();
+		let key_text = key_text_ctrl.get_value();
 		let trimmed = key_text.trim();
 		if trimmed.is_empty() {
 			Some(None)
