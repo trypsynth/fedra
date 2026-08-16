@@ -14,7 +14,7 @@ chrono-humanize = "0.2.3"
 clearurls = "0.0.4"
 ego-tree = "0.11.0"
 minijinja = { version = "2.21.0", default-features = false, features = ["macros", "serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "stream", "json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls"] }
 ship-shape = "0.1.5"
 scraper = { version = "0.27.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -22,7 +22,7 @@ serde_json = "1.0.151"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
 wx-utils = "0.1.1"
-wxdragon = { version = "0.9.17", features = ["media-ctrl", "webview"] }
+wxdragon = { version = "0.9.18", features = ["media-ctrl", "webview"] }
 accesskit = "0.24.1"
 
 [target.'cfg(windows)'.dependencies]
@@ -39,6 +39,3 @@ opt-level = "z"
 lto = true
 panic = "abort"
 codegen-units = 1
-
-[patch.crates-io]
-wxdragon = { git = "https://github.com/AllenDang/wxDragon" }
