@@ -14,7 +14,8 @@ chrono-humanize = "0.2.3"
 clearurls = "0.0.4"
 ego-tree = "0.11.0"
 minijinja = { version = "2.21.0", default-features = false, features = ["macros", "serde"] }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 ship-shape = "0.1.5"
 scraper = { version = "0.27.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.229", features = ["derive"] }
