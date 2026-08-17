@@ -392,10 +392,6 @@ impl TimelineManager {
 			return false;
 		}
 
-		if matches!(timeline_type, TimelineType::Home | TimelineType::Notifications) {
-			return false;
-		}
-
 		if use_history {
 			let can_go_back = self.history.iter().rev().any(|hist_type| {
 				hist_type != timeline_type && self.timelines.iter().any(|t| t.timeline_type == *hist_type)

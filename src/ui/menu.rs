@@ -4,12 +4,12 @@ use crate::{
 	AppState, ContextMenuState, ID_BOOKMARK, ID_BOOKMARKS_TIMELINE, ID_BOOST, ID_CHECK_FOR_UPDATES, ID_CLOSE_TIMELINE,
 	ID_COPY_POST, ID_COPY_POST_LINK, ID_CUSTOMIZE_SHORTCUTS, ID_DELETE_POST, ID_DIRECT_TIMELINE, ID_EDIT_POST,
 	ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE, ID_FIND, ID_FIND_NEXT, ID_FIND_PREV,
-	ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_MANAGE_FILTERS, ID_MANAGE_LISTS, ID_MENTIONS_TIMELINE,
-	ID_NEW_POST, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_LIST, ID_OPEN_USER_TIMELINE_BY_INPUT,
-	ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH,
-	ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER,
-	ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE,
-	ID_VOTE, commands::get_selected_status, config::ActionId,
+	ID_HOME_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS, ID_MANAGE_FILTERS, ID_MANAGE_LISTS,
+	ID_MENTIONS_TIMELINE, ID_NEW_POST, ID_NOTIFICATIONS_TIMELINE, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS,
+	ID_OPEN_LIST, ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH,
+	ID_REPLY, ID_REPLY_AUTHOR, ID_SEARCH, ID_TOGGLE_FOLLOW, ID_VIEW_BOOSTS, ID_VIEW_FAVORITES, ID_VIEW_HASHTAGS,
+	ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD,
+	ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, commands::get_selected_status, config::ActionId,
 };
 
 pub fn build_menu_bar() -> MenuBar {
@@ -131,6 +131,8 @@ pub fn build_menu_bar() -> MenuBar {
 		.append_item(ID_FIND_NEXT, "Find &Next\tF3", "Find next occurrence")
 		.append_item(ID_FIND_PREV, "Find &Previous\tShift+F3", "Find previous occurrence")
 		.append_separator()
+		.append_item(ID_HOME_TIMELINE, "&Home Timeline", "Open home timeline")
+		.append_item(ID_NOTIFICATIONS_TIMELINE, "&Notifications", "Open notifications timeline")
 		.append_item(ID_LOCAL_TIMELINE, "&Local Timeline\tCtrl+L", "Open local timeline")
 		.append_item(
 			ID_OPEN_INSTANCE_TIMELINE_BY_INPUT,
@@ -466,6 +468,13 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	set_item_label(menu_bar, ID_FIND, "&Find in Timeline...", &sc.get_menu_str(q, ActionId::Find));
 	set_item_label(menu_bar, ID_FIND_NEXT, "Find &Next", &sc.get_menu_str(q, ActionId::FindNext));
 	set_item_label(menu_bar, ID_FIND_PREV, "Find &Previous", &sc.get_menu_str(q, ActionId::FindPrev));
+	set_item_label(menu_bar, ID_HOME_TIMELINE, "&Home Timeline", &sc.get_menu_str(q, ActionId::HomeTimeline));
+	set_item_label(
+		menu_bar,
+		ID_NOTIFICATIONS_TIMELINE,
+		"&Notifications",
+		&sc.get_menu_str(q, ActionId::NotificationsTimeline),
+	);
 	set_item_label(menu_bar, ID_LOCAL_TIMELINE, "&Local Timeline", &sc.get_menu_str(q, ActionId::LocalTimeline));
 	set_item_label(
 		menu_bar,

@@ -2783,10 +2783,6 @@ fn close_timeline(
 		live_region.announce("Cannot close the only open timeline");
 		return;
 	}
-	if matches!(active_type, TimelineType::Home | TimelineType::Notifications) {
-		live_region.announce("Cannot close Home or Notifications");
-		return;
-	}
 	if !state.timeline_manager.close(&active_type, use_history) {
 		return;
 	}
