@@ -13,16 +13,16 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 chrono-humanize = "0.2.3"
 clearurls = "0.0.4"
 ego-tree = "0.11.0"
-minijinja = { version = "2.21.0", default-features = false, features = ["macros", "serde"] }
+minijinja = { version = "2.24.0", default-features = false, features = ["macros", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-ship-shape = "0.1.5"
+ship-shape = "0.1.7"
 scraper = { version = "0.27.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
-wx-utils = "0.1.1"
+wx-utils = "0.1.2"
 wxdragon = { version = "0.9.18", features = ["media-ctrl", "webview"] }
 accesskit = "0.24.1"
 
