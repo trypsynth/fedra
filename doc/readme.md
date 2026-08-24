@@ -247,6 +247,29 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 
 ## Changelog
 
+### Version 0.5.0
+* Account usernames are now properly resolved when replying to a post from a remote instance's local timeline.
+* Added a hotkey customization dialog! It is now possible to change any keybinding in Fedra, for both the regular and quick key modes, through a simple and intuitive dialog.
+* Added a sent timeline option, to bring up your current account's timeline in a buffer.
+* Added a view timeline button to the hashtags dialog.
+* Added an add to list option to the actions menu for a user.
+* Added Ctrl+C as a shortcut to copy the focused post's link.
+* Added page up and page down keyboard shortcuts to the timeline list, allowing you to move by 20 posts at a time.
+* Added shortcut keys to controls in the compose post dialog.
+* Added shortcuts to the media player dialog to speak your loaded track's elapsed, remaining, and total times, bound to e, r, and t respectively.
+* Added the ability to customize your window title using a template.
+* Fixed copying posts in user timelines.
+* Fixed editing a post with the content-type set to markdown, you'll now be able to edit your original markdown content rather than the Mastodon-rendered text.
+* Fixed link previews getting coppied when copying post text.
+* Fixed opening user timelines from the local timeline of a remote instance.
+* Fixed posts sometimes automatically rereading in the timeline list.
+* Indentation in post bodies is now properly preserved.
+* It is now possible to view the quoter's profile or timeline when on a quoted post, Similar to how boosted posts already work.
+* Pressing the applications key in the followers or following dialogs will now bring up the actions menu.
+* Removed the limitations on what timelines you must have open at all times. In other words, it is now possible to close your home and notification timelines if you so desire. Additionally added home and notification options to the timeline menu to bring them back.
+* Timelines without proper web socket streaming support should now correctly refresh periodically.
+* Trailing dashes and other junk are now stripped from the end of post bodies when copying them.
+
 ### Version 0.4.0
 * Added an actions button to the follower/following dialogs, working the exact same way as it does in the view profile dialog.
 * Find in timeline now respects your timeline sort direction.
