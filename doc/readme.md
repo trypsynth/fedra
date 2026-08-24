@@ -6,24 +6,77 @@
 Windows 10 or 11
 
 ## Core Features
-- Native Windows UI with screen-reader-friendly controls and live announcements.
+- Native Windows UI with screen-reader-friendly controls and live announcements, built on a custom [AccessKit](https://accesskit.dev)-backed list control.
 - Multi-account support, including account switching while preserving per-account timelines.
-- Timelines: Home, Notifications, Local, Federated, Direct Messages, Bookmarks, Favorites, User, Hashtag, Thread, and Search timelines.
-- Real-time streaming for Home, Notifications, Local, Federated, and Direct timelines.
+- Timelines: Home, Notifications, Mentions, Sent, Local, another instance's Local, Federated, Direct Messages, Bookmarks, Favorites, Lists, User, Hashtag, Thread, and Search.
+- Real-time streaming for Home, Notifications, Local, Federated, Direct, and List timelines. Your own posts also appear in the Sent timeline as soon as you publish them.
 - Rich post creation and editing with:
   - Visibility (Public, Unlisted, Followers only, Direct)
   - Content warnings
   - Content type (Default, plain text, markdown, HTML)
   - Optional post language (ISO code)
-  - Media attachments with descriptions
-  - Poll creation and voting
+  - Media attachments with descriptions, optionally marked sensitive
+  - Polls, with preset durations, multiple choice, and optionally hidden vote counts
+  - Quote posts
+  - Scheduled posts
+  - Thread mode, for writing a chain of self-replies without reopening the dialog
 - Relationship and discovery tools:
-  - Open profile/timeline from posts, mentions, and search
-  - Follow/unfollow hashtags
+  - Open profile/timeline from posts, mentions, boost/favorite lists, and search
+  - Follow/unfollow, block, mute, show/hide a user's boosts, and add users to lists
+  - Accept or reject follow requests
+  - Browse a user's followers and following
+  - Follow/unfollow and mute hashtags
   - View users who boosted/favorited posts
   - Search for accounts, hashtags, and posts
+- Built-in media player with download support.
+- Fully customizable keyboard shortcuts, with independent bindings for normal and Quick Action Keys modes.
+- Client-side timeline filters, plus management of server-side Mastodon filters.
+- Mastodon list management (create, edit, delete, and change membership) and list timelines.
+- Customizable timeline entry and window title templates.
 - Tray integration and a global hotkey to show/hide the main window.
-- Optional update checks at startup plus manual update checks.
+- Optional update checks at startup plus manual update checks, on either the stable or development channel.
+
+## Main Window Layout
+The main window has two lists:
+
+- The **Timelines** list, holding every open timeline in order.
+- The **Posts** list, holding the entries of the currently selected timeline.
+
+`Tab` and `Shift+Tab` move between them. Timeline switching, reordering, and closing work from either list; post actions work from the Posts list.
+
+## Timelines
+
+### Opening Timelines
+Timelines are opened from the **Timelines** menu, from a post (user timelines, threads, hashtags), or with their shortcut. Every open timeline appears in the Timelines list and stays open until you close it with `Ctrl+W` (or `Backspace` in Quick Action Keys mode).
+
+| Timeline | How to open |
+|---|---|
+| Home | `Timelines -> Home Timeline` |
+| Notifications | `Timelines -> Notifications` |
+| Mentions | `Ctrl+Shift+M` |
+| Sent | `Timelines -> Sent` |
+| Local | `Ctrl+L` |
+| Local for another instance | `Ctrl+Shift+I`, then type a domain |
+| Federated | `Timelines -> Federated Timeline` |
+| Direct Messages | `Ctrl+D` |
+| Bookmarks | `Timelines -> Bookmarks` |
+| Favorites | `Timelines -> Favorites` |
+| List | `Timelines -> Open List...` |
+| User | `Ctrl+T` on a post, or `Ctrl+U` to type a handle |
+| Hashtag | `Ctrl+H` on a post, then **View Timeline** |
+| Thread | `Alt+Enter` on a post |
+| Search | `Ctrl+/` |
+
+Home and Notifications are opened automatically at startup, but they are not special: you can close them like any other timeline and reopen them from the Timelines menu.
+
+### The Sent Timeline
+`Timelines -> Sent` opens your own account's timeline in a buffer, so you can see everything you have posted, including replies and boosts, with your pinned posts at the top. Posts you publish or delete are reflected there live.
+
+### Reordering and Switching
+Reorder timelines with `Shift+Left Arrow` and `Shift+Right Arrow` from either list. Switch between them with `Left Arrow`/`Right Arrow` or `Ctrl+1` through `Ctrl+9`.
+
+### Refreshing
+Streaming timelines update themselves. `F5` refreshes the current timeline at any time, and `.` (Load More) fetches older entries. If a streaming timeline loses its connection, Fedra re-fetches it about once a minute until streaming comes back.
 
 ## Window Visibility and Tray
 - Fedra runs with a tray icon menu:
@@ -32,21 +85,44 @@ Windows 10 or 11
 - A global hotkey toggles the main window (default: `Ctrl+Alt+F`).
 - You can customize the global hotkey in `Options -> General -> Customize Window Hotkey...`.
 
+## Composing Posts
+`Ctrl+N` opens the compose dialog; `Ctrl+R`, `Ctrl+Shift+R`, `Ctrl+Q`, and `Ctrl+E` open it for a reply, an author-only reply, a quote, and an edit respectively. Every control has an access key, and the dialog title shows the character count for your instance's limit. You can type past the limit, but you will hear a warning sound when you do.
+
+The dialog offers:
+
+- **Content warning**: a checkbox plus the warning text field.
+- **Content type**: Default, plain text, Markdown, or HTML, for instances that support it. Editing a Markdown post gives you back your original Markdown, not the rendered text.
+- **Visibility**: Public, Unlisted, Followers only, or Direct. The initial value follows your account's default visibility.
+- **Post language**: an ISO code, defaulting to your account's setting.
+- **Manage Media...**: add attachments, give each one a description, and mark the set as sensitive.
+- **Add Poll...**: add options up to your instance's limit, with a preset duration, optional multiple selections, and an option to hide vote counts until the poll closes.
+- **Schedule...**: pick a local date and time to publish at, or **Clear Schedule** to post immediately.
+- **Thread mode**: when checked, posting reopens the dialog as a reply to the post you just made, so you can write a thread without leaving the dialog.
+
+If `Use enter to send posts` is enabled, `Enter` posts from the content field; otherwise use the Post button.
+
 ## Options
 Open options with `Ctrl+,`.
 
 ### General Tab
 - `Use enter to send posts`
 - `Always prompt to open links`
+- `Read link previews in timelines`
+- `Strip tracking parameters from URLs`
 - `Use quick action keys in timelines`
 - `Check for updates on startup`
+- Update channel:
+  - `Stable`
+  - `Dev` (development builds)
 - Notifications mode:
-  - Classic Windows notifications
+  - Classic Windows Notifications
   - Sound only
   - Disabled
+- `Customize Keyboard Shortcuts...`
 - `Customize Window Hotkey...` (Ctrl/Alt/Shift/Win modifiers + custom key)
 
 ### Timeline Tab
+- `Restore open timelines on startup` (when off, only your default timelines are reopened)
 - Autoload posts:
   - Never
   - When reaching the end
@@ -63,11 +139,10 @@ Open options with `Ctrl+,`.
   - All
 - `Show oldest timeline entries first`
 - `Always preserve thread order`
+- `Load more on find next`
 - `Customize Default Timelines...`
-  - Home and Notifications are always opened
-  - Additional startup timelines are configurable
-- Post language:
-  - Per-post ISO language code can be set in compose dialogs
+  - Home and Notifications are opened at startup
+  - Any of Local, Federated, Direct Messages, Bookmarks, Favorites, Mentions, and Sent can be added
 
 ### Templates Tab
 Customize how posts appear in each timeline using [Jinja2-style](https://jinja.palletsprojects.com/en/stable/templates/) templates.
@@ -115,7 +190,7 @@ You can use `{% if %}` blocks to show text only when a variable is non-empty:
 ```
 
 ### Filters Tab
-Hide post types per timeline. Select a timeline from the dropdown, then check the types you want to hide:
+Hide post types per timeline, on the client side only. Select a timeline from the dropdown, then check the types you want to hide:
 - Original posts (not replies or boosts)
 - Replies to others
 - Replies to me
@@ -127,94 +202,127 @@ Hide post types per timeline. Select a timeline from the dropdown, then check th
 - Your posts
 - Your replies
 
+These are separate from your instance's own filters, which are managed in `Options -> Manage Filters...`.
+
 ## Keyboard Shortcuts
 
-### Global / App
-- `Ctrl+Alt+F`: Show/hide main window (default global hotkey; customizable)
-- `F1`: Open help
+Every shortcut in the table below can be changed in `Options -> Customize Keyboard Shortcuts...`. Normal mode and Quick Action Keys mode have their own independent bindings, and actions listed as `None` have no default binding but can be given one.
 
-### Navigation
-- `Left Arrow`: Previous timeline
-- `Right Arrow`: Next timeline
-- `Ctrl+1`..`Ctrl+9`: Switch to timeline index 1-9
-- `Ctrl+W`: Close current timeline (when Quick Action Keys are off)
-- `Delete` (in Timelines list): Close current timeline
-- `Ctrl+[`: Previous account
-- `Ctrl+]`: Next account
-- `Ctrl+Shift+Left Arrow`: Move current timeline left (in Timelines list)
-- `Ctrl+Shift+Right Arrow`: Move current timeline right (in Timelines list)
-- `Shift+Left Arrow`: Move current timeline left (in Posts list)
-- `Shift+Right Arrow`: Move current timeline right (in Posts list)
+### Customizing Shortcuts
+The dialog has a **Quick Keys Mode** tab and a **Normal Mode** tab. On each:
 
-### Timelines / Discovery
-- `Ctrl+T`: Open selected user's timeline
-- `Ctrl+U`: Open user by handle
-- `Ctrl+/`: Search
-- `Ctrl+Shift+I`: Open an instance's local timeline by domain
-- `Ctrl+L`: Open Local timeline
-- `Ctrl+D`: Open Direct Messages timeline
-- `Ctrl+Shift+M`: Open Mentions timeline
-- `Ctrl+.`: Load more posts
-- `F5`: Refresh current timeline
-- `Ctrl+F`: Find in current timeline
-- `F3`: Find next occurrence
-- `Shift+F3`: Find previous occurrence
+- **Enter key behavior** picks between `Enter` opening links with `Alt+Enter` viewing the thread, or the reverse. Binding either action by hand shows this as `Custom`.
+- **Set Shortcut...** opens a capture dialog: click in the key field and press the combination you want. The detected chord is announced as you type it, and if the combination is already assigned to another action, you are asked whether to reassign it.
+- **Clear Shortcut** unbinds the selected action, **Reset to Default** restores just that action, and **Reset All to Defaults** restores the whole mode.
 
-### Post Actions
-- `Ctrl+N`: New post
-- `Ctrl+R`: Reply to all mentioned users
-- `Ctrl+Shift+R`: Reply to author only
-- `Ctrl+Q`: Quote selected post
-- `Enter`: Open links in selected post
-- `Shift+Enter`: View post details in Fedra
-- `Alt+Enter`: Open thread / context (or open selected search result)
-- `Ctrl+I`: Play media attached to selected post
-- `Ctrl+P`: View profile
-- `Alt+F`: Follow/unfollow the post's author
-- `Ctrl+M`: View mentions
-- `Ctrl+H`: View hashtags
-- `Ctrl+Shift+O`: Open selected post in browser
-- `Ctrl+Shift+C`: Copy selected post text
-- `Ctrl+E`: Edit selected post
-- `Delete` (in Posts list): Delete selected post
-- `Ctrl+V`: Vote in poll
-- `Ctrl+Shift+F`: Favorite/unfavorite
-- `Ctrl+Shift+K`: Bookmark/unbookmark
-- `Ctrl+Shift+B`: Boost/unboost
-- `Ctrl+X`: Toggle CW expansion (CW-only mode)
+### Fixed Keys
+These are built into the lists and cannot be customized:
 
-### Account / Settings
-- `Ctrl+Alt+A`: Manage accounts
-- `Ctrl+Shift+E`: Edit current profile
-- `Ctrl+,`: Open options
-- Options menu → **Manage Filters...**: View, add, edit, or delete server-side content filters
-- Options menu → **Manage Lists...**: Create and manage Mastodon lists; open a list timeline via Timelines → Open List...
+- `Tab` / `Shift+Tab`: Move between the Timelines list and the Posts list
+- `Up Arrow` / `Down Arrow`: Move by one entry
+- `Home` / `End`: Jump to the first or last entry
+- `Page Up` / `Page Down`: Move by 20 entries
+- `Ctrl+1`..`Ctrl+9`: Switch to timeline 1-9
+- `1`..`9`: Switch to timeline 1-9 (Quick Action Keys mode only)
+- `Shift+F10` or the applications key: Open the actions menu for the focused post, or for the focused user in the followers/following dialogs
+
+### Global
+- `Ctrl+Alt+F`: Show/hide the main window (global hotkey; customizable in Options)
+
+### Default Bindings
+
+| Action | Normal mode | Quick Action Keys mode |
+|---|---|---|
+| New Post... | `Ctrl+N` | `C` |
+| Reply... | `Ctrl+R` | `R` |
+| Reply to Author... | `Ctrl+Shift+R` | `Ctrl+R` |
+| Quote Post... | `Ctrl+Q` | `Q` |
+| Toggle Follow | `Alt+F` | `Alt+F` |
+| View Author Profile | `Ctrl+P` | `P` |
+| View Mentions | `Ctrl+M` | `M` |
+| View Hashtags | `Ctrl+H` | `H` |
+| Open Links | `Enter` | `Enter` |
+| Play Media | `Ctrl+I` | `I` |
+| Open in Browser | `Ctrl+Shift+O` | `O` |
+| Copy Post | `Ctrl+Shift+C` | `Ctrl+Shift+C` |
+| Copy Post Link | `Ctrl+C` | `Ctrl+C` |
+| View Post Details | `Shift+Enter` | `Shift+Enter` |
+| View Thread | `Alt+Enter` | `Alt+Enter` |
+| View Quoted Thread | None | None |
+| Edit Post... | `Ctrl+E` | `E` |
+| Delete Post | `Delete` | `Delete` |
+| Pin / Unpin Post | None | None |
+| Vote on Poll... | `Ctrl+V` | `V` |
+| Favorite | `Ctrl+Shift+F` | `F` |
+| Bookmark | `Ctrl+Shift+K` | `K` |
+| Boost | `Ctrl+Shift+B` | `B` |
+| View Boosts | None | None |
+| View Favorites | None | None |
+| Open User Timeline | `Ctrl+T` | `T` |
+| Open User... | `Ctrl+U` | `U` |
+| Search... | `Ctrl+/` | `/` |
+| Find in Timeline... | `Ctrl+F` | `Ctrl+F` |
+| Find Next | `F3` | `F3` |
+| Find Previous | `Shift+F3` | `Shift+F3` |
+| Home Timeline | None | None |
+| Notifications Timeline | None | None |
+| Sent Timeline | None | None |
+| Local Timeline | `Ctrl+L` | `Ctrl+L` |
+| Open Instance Timeline... | `Ctrl+Shift+I` | `Shift+I` |
+| Federated Timeline | None | None |
+| Direct Messages | `Ctrl+D` | `Ctrl+D` |
+| Mentions Timeline | `Ctrl+Shift+M` | `Ctrl+Shift+M` |
+| Bookmarks | None | None |
+| Favorites | None | None |
+| Open List... | None | None |
+| Load More | `.` | `.` |
+| Close Timeline | `Ctrl+W` | `Backspace` |
+| Refresh | `F5` | `F5` |
+| Previous Timeline | `Left` | `Left` |
+| Next Timeline | `Right` | `Right` |
+| Move Timeline Left | `Shift+Left` | `Shift+Left` |
+| Move Timeline Right | `Shift+Right` | `Shift+Right` |
+| Previous Account | `Ctrl+[` | `Ctrl+[` |
+| Next Account | `Ctrl+]` | `Ctrl+]` |
+| Toggle Content Warning | `Ctrl+X` | `X` |
+| Toggle Quick Keys Mode | `Ctrl+Shift+Q` | `Ctrl+Shift+Q` |
+| Manage Accounts... | `Ctrl+Alt+A` | `Ctrl+Alt+A` |
+| Manage Filters... | None | None |
+| Manage Lists... | None | None |
+| Edit Profile... | `Ctrl+Shift+E` | `Ctrl+Shift+E` |
+| Options... | `Ctrl+,` | `Ctrl+,` |
+| Customize Keyboard Shortcuts... | None | None |
+| Check for Updates... | None | None |
+| View Help | `F1` | `F1` |
+
+Actions with no default binding are still reachable from the menu bar or the post context menu. **View Boosts** and **View Favorites** only appear in the Post menu when the selected post actually has boosts or favorites, and **Edit Post**, **Delete Post**, and **Pin / Unpin Post** only appear for your own posts.
 
 ### Quick Action Keys Mode
-- Toggle with `Ctrl+Shift+Q`
-- Single-key actions while enabled:
-  - `Backspace`: Close current timeline
-  - `c`: New post
-  - `r`: Reply to all
-  - `Ctrl+R`: Reply to author
-  - `q`: Quote post
-  - `f`: Favorite/unfavorite
-  - `k`: Bookmark/unbookmark
-  - `b`: Boost/unboost
-  - `e`: Edit post
-  - `i`: Play media
-  - `t`: User timeline
-  - `u`: Open user by handle
-  - `Shift+I`: Open instance timeline by domain
-  - `m`: Mentions
-  - `p`: Profile
-  - `h`: Hashtags
-  - `o`: Open in browser
-  - `v`: Vote
-  - `x`: Toggle CW expansion (CW-only mode)
-  - `.`: Load more
-  - `/`: Search
-  - `1`..`9`: Switch timeline index
+Toggle with `Ctrl+Shift+Q`. While it is on, the single-letter bindings in the table above act on the selected post instead of being typed, and `Backspace` closes the current timeline.
+
+## Accounts
+`Ctrl+Alt+A` opens the accounts dialog, where you can **Add**, **Remove**, or **Switch To** an account. Adding an account walks you through authorizing Fedra on your instance in the browser. `Ctrl+[` and `Ctrl+]` cycle accounts directly; each account keeps its own set of open timelines, and the newly active account's handle is announced when you switch.
+
+## Profile Editing
+`Ctrl+Shift+E` opens your profile for editing:
+
+- Display name and bio
+- Avatar and header images
+- `Require follow approval`
+- `Bot account`
+- `Discoverable in directory`
+- Default post visibility
+- `Mark media as sensitive by default`
+- Default post language (ISO code)
+
+## Lists
+`Options -> Manage Lists...` shows your Mastodon lists, with buttons to **Add**, **Edit**, view and change **Members**, and **Delete**. Open a list as a timeline with `Timelines -> Open List...`. Individual users can also be added to a list from the **Actions...** menu in the profile and followers/following dialogs. List timelines stream in real time.
+
+## Server-Side Filters
+`Options -> Manage Filters...` manages the filters stored on your instance, which apply everywhere you use Mastodon, not just in Fedra. Each filter has a title, the contexts it applies to, an action, an optional expiry, and a list of keywords, each of which can be marked whole-word.
+
+## Finding Text in a Timeline
+`Ctrl+F` prompts for text and moves to the next matching entry, respecting your timeline sort direction. `F3` and `Shift+F3` repeat the search forwards and backwards. With `Load more on find next` enabled in the Timeline options, Fedra keeps fetching older posts while searching instead of stopping at the end of what is already loaded.
 
 ## Media Player
 
@@ -229,6 +337,9 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 | `Right Arrow` | Seek forward 10 seconds |
 | `Up Arrow` | Volume up |
 | `Down Arrow` | Volume down |
+| `E` | Announce elapsed time |
+| `R` | Announce remaining time |
+| `T` | Announce total duration |
 | `D` | Download media file |
 | `Escape` | Close media player |
 
@@ -240,6 +351,10 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
   - Hashtags
   - Posts
 - Results open in a dedicated timeline (`Search: <query>`) and support paging.
+- `Alt+Enter` on an account or hashtag result opens its timeline.
+
+## Links in Posts
+`Enter` on a post opens its links. If the post has more than one link, or `Always prompt to open links` is enabled, a dialog lists them with **Open** and **Copy** buttons. Tracking parameters are stripped from URLs unless you turn that off in the General options.
 
 ## Configuration File
 - Installed build: `%APPDATA%\Fedra\config.json`
