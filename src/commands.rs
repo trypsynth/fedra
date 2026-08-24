@@ -82,6 +82,7 @@ pub enum UiCommand {
 	Pin,
 	Refresh,
 	OpenTimeline(TimelineType),
+	SentTimeline,
 	OpenUserTimeline,
 	OpenUserTimelineByInput,
 	OpenInstanceTimelineByInput,
@@ -545,6 +546,22 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 			poll_non_streaming_timelines(state);
 		}
 		UiCommand::OpenTimeline(timeline_type) => {
+			open_timeline(
+				state,
+				timelines_selector,
+				timeline_list,
+				&timeline_type,
+				suppress_selection,
+				live_region,
+				frame,
+			);
+		}
+		UiCommand::SentTimeline => {
+			let Some(id) = state.current_user_id.clone() else {
+				live_region.announce("Account information not loaded yet");
+				return;
+			};
+			let timeline_type = TimelineType::User { id, name: "Sent".to_string() };
 			open_timeline(
 				state,
 				timelines_selector,

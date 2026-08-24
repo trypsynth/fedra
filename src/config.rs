@@ -156,6 +156,7 @@ pub enum ActionId {
 	FindPrev,
 	HomeTimeline,
 	NotificationsTimeline,
+	SentTimeline,
 	LocalTimeline,
 	OpenInstanceTimelineByInput,
 	FederatedTimeline,
@@ -221,6 +222,7 @@ impl ActionId {
 			Self::FindPrev,
 			Self::HomeTimeline,
 			Self::NotificationsTimeline,
+			Self::SentTimeline,
 			Self::LocalTimeline,
 			Self::OpenInstanceTimelineByInput,
 			Self::FederatedTimeline,
@@ -286,6 +288,7 @@ impl ActionId {
 			Self::FindPrev => "Find Previous",
 			Self::HomeTimeline => "Home Timeline",
 			Self::NotificationsTimeline => "Notifications Timeline",
+			Self::SentTimeline => "Sent Timeline",
 			Self::LocalTimeline => "Local Timeline",
 			Self::OpenInstanceTimelineByInput => "Open Instance Timeline...",
 			Self::FederatedTimeline => "Federated Timeline",
@@ -352,6 +355,7 @@ impl ActionId {
 				Self::FindPrev => Some(KeyChord::new(false, false, true, "F3")),
 				Self::HomeTimeline => None,
 				Self::NotificationsTimeline => None,
+				Self::SentTimeline => None,
 				Self::LocalTimeline => Some(KeyChord::new(true, false, false, "L")),
 				Self::OpenInstanceTimelineByInput => Some(KeyChord::new(false, false, true, "I")),
 				Self::FederatedTimeline => None,
@@ -415,6 +419,7 @@ impl ActionId {
 				Self::FindPrev => Some(KeyChord::new(false, false, true, "F3")),
 				Self::HomeTimeline => None,
 				Self::NotificationsTimeline => None,
+				Self::SentTimeline => None,
 				Self::LocalTimeline => Some(KeyChord::new(true, false, false, "L")),
 				Self::OpenInstanceTimelineByInput => Some(KeyChord::new(true, false, true, "I")),
 				Self::FederatedTimeline => None,
@@ -800,11 +805,12 @@ pub enum DefaultTimeline {
 	Bookmarks,
 	Favorites,
 	Mentions,
+	Sent,
 }
 
 impl DefaultTimeline {
 	pub const fn all() -> &'static [Self] {
-		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites, Self::Mentions]
+		&[Self::Local, Self::Federated, Self::Direct, Self::Bookmarks, Self::Favorites, Self::Mentions, Self::Sent]
 	}
 
 	pub const fn display_name(self) -> &'static str {
@@ -815,6 +821,7 @@ impl DefaultTimeline {
 			Self::Bookmarks => "Bookmarks",
 			Self::Favorites => "Favorites",
 			Self::Mentions => "Mentions",
+			Self::Sent => "Sent",
 		}
 	}
 }

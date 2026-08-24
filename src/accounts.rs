@@ -198,6 +198,10 @@ pub fn switch_to_account(
 								crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 								crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
 								crate::config::DefaultTimeline::Mentions => TimelineType::Mentions,
+								crate::config::DefaultTimeline::Sent => TimelineType::User {
+									id: state.current_user_id.clone().unwrap_or_default(),
+									name: "Sent".to_string(),
+								},
 							};
 							if t == dt_type {
 								found = true;
@@ -243,6 +247,10 @@ pub fn switch_to_account(
 					crate::config::DefaultTimeline::Bookmarks => TimelineType::Bookmarks,
 					crate::config::DefaultTimeline::Favorites => TimelineType::Favorites,
 					crate::config::DefaultTimeline::Mentions => TimelineType::Mentions,
+					crate::config::DefaultTimeline::Sent => {
+						let Some(id) = state.current_user_id.clone() else { continue };
+						TimelineType::User { id, name: "Sent".to_string() }
+					}
 				};
 				types_to_load.push(timeline_type);
 			}
