@@ -5,9 +5,9 @@ use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
 use reqwest::{
 	StatusCode, Url,
-	blocking::{Client, multipart},
+	blocking::{Client, RequestBuilder, Response, multipart},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 use crate::{
@@ -693,6 +693,11 @@ impl Status {
 	}
 }
 
+/// Builds the shared form body for list creation and updates.
+fn list_form<'a>(title: &'a str, replies_policy: &'a str, exclusive: bool) -> [(&'static str, &'a str); 3] {
+	[("title", title), ("replies_policy", replies_policy), ("exclusive", if exclusive { "true" } else { "false" })]
+}
+
 fn count_label(count: u64, singular: &str, plural: &str) -> String {
 	if count == 0 {
 		String::new()
@@ -1011,22 +1016,67 @@ impl MastodonClient {
 		&self.base_url
 	}
 
+	/// Sends `request`, checks the status, and deserializes the JSON body.
+	///
+	/// `what` names the operation as a verb phrase, e.g. `"favorite status"`, and is
+	/// used to build the error context for each stage of the request.
+	fn send_json<T: DeserializeOwned>(request: RequestBuilder, what: &str) -> Result<T> {
+		let response = request
+			.send()
+			.with_context(|| format!("Failed to {what}"))?
+			.error_for_status()
+			.with_context(|| format!("Instance rejected request to {what}"))?;
+		response.json().with_context(|| format!("Invalid response while trying to {what}"))
+	}
+
+	/// Like [`Self::send_json`], but also returns the `max_id` of the next page, if any.
+	fn send_json_paged<T: DeserializeOwned>(request: RequestBuilder, what: &str) -> Result<(T, Option<String>)> {
+		let response = request
+			.send()
+			.with_context(|| format!("Failed to {what}"))?
+			.error_for_status()
+			.with_context(|| format!("Instance rejected request to {what}"))?;
+		let next_max_id = Self::next_max_id(&response);
+		let payload = response.json().with_context(|| format!("Invalid response while trying to {what}"))?;
+		Ok((payload, next_max_id))
+	}
+
+	/// Sends `request` and discards the body, for endpoints that return no content.
+	fn send_empty(request: RequestBuilder, what: &str) -> Result<()> {
+		request
+			.send()
+			.with_context(|| format!("Failed to {what}"))?
+			.error_for_status()
+			.with_context(|| format!("Instance rejected request to {what}"))?;
+		Ok(())
+	}
+
+	fn get_json<T: DeserializeOwned>(&self, access_token: &str, url: Url, what: &str) -> Result<T> {
+		Self::send_json(self.http.get(url).bearer_auth(access_token), what)
+	}
+
+	fn post_json<T: DeserializeOwned>(&self, access_token: &str, url: Url, what: &str) -> Result<T> {
+		Self::send_json(self.http.post(url).bearer_auth(access_token), what)
+	}
+
+	fn delete_empty(&self, access_token: &str, url: Url, what: &str) -> Result<()> {
+		Self::send_empty(self.http.delete(url).bearer_auth(access_token), what)
+	}
+
+	/// Extracts the `max_id` of the `next` link from a paginated response.
+	fn next_max_id(response: &Response) -> Option<String> {
+		response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header)
+	}
+
 	pub fn register_app(&self, app_name: &str, redirect_uri: &str) -> Result<AppCredentials> {
 		let url = self.base_url.join("api/v1/apps")?;
-		let response = self
-			.http
-			.post(url)
-			.form(&[
-				("client_name", app_name),
-				("redirect_uris", redirect_uri),
-				("scopes", DEFAULT_SCOPES),
-				("website", ""),
-			])
-			.send()
-			.context("Failed to register app with instance")?
-			.error_for_status()
-			.context("Instance rejected app registration")?;
-		let payload: RegisterAppResponse = response.json().context("Invalid response from instance")?;
+		let request = self.http.post(url).form(&[
+			("client_name", app_name),
+			("redirect_uris", redirect_uri),
+			("scopes", DEFAULT_SCOPES),
+			("website", ""),
+		]);
+		let payload: RegisterAppResponse = Self::send_json(request, "register app with instance")?;
 		Ok(AppCredentials { client_id: payload.client_id, client_secret: payload.client_secret })
 	}
 
@@ -1042,22 +1092,15 @@ impl MastodonClient {
 
 	pub fn exchange_token(&self, credentials: &AppCredentials, code: &str, redirect_uri: &str) -> Result<String> {
 		let url = self.base_url.join("oauth/token")?;
-		let response = self
-			.http
-			.post(url)
-			.form(&[
-				("client_id", credentials.client_id.as_str()),
-				("client_secret", credentials.client_secret.as_str()),
-				("redirect_uri", redirect_uri),
-				("grant_type", "authorization_code"),
-				("code", code),
-				("scope", DEFAULT_SCOPES),
-			])
-			.send()
-			.context("Failed to exchange token")?
-			.error_for_status()
-			.context("Instance rejected token exchange")?;
-		let payload: TokenResponse = response.json().context("Invalid token response")?;
+		let request = self.http.post(url).form(&[
+			("client_id", credentials.client_id.as_str()),
+			("client_secret", credentials.client_secret.as_str()),
+			("redirect_uri", redirect_uri),
+			("grant_type", "authorization_code"),
+			("code", code),
+			("scope", DEFAULT_SCOPES),
+		]);
+		let payload: TokenResponse = Self::send_json(request, "exchange token")?;
 		Ok(payload.access_token)
 	}
 
@@ -1228,37 +1271,17 @@ impl MastodonClient {
 				query.append_pair("max_id", max_id);
 			}
 		}
-		let mut req = self.http.get(url);
+		let mut request = self.http.get(url);
 		if timeline_type.requires_auth() {
-			req = req.bearer_auth(access_token);
+			request = request.bearer_auth(access_token);
 		}
-		let response = req
-			.send()
-			.context("Failed to fetch timeline")?
-			.error_for_status()
-			.context("Instance rejected timeline request")?;
-
-		let next_max_id =
-			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
-
-		let statuses: Vec<Status> = response.json().context("Invalid timeline response")?;
-		Ok((statuses, next_max_id))
+		Self::send_json_paged(request, "fetch timeline")
 	}
 
 	pub fn get_pinned_statuses(&self, access_token: &str, account_id: &str) -> Result<Vec<Status>> {
 		let mut url = self.base_url.join(&format!("api/v1/accounts/{account_id}/statuses"))?;
 		url.query_pairs_mut().append_pair("pinned", "true");
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch pinned statuses")?
-			.error_for_status()
-			.context("Instance rejected pinned statuses request")?;
-
-		let statuses: Vec<Status> = response.json().context("Invalid pinned statuses response")?;
-		Ok(statuses)
+		self.get_json(access_token, url, "fetch pinned statuses")
 	}
 
 	pub fn get_notifications(
@@ -1281,20 +1304,7 @@ impl MastodonClient {
 				query.append_pair("max_id", max_id);
 			}
 		}
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch notifications")?
-			.error_for_status()
-			.context("Instance rejected notifications request")?;
-
-		let next_max_id =
-			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
-
-		let notifications: Vec<Notification> = response.json().context("Invalid notifications response")?;
-		Ok((notifications, next_max_id))
+		Self::send_json_paged(self.http.get(url).bearer_auth(access_token), "fetch notifications")
 	}
 
 	pub fn get_conversations(
@@ -1313,201 +1323,73 @@ impl MastodonClient {
 				query.append_pair("max_id", max_id);
 			}
 		}
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch conversations")?
-			.error_for_status()
-			.context("Instance rejected conversations request")?;
-
-		let next_max_id =
-			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
-
-		let conversations: Vec<Conversation> = response.json().context("Invalid conversations response")?;
-		Ok((conversations, next_max_id))
+		Self::send_json_paged(self.http.get(url).bearer_auth(access_token), "fetch conversations")
 	}
 
 	pub fn verify_credentials(&self, access_token: &str) -> Result<Account> {
 		let url = self.base_url.join("api/v1/accounts/verify_credentials")?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to verify credentials")?
-			.error_for_status()
-			.context("Instance rejected credential verification")?;
-		let account: Account = response.json().context("Invalid credentials response")?;
-		Ok(account)
+		self.get_json(access_token, url, "verify credentials")
 	}
 
 	pub fn get_account(&self, access_token: &str, account_id: &str) -> Result<Account> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch account")?
-			.error_for_status()
-			.context("Instance rejected account request")?;
-		let account: Account = response.json().context("Invalid account response")?;
-		Ok(account)
+		self.get_json(access_token, url, "fetch account")
 	}
 
 	pub fn get_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch status")?
-			.error_for_status()
-			.context("Instance rejected status request")?;
-		let status: Status = response.json().context("Invalid status response")?;
-		Ok(status)
+		self.get_json(access_token, url, "fetch status")
 	}
 
 	pub fn lookup_account(&self, access_token: &str, acct: &str) -> Result<Account> {
 		let mut url = self.base_url.join("api/v1/accounts/lookup")?;
 		url.query_pairs_mut().append_pair("acct", acct);
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to lookup account")?
-			.error_for_status()
-			.context("Instance rejected account lookup")?;
-		let account: Account = response.json().context("Invalid account response")?;
-		Ok(account)
+		self.get_json(access_token, url, "lookup account")
 	}
 
 	pub fn favorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/favourite"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to favorite status")?
-			.error_for_status()
-			.context("Instance rejected favorite request")?;
-		let status: Status = response.json().context("Invalid favorite response")?;
-		Ok(status)
+		self.post_json(access_token, url, "favorite status")
 	}
 
 	pub fn bookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/bookmark"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to bookmark status")?
-			.error_for_status()
-			.context("Instance rejected bookmark request")?;
-		let status: Status = response.json().context("Invalid bookmark response")?;
-		Ok(status)
+		self.post_json(access_token, url, "bookmark status")
 	}
 
 	pub fn unfavorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unfavourite"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unfavorite status")?
-			.error_for_status()
-			.context("Instance rejected unfavorite request")?;
-		let status: Status = response.json().context("Invalid unfavorite response")?;
-		Ok(status)
+		self.post_json(access_token, url, "unfavorite status")
 	}
 
 	pub fn unbookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unbookmark"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unbookmark status")?
-			.error_for_status()
-			.context("Instance rejected unbookmark request")?;
-		let status: Status = response.json().context("Invalid unbookmark response")?;
-		Ok(status)
+		self.post_json(access_token, url, "unbookmark status")
 	}
 
 	pub fn pin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/pin"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to pin status")?
-			.error_for_status()
-			.context("Instance rejected pin request")?;
-		let status: Status = response.json().context("Invalid pin response")?;
-		Ok(status)
+		self.post_json(access_token, url, "pin status")
 	}
 
 	pub fn unpin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unpin"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unpin status")?
-			.error_for_status()
-			.context("Instance rejected unpin request")?;
-		let status: Status = response.json().context("Invalid unpin response")?;
-		Ok(status)
+		self.post_json(access_token, url, "unpin status")
 	}
 
 	pub fn reblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblog"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to boost status")?
-			.error_for_status()
-			.context("Instance rejected boost request")?;
-		let status: Status = response.json().context("Invalid boost response")?;
-		Ok(status)
+		self.post_json(access_token, url, "boost status")
 	}
 
 	pub fn unreblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unreblog"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unboost status")?
-			.error_for_status()
-			.context("Instance rejected unboost request")?;
-		let status: Status = response.json().context("Invalid unboost response")?;
-		Ok(status)
+		self.post_json(access_token, url, "unboost status")
 	}
 
 	pub fn get_instance_info(&self) -> Result<InstanceInfo> {
 		let url = self.base_url.join("api/v1/instance")?;
-		let response = self
-			.http
-			.get(url)
-			.send()
-			.context("Failed to fetch instance info")?
-			.error_for_status()
-			.context("Instance rejected info request")?;
-		let info: InstanceResponse = response.json().context("Invalid instance response")?;
+		let info: InstanceResponse = Self::send_json(self.http.get(url), "fetch instance info")?;
 		let max_chars =
 			info.configuration.as_ref().and_then(|c| c.statuses.as_ref()).and_then(|s| s.max_characters).unwrap_or(500)
 				as usize;
@@ -1519,86 +1401,32 @@ impl MastodonClient {
 
 	pub fn get_status_context(&self, access_token: &str, status_id: &str) -> Result<StatusContext> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/context"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch status context")?
-			.error_for_status()
-			.context("Instance rejected status context request")?;
-		let context: StatusContext = response.json().context("Invalid status context response")?;
-		Ok(context)
+		self.get_json(access_token, url, "fetch status context")
 	}
 
 	pub fn follow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
 		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}/follow"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to follow tag")?
-			.error_for_status()
-			.context("Instance rejected tag follow request")?;
-		let tag: Tag = response.json().context("Invalid tag response")?;
-		Ok(tag)
+		self.post_json(access_token, url, "follow tag")
 	}
 
 	pub fn unfollow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
 		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}/unfollow"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unfollow tag")?
-			.error_for_status()
-			.context("Instance rejected tag unfollow request")?;
-		let tag: Tag = response.json().context("Invalid tag response")?;
-		Ok(tag)
+		self.post_json(access_token, url, "unfollow tag")
 	}
 
 	pub fn get_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
 		let url = self.base_url.join(&format!("api/v1/tags/{tag_name}"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch tag info")?
-			.error_for_status()
-			.context("Instance rejected tag info request")?;
-		let tag: Tag = response.json().context("Invalid tag response")?;
-		Ok(tag)
+		self.get_json(access_token, url, "fetch tag info")
 	}
 
 	pub fn get_reblogged_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblogged_by"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch boosts")?
-			.error_for_status()
-			.context("Instance rejected boosts request")?;
-		let accounts: Vec<Account> = response.json().context("Invalid boosts response")?;
-		Ok(accounts)
+		self.get_json(access_token, url, "fetch boosts")
 	}
 
 	pub fn get_favourited_by(&self, access_token: &str, status_id: &str) -> Result<Vec<Account>> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/favourited_by"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch favorites")?
-			.error_for_status()
-			.context("Instance rejected favorites request")?;
-		let accounts: Vec<Account> = response.json().context("Invalid favorites response")?;
-		Ok(accounts)
+		self.get_json(access_token, url, "fetch favorites")
 	}
 
 	fn fetch_accounts_page(
@@ -1620,8 +1448,7 @@ impl MastodonClient {
 			req = req.bearer_auth(token);
 		}
 		let response = req.send()?.error_for_status()?;
-		let next_max_id =
-			response.headers().get("link").and_then(|h| h.to_str().ok()).and_then(Self::parse_link_header);
+		let next_max_id = Self::next_max_id(&response);
 		let accounts: Vec<Account> = response.json()?;
 		Ok((accounts, next_max_id))
 	}
@@ -1716,16 +1543,7 @@ impl MastodonClient {
 				pairs.append_pair("offset", &offset.to_string());
 			}
 		}
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to perform search")?
-			.error_for_status()
-			.context("Instance rejected search request")?;
-		let results: SearchResults = response.json().context("Invalid search response")?;
-		Ok(results)
+		self.get_json(access_token, url, "perform search")
 	}
 
 	pub fn get_relationships(&self, access_token: &str, account_ids: &[String]) -> Result<Vec<Relationship>> {
@@ -1736,16 +1554,7 @@ impl MastodonClient {
 				query.append_pair("id[]", id);
 			}
 		}
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch relationships")?
-			.error_for_status()
-			.context("Instance rejected relationships request")?;
-		let relationships: Vec<Relationship> = response.json().context("Invalid relationships response")?;
-		Ok(relationships)
+		self.get_json(access_token, url, "fetch relationships")
 	}
 
 	#[allow(dead_code)]
@@ -1760,115 +1569,43 @@ impl MastodonClient {
 		reblogs: bool,
 	) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/follow"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&[("reblogs", if reblogs { "true" } else { "false" })])
-			.send()
-			.context("Failed to follow account")?
-			.error_for_status()
-			.context("Instance rejected follow request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		let form = [("reblogs", if reblogs { "true" } else { "false" })];
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&form), "follow account")
 	}
 
 	pub fn unfollow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unfollow"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unfollow account")?
-			.error_for_status()
-			.context("Instance rejected unfollow request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "unfollow account")
 	}
 
 	pub fn authorize_follow_request(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/follow_requests/{account_id}/authorize"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to authorize follow request")?
-			.error_for_status()
-			.context("Instance rejected follow request authorization")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "authorize follow request")
 	}
 
 	pub fn reject_follow_request(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/follow_requests/{account_id}/reject"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to reject follow request")?
-			.error_for_status()
-			.context("Instance rejected follow request rejection")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "reject follow request")
 	}
 
 	pub fn block_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/block"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to block account")?
-			.error_for_status()
-			.context("Instance rejected block request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "block account")
 	}
 
 	pub fn unblock_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unblock"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unblock account")?
-			.error_for_status()
-			.context("Instance rejected unblock request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "unblock account")
 	}
 
 	pub fn mute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/mute"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to mute account")?
-			.error_for_status()
-			.context("Instance rejected mute request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "mute account")
 	}
 
 	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unmute"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to unmute account")?
-			.error_for_status()
-			.context("Instance rejected unmute request")?;
-		let relationship: Relationship = response.json().context("Invalid relationship response")?;
-		Ok(relationship)
+		self.post_json(access_token, url, "unmute account")
 	}
 
 	pub fn vote_poll(&self, access_token: &str, poll_id: &str, choices: &[usize]) -> Result<Poll> {
@@ -1877,30 +1614,12 @@ impl MastodonClient {
 		for choice in choices {
 			params.push(("choices[]", choice.to_string()));
 		}
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to vote on poll")?
-			.error_for_status()
-			.context("Instance rejected vote request")?;
-		let poll: Poll = response.json().context("Invalid poll response")?;
-		Ok(poll)
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&params), "vote on poll")
 	}
 
 	pub fn delete_status(&self, access_token: &str, status_id: &str) -> Result<()> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
-		let _ = self
-			.http
-			.delete(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to delete status")?
-			.error_for_status()
-			.context("Instance rejected delete request")?;
-		Ok(())
+		self.delete_empty(access_token, url, "delete status")
 	}
 
 	pub fn update_credentials(
@@ -1960,31 +1679,12 @@ impl MastodonClient {
 			form = form.text("source[language]", v.to_string());
 		}
 
-		let response = self
-			.http
-			.patch(url)
-			.bearer_auth(access_token)
-			.multipart(form)
-			.send()
-			.context("Failed to update credentials")?
-			.error_for_status()
-			.context("Instance rejected credentials update")?;
-		let account: Account = response.json().context("Invalid account response")?;
-		Ok(account)
+		Self::send_json(self.http.patch(url).bearer_auth(access_token).multipart(form), "update credentials")
 	}
 
 	pub fn fetch_status_source(&self, access_token: &str, status_id: &str) -> Result<StatusSource> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/source"))?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch status source")?
-			.error_for_status()
-			.context("Instance rejected request")?;
-		let source: StatusSource = response.json().context("Invalid source response")?;
-		Ok(source)
+		self.get_json(access_token, url, "fetch status source")
 	}
 
 	pub fn edit_status(
@@ -2020,64 +1720,23 @@ impl MastodonClient {
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
 			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
-		let response = self
-			.http
-			.put(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to edit status")?
-			.error_for_status()
-			.context("Instance rejected edit request")?;
-		let status: Status = response.json().context("Invalid edit response")?;
-		Ok(status)
+		Self::send_json(self.http.put(url).bearer_auth(access_token).form(&params), "edit status")
 	}
 
 	pub fn get_filters(&self, access_token: &str) -> Result<Vec<Filter>> {
 		let url = self.base_url.join("api/v2/filters")?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch filters")?
-			.error_for_status()
-			.context("Instance rejected filters request")?;
-		let filters: Vec<Filter> = response.json().context("Invalid filters response")?;
-		Ok(filters)
+		self.get_json(access_token, url, "fetch filters")
 	}
 
 	pub fn get_lists(&self, access_token: &str) -> Result<Vec<List>> {
 		let url = self.base_url.join("api/v1/lists")?;
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch lists")?
-			.error_for_status()
-			.context("Instance rejected lists request")?;
-		let lists: Vec<List> = response.json().context("Invalid lists response")?;
-		Ok(lists)
+		self.get_json(access_token, url, "fetch lists")
 	}
 
 	pub fn create_list(&self, access_token: &str, title: &str, replies_policy: &str, exclusive: bool) -> Result<List> {
 		let url = self.base_url.join("api/v1/lists")?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&[
-				("title", title),
-				("replies_policy", replies_policy),
-				("exclusive", if exclusive { "true" } else { "false" }),
-			])
-			.send()
-			.context("Failed to create list")?
-			.error_for_status()
-			.context("Instance rejected list creation")?;
-		let list: List = response.json().context("Invalid list response")?;
-		Ok(list)
+		let form = list_form(title, replies_policy, exclusive);
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&form), "create list")
 	}
 
 	pub fn update_list(
@@ -2089,49 +1748,19 @@ impl MastodonClient {
 		exclusive: bool,
 	) -> Result<List> {
 		let url = self.base_url.join(&format!("api/v1/lists/{id}"))?;
-		let response = self
-			.http
-			.put(url)
-			.bearer_auth(access_token)
-			.form(&[
-				("title", title),
-				("replies_policy", replies_policy),
-				("exclusive", if exclusive { "true" } else { "false" }),
-			])
-			.send()
-			.context("Failed to update list")?
-			.error_for_status()
-			.context("Instance rejected list update")?;
-		let list: List = response.json().context("Invalid list response")?;
-		Ok(list)
+		let form = list_form(title, replies_policy, exclusive);
+		Self::send_json(self.http.put(url).bearer_auth(access_token).form(&form), "update list")
 	}
 
 	pub fn delete_list(&self, access_token: &str, id: &str) -> Result<()> {
 		let url = self.base_url.join(&format!("api/v1/lists/{id}"))?;
-		let _ = self
-			.http
-			.delete(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to delete list")?
-			.error_for_status()
-			.context("Instance rejected list deletion")?;
-		Ok(())
+		self.delete_empty(access_token, url, "delete list")
 	}
 
 	pub fn get_list_accounts(&self, access_token: &str, list_id: &str) -> Result<Vec<Account>> {
 		let mut url = self.base_url.join(&format!("api/v1/lists/{list_id}/accounts"))?;
 		url.query_pairs_mut().append_pair("limit", "0");
-		let response = self
-			.http
-			.get(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to fetch list accounts")?
-			.error_for_status()
-			.context("Instance rejected list accounts request")?;
-		let accounts: Vec<Account> = response.json().context("Invalid list accounts response")?;
-		Ok(accounts)
+		self.get_json(access_token, url, "fetch list accounts")
 	}
 
 	pub fn add_list_accounts(&self, access_token: &str, list_id: &str, account_ids: &[String]) -> Result<()> {
@@ -2140,16 +1769,7 @@ impl MastodonClient {
 		for id in account_ids {
 			params.push(("account_ids[]", id));
 		}
-		let _ = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to add accounts to list")?
-			.error_for_status()
-			.context("Instance rejected adding accounts")?;
-		Ok(())
+		Self::send_empty(self.http.post(url).bearer_auth(access_token).form(&params), "add accounts to list")
 	}
 
 	pub fn remove_list_accounts(&self, access_token: &str, list_id: &str, account_ids: &[String]) -> Result<()> {
@@ -2160,15 +1780,7 @@ impl MastodonClient {
 				query.append_pair("account_ids[]", id);
 			}
 		}
-		let _ = self
-			.http
-			.delete(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to remove accounts from list")?
-			.error_for_status()
-			.context("Instance rejected removing accounts")?;
-		Ok(())
+		self.delete_empty(access_token, url, "remove accounts from list")
 	}
 
 	pub fn create_filter(
@@ -2196,17 +1808,7 @@ impl MastodonClient {
 			params.push(("expires_in".to_string(), expires_in.to_string()));
 		}
 
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to create filter")?
-			.error_for_status()
-			.context("Instance rejected filter creation")?;
-		let filter: Filter = response.json().context("Invalid filter response")?;
-		Ok(filter)
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&params), "create filter")
 	}
 
 	pub fn update_filter(
@@ -2241,30 +1843,12 @@ impl MastodonClient {
 			params.push(("expires_in".to_string(), expires_in.to_string()));
 		}
 
-		let response = self
-			.http
-			.put(url)
-			.bearer_auth(access_token)
-			.form(&params)
-			.send()
-			.context("Failed to update filter")?
-			.error_for_status()
-			.context("Instance rejected filter update")?;
-		let filter: Filter = response.json().context("Invalid filter response")?;
-		Ok(filter)
+		Self::send_json(self.http.put(url).bearer_auth(access_token).form(&params), "update filter")
 	}
 
 	pub fn delete_filter(&self, access_token: &str, id: &str) -> Result<()> {
 		let url = self.base_url.join(&format!("api/v2/filters/{id}"))?;
-		let _ = self
-			.http
-			.delete(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to delete filter")?
-			.error_for_status()
-			.context("Instance rejected filter deletion")?;
-		Ok(())
+		self.delete_empty(access_token, url, "delete filter")
 	}
 
 	pub fn add_filter_keyword(
@@ -2275,30 +1859,13 @@ impl MastodonClient {
 		whole_word: bool,
 	) -> Result<FilterKeyword> {
 		let url = self.base_url.join(&format!("api/v2/filters/{filter_id}/keywords"))?;
-		let response = self
-			.http
-			.post(url)
-			.bearer_auth(access_token)
-			.form(&[("keyword", keyword), ("whole_word", if whole_word { "true" } else { "false" })])
-			.send()
-			.context("Failed to add filter keyword")?
-			.error_for_status()
-			.context("Instance rejected adding filter keyword")?;
-		let kw: FilterKeyword = response.json().context("Invalid filter keyword response")?;
-		Ok(kw)
+		let form = [("keyword", keyword), ("whole_word", if whole_word { "true" } else { "false" })];
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&form), "add filter keyword")
 	}
 
 	pub fn delete_filter_keyword(&self, access_token: &str, keyword_id: &str) -> Result<()> {
 		let url = self.base_url.join(&format!("api/v2/filters/keywords/{keyword_id}"))?;
-		let _ = self
-			.http
-			.delete(url)
-			.bearer_auth(access_token)
-			.send()
-			.context("Failed to delete filter keyword")?
-			.error_for_status()
-			.context("Instance rejected deleting filter keyword")?;
-		Ok(())
+		self.delete_empty(access_token, url, "delete filter keyword")
 	}
 }
 
