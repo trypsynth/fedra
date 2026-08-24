@@ -192,7 +192,7 @@ impl FollowListDialog {
 				return;
 			}
 			if id == user_actions::ID_ACTION_ADD_TO_LIST {
-				let _ = ui_tx.send(crate::commands::UiCommand::AddUserToList(account_id));
+				let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
 				return;
 			}
 			let rel = relationships_handler.borrow().get(&account_id).cloned();

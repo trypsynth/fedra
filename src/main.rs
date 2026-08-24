@@ -5,7 +5,6 @@
 
 mod accounts;
 mod auth;
-mod commands;
 mod config;
 mod html;
 mod mastodon;
@@ -45,13 +44,13 @@ pub(crate) use crate::ui::ids::{
 };
 use crate::{
 	accounts::{start_add_account_flow, switch_to_account},
-	commands::{UiCommand, UiCommandContext, handle_ui_command},
 	config::Config,
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
 	responses::{NetworkResponseContext, process_network_responses, process_stream_events},
 	timeline::TimelineManager,
 	ui::{
+		commands::{UiCommand, UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
 		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
 		window::{bind_input_handlers, build_main_window},

@@ -1,4 +1,5 @@
 pub mod app_shell;
+pub mod commands;
 pub mod dialogs;
 pub mod ids;
 pub mod menu;

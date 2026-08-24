@@ -416,7 +416,7 @@ impl HashtagDialog {
 				let index = sel as usize;
 				let tags_borrow = tags_view.borrow();
 				if let Some(tag) = tags_borrow.get(index) {
-					let _ = ui_tx_view.send(crate::commands::UiCommand::OpenTimeline(
+					let _ = ui_tx_view.send(crate::ui::commands::UiCommand::OpenTimeline(
 						crate::timeline::TimelineType::Hashtag { name: tag.name.clone() },
 					));
 					dlg_view.close(true);

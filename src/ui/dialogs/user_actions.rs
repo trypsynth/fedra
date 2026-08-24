@@ -131,7 +131,7 @@ pub(crate) fn setup_actions_button(
 			return;
 		}
 		if id == ID_ACTION_ADD_TO_LIST {
-			let _ = ui_tx.send(crate::commands::UiCommand::AddUserToList(account_id));
+			let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
 			return;
 		}
 		let cmd = match id {

@@ -331,7 +331,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
 	macro_rules! dispatch_ui_command {
 		($cmd:expr) => {{
-			let mut ctx = crate::commands::UiCommandContext {
+			let mut ctx = crate::ui::commands::UiCommandContext {
 				state,
 				frame,
 				timelines_selector,
@@ -345,7 +345,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				shortcuts_cell,
 				ui_tx,
 			};
-			crate::commands::handle_ui_command($cmd, &mut ctx);
+			crate::ui::commands::handle_ui_command($cmd, &mut ctx);
 		}};
 	}
 	for response in handle.drain() {
@@ -513,10 +513,10 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 					}
 				}
 				if should_find_next {
-					dispatch_ui_command!(crate::commands::UiCommand::FindNext);
+					dispatch_ui_command!(crate::ui::commands::UiCommand::FindNext);
 				}
 				if should_find_prev {
-					dispatch_ui_command!(crate::commands::UiCommand::FindPrev);
+					dispatch_ui_command!(crate::ui::commands::UiCommand::FindPrev);
 				}
 			}
 			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), max_id } => {
@@ -530,13 +530,13 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 				}
 			}
 			NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
-				ui_tx.send(crate::commands::UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
+				ui_tx.send(crate::ui::commands::UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
 			}
 			NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
 				live_region.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err)));
 			}
 			NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
-				ui_tx.send(crate::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
+				ui_tx.send(crate::ui::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
 			}
 			NetworkResponse::StatusSourceFetched { mut status, result } => {
 				let source_text = match result {
@@ -554,7 +554,7 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 						None
 					}
 				};
-				crate::commands::run_edit_post_dialog(frame, state, &status, source_text.as_deref());
+				crate::ui::commands::run_edit_post_dialog(frame, state, &status, source_text.as_deref());
 			}
 			NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
 				live_region.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
