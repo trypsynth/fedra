@@ -6,8 +6,17 @@ on:
 permissions:
   contents: write
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -17,7 +26,7 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
       with:
-        arch: x64
+        arch: ${{ matrix.arch }}
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -39,22 +48,36 @@ jobs:
         [IO.File]::WriteAllText($keyPath, $env:MINISIGN_KEY)
         $pwPath = Join-Path $env:RUNNER_TEMP "fedra.pw"
         [IO.File]::WriteAllText($pwPath, $env:MINISIGN_PASSWORD)
-        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_setup.exe
-        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra.zip
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_setup_${{ matrix.arch }}.exe
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_win_${{ matrix.arch }}.zip
         Remove-Item $keyPath, $pwPath
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: fedra-release-${{ github.ref_name }}
+        name: fedra-release-${{ github.ref_name }}-${{ matrix.arch }}
         path: |
-          target/release/fedra.zip
-          target/release/fedra.zip.minisig
-          target/release/fedra_setup.exe
-          target/release/fedra_setup.exe.minisig
+          target/release/fedra_win_${{ matrix.arch }}.zip
+          target/release/fedra_win_${{ matrix.arch }}.zip.minisig
+          target/release/fedra_setup_${{ matrix.arch }}.exe
+          target/release/fedra_setup_${{ matrix.arch }}.exe.minisig
         retention-days: 90
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: fedra-release-${{ github.ref_name }}-*
+        path: dist
+        merge-multiple: true
     - name: Get previous tag
       id: prev_tag
-      shell: bash
       run: |
         PREV=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1 || echo "")
         echo "tag=$PREV" >> $GITHUB_OUTPUT
@@ -63,11 +86,7 @@ jobs:
       with:
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
-        files: |
-          target/release/fedra.zip
-          target/release/fedra.zip.minisig
-          target/release/fedra_setup.exe
-          target/release/fedra_setup.exe.minisig
+        files: dist/*
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -130,7 +130,12 @@ fn configure_installer() {
 		}
 	};
 	let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());
-	let new_content = content.replace("@PROJECT_VERSION@", &version);
+	let target = env::var("TARGET").unwrap_or_default();
+	let (arch_suffix, arch_iss) = if target.starts_with("aarch64") { ("arm64", "arm64") } else { ("x64", "x64compatible") };
+	let new_content = content
+		.replace("@PROJECT_VERSION@", &version)
+		.replace("@ARCH_SUFFIX@", arch_suffix)
+		.replace("@ARCH_ISS@", arch_iss);
 	let output_path = target_dir.join("fedra.iss");
 	if let Err(e) = fs::write(&output_path, new_content) {
 		println!("cargo:warning=Failed to write installer script: {e}");
