@@ -10,7 +10,7 @@
 	DisableDirPage=yes
 	LicenseFile=
 	OutputDir=.
-	OutputBaseFilename=fedra_setup_@ARCH_SUFFIX@
+	OutputBaseFilename=fedra_setup-@ARCH_SUFFIX@
 	Compression=lzma2
 	SolidCompression=yes
 	WizardStyle=modern
