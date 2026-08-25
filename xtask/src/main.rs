@@ -66,11 +66,8 @@ fn build_zip_package(
 	readme_path: &Path,
 	sounds_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
-	let package_name = if cfg!(target_os = "macos") {
-		"fedra_mac.zip".to_string()
-	} else {
-		format!("fedra-{}.zip", arch_suffix())
-	};
+	let package_name =
+		if cfg!(target_os = "macos") { "fedra_mac.zip".to_string() } else { format!("fedra-{}.zip", arch_suffix()) };
 	let package_path = target_dir.join(&package_name);
 	let file = File::create(&package_path)?;
 	let mut zip = ZipWriter::new(file);

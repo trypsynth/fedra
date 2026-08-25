@@ -570,7 +570,7 @@ impl KeyChord {
 			9 => "Tab".to_string(),
 			32 => "Space".to_string(),
 			8 => "Backspace".to_string(),
-			127 | 308 | 386 => "Delete".to_string(),
+			127 | 386 => "Delete".to_string(),
 			27 => "Escape".to_string(),
 			313 | 377 => "Home".to_string(),
 			312 | 379 => "End".to_string(),
@@ -614,7 +614,7 @@ impl KeyChord {
 		} else if key_str.eq_ignore_ascii_case("Backspace") {
 			key_code == 8
 		} else if key_str.eq_ignore_ascii_case("Delete") {
-			key_code == 127 || key_code == 308 || key_code == 386
+			key_code == 127 || key_code == 386
 		} else if key_str.eq_ignore_ascii_case("Escape") {
 			key_code == 27
 		} else if key_str.eq_ignore_ascii_case("Home") {
