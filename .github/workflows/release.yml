@@ -48,18 +48,18 @@ jobs:
         [IO.File]::WriteAllText($keyPath, $env:MINISIGN_KEY)
         $pwPath = Join-Path $env:RUNNER_TEMP "fedra.pw"
         [IO.File]::WriteAllText($pwPath, $env:MINISIGN_PASSWORD)
-        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_setup_${{ matrix.arch }}.exe
-        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_win_${{ matrix.arch }}.zip
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra_setup-${{ matrix.arch }}.exe
+        Get-Content $pwPath | minisign -S -s $keyPath -m target/release/fedra-${{ matrix.arch }}.zip
         Remove-Item $keyPath, $pwPath
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: fedra-release-${{ github.ref_name }}-${{ matrix.arch }}
         path: |
-          target/release/fedra_win_${{ matrix.arch }}.zip
-          target/release/fedra_win_${{ matrix.arch }}.zip.minisig
-          target/release/fedra_setup_${{ matrix.arch }}.exe
-          target/release/fedra_setup_${{ matrix.arch }}.exe.minisig
+          target/release/fedra-${{ matrix.arch }}.zip
+          target/release/fedra-${{ matrix.arch }}.zip.minisig
+          target/release/fedra_setup-${{ matrix.arch }}.exe
+          target/release/fedra_setup-${{ matrix.arch }}.exe.minisig
         retention-days: 90
   release:
     name: Publish release
