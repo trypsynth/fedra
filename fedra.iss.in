@@ -10,12 +10,13 @@
 	DisableDirPage=yes
 	LicenseFile=
 	OutputDir=.
-	OutputBaseFilename=fedra_setup
+	OutputBaseFilename=fedra_setup_@ARCH_SUFFIX@
 	Compression=lzma2
 	SolidCompression=yes
 	WizardStyle=modern
 	UninstallDisplayIcon={app}\fedra.exe
-	ArchitecturesInstallIn64BitMode=x64compatible
+	ArchitecturesAllowed=@ARCH_ISS@
+	ArchitecturesInstallIn64BitMode=@ARCH_ISS@
 
 [Languages]
 	Name: "english"; MessagesFile: "compiler:Default.isl"
