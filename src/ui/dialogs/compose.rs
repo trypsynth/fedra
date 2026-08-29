@@ -3,7 +3,7 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use wxdragon::prelude::*;
 
-use super::common::{KEY_RETURN, show_warning_widget};
+use super::common::{KEY_RETURN, show_warning};
 use crate::{
 	config::ContentWarningDisplay,
 	mastodon::{PollLimits, Status},
@@ -359,16 +359,16 @@ fn prompt_for_poll(
 	let mut options = options.borrow().clone();
 	options.retain(|option| !option.trim().is_empty());
 	if options.len() < 2 {
-		show_warning_widget(parent, "Polls need at least two options.", "Poll");
+		show_warning(parent, "Polls need at least two options.", "Poll");
 		return None;
 	}
 	if options.len() > limits.max_options {
-		show_warning_widget(parent, "Too many poll options for this instance.", "Poll");
+		show_warning(parent, "Too many poll options for this instance.", "Poll");
 		return None;
 	}
 	let selected_preset = duration_choice.get_selection().and_then(|i| presets_secs.get(i as usize).copied());
 	let Some(expires_in) = selected_preset else {
-		show_warning_widget(parent, "Please select a poll duration.", "Poll");
+		show_warning(parent, "Please select a poll duration.", "Poll");
 		return None;
 	};
 	Some(PollDialogResult::Updated(PostPoll {
@@ -764,12 +764,12 @@ fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<O
 		return Some(None);
 	}
 	let Some(scheduled_utc) = parse_schedule_inputs(&date_input.get_value(), &time_input.get_value()) else {
-		show_warning_widget(parent, "Enter date as YYYY-MM-DD and time as HH:MM.", "Invalid Schedule");
+		show_warning(parent, "Enter date as YYYY-MM-DD and time as HH:MM.", "Invalid Schedule");
 		return None;
 	};
 	let minimum = Utc::now() + chrono::Duration::minutes(5);
 	if scheduled_utc < minimum {
-		show_warning_widget(parent, "Scheduled time must be at least 5 minutes in the future.", "Invalid Schedule");
+		show_warning(parent, "Scheduled time must be at least 5 minutes in the future.", "Invalid Schedule");
 		return None;
 	}
 	Some(Some(scheduled_utc.to_rfc3339_opts(SecondsFormat::Secs, true)))
@@ -1031,9 +1031,9 @@ pub fn prompt_for_compose(
 		let content = content_text_ok.get_value();
 		let char_count = content.trim().chars().count();
 		if char_count > max_chars {
-			show_warning_widget(
+			show_warning(
 				&dialog_ok,
-				&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
+				format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
 				&title_prefix_ok,
 			);
 		} else {
@@ -1059,9 +1059,9 @@ pub fn prompt_for_compose(
 				let content = content_text_enter.get_value();
 				let char_count = content.trim().chars().count();
 				if char_count > max_chars {
-					show_warning_widget(
+					show_warning(
 						&dialog_enter,
-						&format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
+						format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
 						&title_prefix_enter,
 					);
 				} else {

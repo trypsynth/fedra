@@ -4,19 +4,7 @@ use crate::mastodon::SearchType;
 
 pub(crate) const KEY_RETURN: i32 = 13;
 
-pub fn prompt_text(frame: &Frame, message: &str, title: &str) -> Option<String> {
-	let dialog = TextEntryDialog::builder(frame, message, title)
-		.with_style(TextEntryDialogStyle::Default | TextEntryDialogStyle::ProcessEnter)
-		.build();
-	if dialog.show_modal() != ID_OK {
-		dialog.destroy();
-		return None;
-	}
-	let value = dialog.get_value().unwrap_or_default();
-	dialog.destroy();
-	let trimmed = value.trim();
-	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
-}
+pub use wx_utils::prompt_text;
 
 #[derive(Clone, Copy)]
 pub enum UserLookupAction {
@@ -85,26 +73,13 @@ pub fn prompt_for_user_lookup(
 	Some((trimmed.to_string(), action))
 }
 
+/// Every error dialog in the app is titled with the app name, so this wraps the wx-utils
+/// helper rather than having each of the two dozen call sites repeat it.
 pub fn show_error(parent: &dyn WxWidget, err: &anyhow::Error) {
-	let dialog = MessageDialog::builder(parent, &err.to_string(), "Fedra")
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-		.build();
-	dialog.show_modal();
+	wx_utils::show_error(parent, err, "Fedra");
 }
 
-pub fn show_warning(frame: &Frame, message: &str, title: &str) {
-	let dialog = MessageDialog::builder(frame, message, title)
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
-		.build();
-	dialog.show_modal();
-}
-
-pub fn show_warning_widget(parent: &dyn WxWidget, message: &str, title: &str) {
-	let dialog = MessageDialog::builder(parent, message, title)
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconWarning)
-		.build();
-	dialog.show_modal();
-}
+pub use wx_utils::show_warning;
 
 pub fn prompt_for_search(frame: &Frame) -> Option<(String, SearchType)> {
 	let dialog = Dialog::builder(frame, "Search").with_size(420, 200).build();
