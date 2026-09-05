@@ -12,7 +12,14 @@ use std::{
 use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, Tree, TreeUpdate};
 use accesskit_windows::SubclassingAdapter;
 use url::Url;
-use windows::Win32::Foundation::HWND;
+use windows::{
+	Win32::{
+		Foundation::{HWND, REGDB_E_CLASSNOTREG},
+		System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
+		UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+	},
+	core::{GUID, IUnknown, w},
+};
 use wxdragon::{prelude::*, widgets::media_ctrl::SeekMode};
 
 thread_local! {
@@ -96,8 +103,114 @@ impl MediaLiveRegion {
 	}
 }
 
-pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Option<String>) {
+fn legacy_media_components_missing() -> bool {
+	// These are the two COM classes tried by wxAMMediaBackend::CreateControl.
+	const PLAYER_CLASSES: [GUID; 2] = [
+		GUID::from_u128(0x22d6f312_b0f6_11d0_94ab_0080c74c7e95),
+		GUID::from_u128(0x05589fa1_c356_11ce_bf01_00aa0055595a),
+	];
+	PLAYER_CLASSES.iter().all(|class| {
+		// wxWidgets initializes COM on the UI thread. Successful probes release
+		// their COM reference immediately; other errors aren't missing features.
+		unsafe { CoCreateInstance::<_, IUnknown>(class, None, CLSCTX_INPROC_SERVER) }
+			.is_err_and(|error| error.code() == REGDB_E_CLASSNOTREG)
+	})
+}
+
+fn show_media_setup_dialog(parent: &dyn WxWidget) {
+	let dialog = Dialog::builder(parent, "Install Windows Media Player Legacy").with_size(620, 440).build();
+	let panel = Panel::builder(&dialog).build();
+	let instructions = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly).build();
+	instructions.set_value(
+		"Fedra needs Windows Media Player Legacy to play audio and video attachments, \
+		but the components don't seem to be available on this computer.\n\n\
+		Click Open settings below to jump directly to the Optional features page, then continue with step 3\
+		or you can open the page manually using steps 1 and 2.\n\n\
+		To install the feature on Windows 11:\n\
+		1. Press Windows+I to open Settings.\n\
+		2. Select System, then Optional features. You can also search Settings for Optional features.\n\
+		3. Select View features next to Add an optional feature.\n\
+		4. Search for Windows Media Player Legacy and select its check box.\n\
+		5. Select Next, then Add or Install, and wait for installation to finish.\n\
+		6. Restart Windows if prompted, then restart Fedra and try playing an attachment with media.\n\n\
+		On Windows 10, open Settings, Apps, Apps & features, Optional features, then Add a feature. \
+		Select Windows Media Player and choose Install.\n\n\
+		If the feature is already installed, try reinstalling it. Windows Media Player Legacy is \
+		a separate feature from the newer Media Player app.",
+	);
+	instructions.set_insertion_point(0);
+	let settings_button = Button::builder(&panel).with_label("Open settings").build();
+	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
+	ok_button.set_default();
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&settings_button, 0, SizerFlag::Right, 10);
+	button_sizer.add(&ok_button, 0, SizerFlag::empty(), 0);
+	let sizer = BoxSizer::builder(Orientation::Vertical).build();
+	sizer.add(&instructions, 1, SizerFlag::Expand | SizerFlag::All, 10);
+	sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+	panel.set_sizer(sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_affirmative_id(ID_OK);
+	dialog.set_escape_id(ID_OK);
+	settings_button.on_click(move |_| {
+		// Let the Windows shell activate the Settings URI. Windows manages the
+		// Settings app independently of Fedra's process and dialog lifetime.
+		let result = unsafe {
+			ShellExecuteW(
+				Some(HWND(dialog.get_handle().cast())),
+				w!("open"),
+				w!("ms-settings:optionalfeatures"),
+				None,
+				None,
+				SW_SHOWNORMAL,
+			)
+		};
+		if result.0 as isize <= 32 {
+			let error_dialog = MessageDialog::builder(
+				&dialog,
+				"Fedra could not open Settings. Press Windows+I and follow the instructions in this dialog to open Optional features manually.",
+				"Could not open Settings",
+			)
+			.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+			.build();
+			error_dialog.show_modal();
+			error_dialog.destroy();
+			settings_button.set_focus();
+		}
+	});
+	ok_button.on_click(move |_| dialog.end_modal(ID_OK));
+	// A multiline edit can consume Enter even with a default button. Leave
+	// other keys, including Tab and Shift+Tab, to native dialog navigation.
+	instructions.on_key_down(move |event| {
+		if let WindowEventData::Keyboard(key) = &event
+			&& matches!(key.get_key_code(), Some(wxdragon::keycode::WXK_RETURN | wxdragon::keycode::WXK_NUMPAD_ENTER))
+			&& !key.control_down()
+			&& !key.shift_down()
+			&& !key.alt_down()
+			&& !key.meta_down()
+		{
+			dialog.end_modal(ID_OK);
+			event.skip(false);
+		} else {
+			event.skip(true);
+		}
+	});
+	dialog.centre();
+	instructions.set_focus();
+	dialog.show_modal();
+	dialog.destroy();
+}
+
+pub fn show_media_player(parent: &dyn WxWidget, url: String, _access_token: Option<String>) {
 	const ID_MEDIA_CTRL: i32 = 10000;
+	if legacy_media_components_missing() {
+		show_media_setup_dialog(parent);
+		return;
+	}
+
 	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(800, 600)).build();
 	let lr = MediaLiveRegion::new(&frame);
 	let sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -343,7 +456,8 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	if !media_ctrl.load_uri(&url) {
 		let dlg = MessageDialog::builder(
 			&frame,
-			"Failed to load media. Your system may be missing required media components (DirectShow/quartz.dll).",
+			"Fedra could not load this attachment. The media may be unavailable or its format may not be supported. \
+			Try opening the attachment in your browser.",
 			"Media Player Error",
 		)
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
