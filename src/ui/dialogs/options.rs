@@ -155,6 +155,7 @@ pub struct OptionsDialogInput {
 	pub default_timelines: Vec<DefaultTimeline>,
 	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
+	pub sounds: crate::config::SoundSettings,
 	pub hotkey: HotkeyConfig,
 	pub shortcuts: crate::config::ShortcutsConfig,
 	pub templates: PostTemplates,
@@ -181,6 +182,7 @@ pub struct OptionsDialogResult {
 	pub default_timelines: Vec<DefaultTimeline>,
 	pub restore_open_timelines: bool,
 	pub notification_preference: NotificationPreference,
+	pub sounds: crate::config::SoundSettings,
 	pub hotkey: HotkeyConfig,
 	pub shortcuts: crate::config::ShortcutsConfig,
 	pub templates: PostTemplates,
@@ -209,6 +211,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		default_timelines: default_timelines_val,
 		restore_open_timelines,
 		notification_preference,
+		sounds,
 		hotkey,
 		shortcuts,
 		templates,
@@ -251,8 +254,12 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	channel_sizer.add(&channel_choice, 1, SizerFlag::Expand, 0);
 
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
-	let notification_choices =
-		vec!["Classic Windows Notifications".to_string(), "Sound only".to_string(), "Disabled".to_string()];
+	let notification_choices = vec![
+		"Classic Windows Notifications".to_string(),
+		"Sound only".to_string(),
+		"Sound and notifications".to_string(),
+		"Disabled".to_string(),
+	];
 	let notification_choice = ComboBox::builder(&general_panel)
 		.with_choices(notification_choices)
 		.with_style(ComboBoxStyle::ReadOnly)
@@ -260,7 +267,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let notification_index = match notification_preference {
 		NotificationPreference::Classic => 0,
 		NotificationPreference::SoundOnly => 1,
-		NotificationPreference::Disabled => 2,
+		NotificationPreference::SoundAndClassic => 2,
+		NotificationPreference::Disabled => 3,
 	};
 	notification_choice.set_selection(notification_index);
 	let notification_sizer = BoxSizer::builder(Orientation::Horizontal).build();
@@ -577,6 +585,258 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	filters_panel.set_sizer(filters_sizer, true);
 	notebook.add_page(&filters_panel, "Filters", false, None);
 
+	// ---- Sounds tab ---------------------------------------------------------
+	let sounds_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
+	let sounds_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	let sounds_enabled_checkbox = CheckBox::builder(&sounds_panel).with_label("&Enable notification sounds").build();
+	sounds_enabled_checkbox.set_value(sounds.enabled);
+	sounds_sizer.add(&sounds_enabled_checkbox, 0, SizerFlag::All, 5);
+	let volume_label = StaticText::builder(&sounds_panel).with_label("&Volume:").build();
+	let volume_slider = Slider::builder(&sounds_panel).build();
+	volume_slider.set_range(0, 100);
+	volume_slider.set_value(i32::from(sounds.volume.min(100)));
+	let volume_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	volume_sizer.add(&volume_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	volume_sizer.add(&volume_slider, 1, SizerFlag::Expand, 0);
+	sounds_sizer.add_sizer(&volume_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	let pack_label = StaticText::builder(&sounds_panel).with_label("Sound &pack:").build();
+	let pack_names = crate::sounds::SoundPlayer::list_packs();
+	let pack_choices: Vec<String> = pack_names
+		.iter()
+		.map(|pack| {
+			let covered = crate::sounds::SoundPlayer::pack_coverage(pack);
+			let total = crate::sounds::SoundEvent::ALL.len();
+			let display = crate::sounds::SoundPlayer::pack_display_name(pack);
+			// Say when a pack is partly filled in, since the missing events fall back elsewhere.
+			// Nothing is said for a pack providing none, which is what an untouched install looks
+			// like: every event on the shipped fallback, and no fault to report.
+			if covered == 0 || covered >= total { display } else { format!("{display} ({covered} of {total} sounds)") }
+		})
+		.collect();
+	let pack_choice =
+		ComboBox::builder(&sounds_panel).with_choices(pack_choices).with_style(ComboBoxStyle::ReadOnly).build();
+	let initial_pack = pack_names.iter().position(|pack| *pack == sounds.pack).unwrap_or(0);
+	pack_choice.set_selection(u32::try_from(initial_pack).unwrap_or(0));
+	let pack_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	pack_sizer.add(&pack_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	pack_sizer.add(&pack_choice, 1, SizerFlag::Expand, 0);
+	sounds_sizer.add_sizer(&pack_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+
+	let sounds_list_label =
+		StaticText::builder(&sounds_panel).with_label("So&unds (uncheck an event to silence just it):").build();
+	sounds_sizer.add(&sounds_list_label, 0, SizerFlag::Left | SizerFlag::Top, 5);
+	let sounds_list = CheckListBox::builder(&sounds_panel).build();
+	sounds_sizer.add(&sounds_list, 1, SizerFlag::Expand | SizerFlag::All, 5);
+
+	// Working copy of the settings, edited in place and read back when OK is pressed.
+	let sound_state = Rc::new(RefCell::new(sounds.clone()));
+	let pack_names = Rc::new(pack_names);
+	let refresh_sounds_list = {
+		let sound_state = sound_state.clone();
+		Rc::new(move || {
+			let selection = sounds_list.get_selection();
+			sounds_list.clear();
+			for event in crate::sounds::SoundEvent::ALL {
+				let state = sound_state.borrow();
+				let setting = state.for_event(event);
+				// An empty file means the pack supplies it; say so rather than showing a blank.
+				let shown = if setting.file.trim().is_empty() {
+					state
+						.file_for(event)
+						.or_else(|| crate::sounds::SoundPlayer::pack_file(&state.pack, event))
+						.map_or_else(
+							|| "no sound found".to_string(),
+							|file| {
+								let name = std::path::Path::new(&file)
+									.file_name()
+									.map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned());
+								format!("from pack, {name}")
+							},
+						)
+				} else {
+					let name = std::path::Path::new(&setting.file)
+						.file_name()
+						.map_or_else(|| setting.file.clone(), |n| n.to_string_lossy().into_owned());
+					if crate::sounds::SoundPlayer::resolve(&setting.file).is_some() {
+						format!("custom, {name}")
+					} else {
+						format!("custom, {name} (file missing)")
+					}
+				};
+				drop(state);
+				sounds_list.append(&format!("{}: {shown}", event.label()));
+			}
+			for (index, event) in crate::sounds::SoundEvent::ALL.iter().enumerate() {
+				let enabled = sound_state.borrow().for_event(*event).enabled;
+				if let Ok(index) = u32::try_from(index) {
+					sounds_list.check(index, enabled);
+				}
+			}
+			if let Some(selection) = selection {
+				sounds_list.set_selection(selection, true);
+			} else if sounds_list.get_count() > 0 {
+				sounds_list.set_selection(0, true);
+			}
+		})
+	};
+	refresh_sounds_list();
+
+	// Preview uses its own player so the dialog can audition sounds without touching app state.
+	let preview_player = Rc::new(crate::sounds::SoundPlayer::new(*frame));
+	preview_player.set_volume(sounds.volume);
+	// Only the first row is loaded up front; the rest load as the user moves through the list.
+	if let Some(first) = crate::sounds::SoundEvent::ALL.first() {
+		preview_player.preload_one(&sounds, *first);
+	}
+	let sound_buttons = BoxSizer::builder(Orientation::Horizontal).build();
+	let preview_button = Button::builder(&sounds_panel).with_label("&Play").build();
+	let change_button = Button::builder(&sounds_panel).with_label("&Change...").build();
+	let reset_button = Button::builder(&sounds_panel).with_label("&Reset").build();
+	let reset_all_button = Button::builder(&sounds_panel).with_label("Reset a&ll").build();
+	let folder_button = Button::builder(&sounds_panel).with_label("&Open sounds folder").build();
+	sound_buttons.add(&preview_button, 0, SizerFlag::All, 4);
+	sound_buttons.add(&change_button, 0, SizerFlag::All, 4);
+	sound_buttons.add(&reset_button, 0, SizerFlag::All, 4);
+	sound_buttons.add(&reset_all_button, 0, SizerFlag::All, 4);
+	sound_buttons.add(&folder_button, 0, SizerFlag::All, 4);
+	sounds_sizer.add_sizer(&sound_buttons, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	sounds_panel.set_sizer(sounds_sizer, true);
+	notebook.add_page(&sounds_panel, "Sounds", false, None);
+
+	{
+		let sound_state = sound_state.clone();
+		let refresh = refresh_sounds_list.clone();
+		let preview_player = preview_player.clone();
+		let sounds_list_for_pack = sounds_list;
+		pack_choice.on_selection_changed(move |event| {
+			let Some(index) = event.get_selection().and_then(|index| usize::try_from(index).ok()) else { return };
+			let Some(pack) = pack_names.get(index) else { return };
+			let settings = {
+				let mut state = sound_state.borrow_mut();
+				state.pack.clone_from(pack);
+				state.clone()
+			};
+			// Load only what is about to be auditioned. Loading the whole pack here meant
+			// fifteen loads on every keystroke through the dropdown.
+			if let Some(index) = sounds_list_for_pack.get_selection()
+				&& let Some(selected) = crate::sounds::SoundEvent::ALL.get(index as usize).copied()
+			{
+				preview_player.preload_one(&settings, selected);
+			}
+			refresh();
+		});
+	}
+
+	{
+		let sound_state = sound_state.clone();
+		let preview_player = preview_player.clone();
+		sounds_list.on_selected(move |event| {
+			let Some(index) = event.get_selection() else { return };
+			let Some(selected) = crate::sounds::SoundEvent::ALL.get(index as usize).copied() else { return };
+			preview_player.preload_one(&sound_state.borrow(), selected);
+		});
+	}
+
+	// Keep the preview player in step with the slider so auditioning matches real playback.
+	{
+		let preview_player = preview_player.clone();
+		volume_slider.on_slider(move |event| {
+			let value = u8::try_from(event.get_value().clamp(0, 100)).unwrap_or(80);
+			preview_player.set_volume(value);
+		});
+	}
+	{
+		let sound_state = sound_state.clone();
+		sounds_list.on_toggled(move |event| {
+			let Some(index) = event.get_selection() else { return };
+			let Some(sound_event) = crate::sounds::SoundEvent::ALL.get(index as usize).copied() else { return };
+			let checked = sounds_list.is_checked(index);
+			let mut state = sound_state.borrow_mut();
+			let mut setting = state.for_event(sound_event);
+			setting.enabled = checked;
+			state.set_event(sound_event, setting);
+		});
+	}
+	{
+		let sound_state = sound_state.clone();
+		let preview_player = preview_player.clone();
+		preview_button.on_click(move |_| {
+			let Some(index) = sounds_list.get_selection() else { return };
+			let Some(event) = crate::sounds::SoundEvent::ALL.get(index as usize).copied() else { return };
+			let file = {
+				let state = sound_state.borrow();
+				let setting = state.for_event(event);
+				if setting.file.trim().is_empty() {
+					crate::sounds::SoundPlayer::pack_file(&state.pack, event)
+				} else {
+					Some(setting.file)
+				}
+			};
+			// Auditioning ignores the enabled flag so a silenced event can still be heard here.
+			// `play` rebuilds the control by itself when the chosen file has changed.
+			if let Some(file) = file {
+				preview_player.play(event, &file);
+			}
+		});
+	}
+	{
+		let sound_state = sound_state.clone();
+		let refresh = refresh_sounds_list.clone();
+		let preview_player = preview_player.clone();
+		change_button.on_click(move |_| {
+			let Some(index) = sounds_list.get_selection() else { return };
+			let Some(event) = crate::sounds::SoundEvent::ALL.get(index as usize).copied() else { return };
+			let file_dialog = FileDialog::builder(&sounds_panel)
+				.with_message(&format!("Choose a sound for: {}", event.label()))
+				.with_wildcard("Sound files|*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac;*.opus|All files|*.*")
+				.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist)
+				.build();
+			if file_dialog.show_modal() == ID_OK
+				&& let Some(path) = file_dialog.get_path()
+			{
+				let mut state = sound_state.borrow_mut();
+				let mut setting = state.for_event(event);
+				setting.file = path;
+				// Picking a file implies wanting to hear it.
+				setting.enabled = true;
+				state.set_event(event, setting);
+				let settings = state.clone();
+				drop(state);
+				// Load the new file now so pressing Play straight away is not silent.
+				preview_player.preload_one(&settings, event);
+				refresh();
+			}
+		});
+	}
+	{
+		let sound_state = sound_state.clone();
+		let refresh = refresh_sounds_list.clone();
+		reset_button.on_click(move |_| {
+			let Some(index) = sounds_list.get_selection() else { return };
+			let Some(event) = crate::sounds::SoundEvent::ALL.get(index as usize).copied() else { return };
+			let mut state = sound_state.borrow_mut();
+			let enabled = state.for_event(event).enabled;
+			// Clearing the file hands this event back to the active pack.
+			state.set_event(event, crate::config::EventSound { enabled, file: String::new() });
+			drop(state);
+			refresh();
+		});
+	}
+	{
+		let sound_state = sound_state.clone();
+		let refresh = refresh_sounds_list;
+		reset_all_button.on_click(move |_| {
+			sound_state.borrow_mut().events.clear();
+			refresh();
+		});
+	}
+	folder_button.on_click(move |_| {
+		// Seed it first; an empty folder tells the user nothing about what they can replace.
+		let dir = crate::sounds::SoundPlayer::seed_user_dir();
+		#[cfg(target_os = "windows")]
+		let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+	});
+
 	let filters_state = Rc::new(RefCell::new(filters));
 	let current_filter_key = Rc::new(RefCell::new("Home".to_string()));
 	{
@@ -728,6 +988,9 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
+	// The preview controls hang off the frame rather than the dialog, so they outlive it unless
+	// they are torn down here.
+	preview_player.invalidate_all();
 	if result != ID_OK {
 		return None;
 	}
@@ -755,7 +1018,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let new_notification_preference = match notification_choice.get_selection() {
 		Some(0) => crate::config::NotificationPreference::Classic,
 		Some(1) => crate::config::NotificationPreference::SoundOnly,
-		Some(2) => crate::config::NotificationPreference::Disabled,
+		Some(2) => crate::config::NotificationPreference::SoundAndClassic,
+		Some(3) => crate::config::NotificationPreference::Disabled,
 		_ => notification_preference,
 	};
 	let new_update_channel = match channel_choice.get_selection() {
@@ -812,6 +1076,12 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		preserve_thread_order: thread_order_checkbox.get_value(),
 		default_timelines: current_defaults.borrow().clone(),
 		notification_preference: new_notification_preference,
+		sounds: {
+			let mut settings = sound_state.borrow().clone();
+			settings.enabled = sounds_enabled_checkbox.get_value();
+			settings.volume = u8::try_from(volume_slider.get_value().clamp(0, 100)).unwrap_or(80);
+			settings
+		},
 		hotkey: current_hotkey.borrow().clone(),
 		shortcuts: current_shortcuts.borrow().clone(),
 		templates: new_templates,
