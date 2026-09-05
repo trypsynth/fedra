@@ -11,6 +11,7 @@ mod mastodon;
 mod network;
 mod notifications;
 mod responses;
+mod sounds;
 mod streaming;
 mod template;
 mod text;
@@ -106,7 +107,7 @@ pub(crate) struct AppState {
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
 	pub(crate) context_menu_state: Rc<Cell<ContextMenuState>>,
-	pub(crate) media_ctrl: Option<MediaCtrl>,
+	pub(crate) sound_player: Option<std::rc::Rc<crate::sounds::SoundPlayer>>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
@@ -140,7 +141,7 @@ impl AppState {
 			current_user_id: None,
 			app_shell: None,
 			context_menu_state: Rc::new(Cell::new(ContextMenuState::default())),
-			media_ctrl: None,
+			sound_player: None,
 			ui_waker,
 			_instance_checker: instance_checker,
 			pending_thread_continuation: false,
@@ -168,14 +169,6 @@ impl AppState {
 	pub(crate) fn timeline_view_options_for(&self, timeline_type: &timeline::TimelineType) -> TimelineViewOptions {
 		TimelineViewOptions::from_config(&self.config, timeline_type)
 	}
-}
-
-#[must_use]
-pub fn get_sound_path() -> std::path::PathBuf {
-	std::env::current_exe()
-		.ok()
-		.and_then(|path| path.parent().map(|p| p.join("sounds").join("boop.mp3")))
-		.unwrap_or_else(|| std::path::PathBuf::from("sounds/boop.mp3"))
 }
 
 fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandContext<'_>) {
@@ -230,12 +223,11 @@ fn main() {
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let shortcuts_cell = Rc::new(std::cell::RefCell::new(config.shortcuts.clone()));
 		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
-		let mc = MediaCtrl::builder(&frame).with_size(Size::new(0, 0)).build();
-		let sound_path = get_sound_path();
-		if sound_path.exists() {
-			mc.load(&sound_path.to_string_lossy());
-		}
-		state.media_ctrl = Some(mc);
+		let sound_player = std::rc::Rc::new(crate::sounds::SoundPlayer::new(frame));
+		sound_player.set_volume(state.config.sounds.volume);
+		// Load every sound now so the controls are ready long before the first notification.
+		sound_player.preload(&state.config.sounds);
+		state.sound_player = Some(sound_player);
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
 			return;

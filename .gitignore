@@ -1,2 +1,5 @@
 .claude/
 /target
+
+# Sound packs are personal. Fedra ships none; see the Sounds tab.
+/sounds/packs/

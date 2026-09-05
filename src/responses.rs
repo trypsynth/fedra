@@ -81,6 +81,44 @@ fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
 	updated
 }
 
+/// Play the sound configured for `event`, if any.
+///
+/// Takes the settings and player separately rather than all of [`AppState`], because the
+/// streaming loop already holds a mutable borrow of `state.timeline_manager` while it calls this.
+///
+/// Silently does nothing when sounds are disabled, the event is muted, or the file is missing.
+pub fn play_sound(
+	settings: &crate::config::SoundSettings,
+	player: Option<&std::rc::Rc<crate::sounds::SoundPlayer>>,
+	event: crate::sounds::SoundEvent,
+) {
+	if let Some(file) = settings.file_for(event)
+		&& let Some(player) = player
+	{
+		player.play(event, &file);
+	}
+}
+
+/// Pick the sound for an incoming notification and play it.
+///
+/// A mention carried by a direct-visibility post is treated as a direct message, so DMs are
+/// distinguishable from ordinary mentions by ear.
+fn play_notification_sound(
+	settings: &crate::config::SoundSettings,
+	player: Option<&std::rc::Rc<crate::sounds::SoundPlayer>>,
+	notification: &crate::mastodon::Notification,
+) {
+	let Some(mut event) = crate::sounds::SoundEvent::from_notification_kind(&notification.kind) else {
+		return;
+	};
+	if event == crate::sounds::SoundEvent::Mention
+		&& notification.status.as_ref().is_some_and(|s| s.visibility == "direct")
+	{
+		event = crate::sounds::SoundEvent::DirectMessage;
+	}
+	play_sound(settings, player, event);
+}
+
 /// Processes streaming events from WebSocket connections.
 pub fn process_stream_events(
 	state: &mut AppState,
@@ -121,6 +159,19 @@ pub fn process_stream_events(
 					// user timelines have no stream of their own, so forward them by hand.
 					if timeline_type == TimelineType::Home && current_user_id == Some(status.account.id.as_str()) {
 						own_post_forwards.push(status.clone());
+					} else if timeline_type == TimelineType::Home
+						// Matching the draining timeline as well keeps this to one sound per post,
+						// since a single stream handle can emit events for several timelines.
+						&& timeline.timeline_type == timeline_type
+						&& state.config.notification_preference.plays_sound()
+						&& !status.should_hide(&filter_context)
+						&& status.matches_filter(&timeline_filter, current_user_id)
+					{
+						play_sound(
+							&state.config.sounds,
+							state.sound_player.as_ref(),
+							crate::sounds::SoundEvent::HomePost,
+						);
 					}
 					if timeline.timeline_type == timeline_type
 						&& !status.should_hide(&filter_context)
@@ -153,19 +204,17 @@ pub fn process_stream_events(
 					if timeline.timeline_type == timeline_type {
 						if !processed_notification_ids.contains(&notification.id) {
 							let pref = state.config.notification_preference;
-							match pref {
-								crate::config::NotificationPreference::Classic => {
-									if let Some(app_shell) = &state.app_shell {
-										crate::notifications::show_notification(app_shell, &notification);
-									}
-								}
-								crate::config::NotificationPreference::SoundOnly => {
-									if let Some(mc) = &state.media_ctrl {
-										mc.stop();
-										mc.play();
-									}
-								}
-								crate::config::NotificationPreference::Disabled => {}
+							if pref.shows_toast()
+								&& let Some(app_shell) = &state.app_shell
+							{
+								crate::notifications::show_notification(app_shell, &notification);
+							}
+							if pref.plays_sound() {
+								play_notification_sound(
+									&state.config.sounds,
+									state.sound_player.as_ref(),
+									&notification,
+								);
 							}
 							processed_notification_ids.insert(notification.id.clone());
 						}
@@ -314,6 +363,54 @@ pub struct NetworkResponseContext<'a> {
 
 /// Processes network responses from the background network thread.
 #[allow(clippy::too_many_lines)]
+/// The sound for a completed action, if it has one.
+///
+/// Fedra performs an action by sending a request and reacting to the response, so every action the
+/// user takes ends up here. Mapping them in one place means a new action cannot silently miss its
+/// sound, and it keeps each direction of a pair on the same sound: favoriting a post and having
+/// one of yours favorited both play the favorite sound.
+///
+/// Undoing an action reuses its sound rather than having one of its own, since the point is to
+/// confirm that something happened; the screen reader already says which way it went.
+fn action_sound(response: &NetworkResponse) -> Option<crate::sounds::SoundEvent> {
+	use crate::sounds::SoundEvent as S;
+	let sound = |ok: bool, event: S| Some(if ok { event } else { S::Error });
+	match response {
+		NetworkResponse::Favorited { result, .. } | NetworkResponse::Unfavorited { result, .. } => {
+			sound(result.is_ok(), S::Favorite)
+		}
+		NetworkResponse::Boosted { result, .. } | NetworkResponse::Unboosted { result, .. } => {
+			sound(result.is_ok(), S::Boost)
+		}
+		NetworkResponse::Bookmarked { result, .. } | NetworkResponse::Unbookmarked { result, .. } => {
+			sound(result.is_ok(), S::Bookmark)
+		}
+		NetworkResponse::Pinned { result, .. } | NetworkResponse::Unpinned { result, .. } => {
+			sound(result.is_ok(), S::Pin)
+		}
+		NetworkResponse::PollVoted { result } => sound(result.is_ok(), S::PollVoted),
+		NetworkResponse::StatusDeleted { result, .. } => sound(result.is_ok(), S::PostDeleted),
+		NetworkResponse::StatusEdited { result, .. } => sound(result.is_ok(), S::PostEdited),
+		NetworkResponse::PostComplete(result) | NetworkResponse::Replied(result) => sound(result.is_ok(), S::PostSent),
+		NetworkResponse::TagFollowed { result, .. } | NetworkResponse::TagUnfollowed { result, .. } => {
+			sound(result.is_ok(), S::Follow)
+		}
+		// Only the follow-shaped relationship changes get a sound. Blocking, muting, and hiding
+		// boosts are different enough that borrowing the follow sound would be misleading, and the
+		// screen reader already announces them.
+		NetworkResponse::RelationshipUpdated { action, result, .. } => {
+			use crate::network::RelationshipAction as A;
+			let event = match action {
+				A::Follow | A::Unfollow | A::CancelFollowRequest => Some(S::Follow),
+				A::AcceptFollowRequest | A::RejectFollowRequest => Some(S::FollowRequest),
+				A::Block | A::Unblock | A::Mute | A::Unmute | A::ShowBoosts | A::HideBoosts => None,
+			};
+			event.and_then(|event| sound(result.is_ok(), event))
+		}
+		_ => None,
+	}
+}
+
 pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	let frame = ctx.frame;
 	let state = &mut *ctx.state;
@@ -349,6 +446,11 @@ pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 		}};
 	}
 	for response in handle.drain() {
+		// Action sounds are deliberately not gated on the notification preference: they confirm
+		// something the user just did, rather than announcing something that arrived.
+		if let Some(event) = action_sound(&response) {
+			play_sound(&state.config.sounds, state.sound_player.as_ref(), event);
+		}
 		match response {
 			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
 				let mut should_find_next = false;

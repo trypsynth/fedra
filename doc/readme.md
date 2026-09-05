@@ -8,6 +8,7 @@ Windows 10 or 11
 ## Core Features
 - Native Windows UI with screen-reader-friendly controls and live announcements, built on a custom [AccessKit](https://accesskit.dev)-backed list control.
 - Multi-account support, including account switching while preserving per-account timelines.
+- A separate notification sound for each kind of event, from mentions and direct messages to follows, boosts, and favorites. Fedra ships one sound and plays it for everything until you supply your own, one event at a time or a whole pack at once.
 - Timelines: Home, Notifications, Mentions, Sent, Local, another instance's Local, Federated, Direct Messages, Bookmarks, Favorites, Lists, User, Hashtag, Thread, and Search.
 - Real-time streaming for Home, Notifications, Local, Federated, Direct, and List timelines. Your own posts also appear in the Sent timeline as soon as you publish them.
 - Rich post creation and editing with:
@@ -117,6 +118,7 @@ Open options with `Ctrl+,`.
 - Notifications mode:
   - Classic Windows Notifications
   - Sound only
+  - Sound and notifications
   - Disabled
 - `Customize Keyboard Shortcuts...`
 - `Customize Window Hotkey...` (Ctrl/Alt/Shift/Win modifiers + custom key)
@@ -143,6 +145,92 @@ Open options with `Ctrl+,`.
 - `Customize Default Timelines...`
   - Home and Notifications are opened at startup
   - Any of Local, Federated, Direct Messages, Bookmarks, Favorites, Mentions, and Sent can be added
+
+### Sounds Tab
+Fedra can play a different sound for each kind of event, and every one of them is a file
+of your choosing.
+
+Fedra ships a single sound, `boop.mp3`, and every event falls back to it. A new install
+therefore sounds exactly as Fedra always has: one sound for everything. The moment you
+give an event a file of its own, that event uses it and the rest carry on with the
+fallback. No per-event audio is bundled, deliberately, so nothing here is anyone's taste
+but yours.
+
+- `Enable notification sounds`: master switch for every sound below.
+- `Sound pack`: the set of sounds to use. Switching packs changes every event at once,
+  while leaving anything you unchecked still unchecked. A pack that provides some but not
+  all of the sounds says so in the list; the events it leaves out fall back to the default
+  pack, and then to `boop.mp3`.
+- `Volume`: 0 to 100, applied to all sounds.
+- The sound list shows one entry per event, each with the file it currently uses.
+  Unchecking an entry silences just that event and leaves the rest alone.
+
+Sounds are tied to actions, not just to things arriving. Where an action has two
+directions, both share one sound: favoriting a post and having one of yours favorited
+are both the favorite sound. Undoing an action reuses its sound, since the point is to
+confirm something happened and the screen reader already says which way it went.
+
+| Event | When it plays |
+| --- | --- |
+| Mention | Someone mentions you in a public, unlisted, or followers-only post |
+| Direct message | Someone mentions you in a direct post |
+| New post in home timeline | Somebody you follow posts. The busiest event by far, so give it the shortest and quietest sound you have, or uncheck it to silence just this one |
+| Followed someone, or gained a follower | You follow or unfollow an account or hashtag, or somebody follows you |
+| Follow request | Somebody asks to follow you, or you accept or reject a request |
+| Favorited a post, or yours was favorited | Either direction |
+| Boosted a post, or yours was boosted | Either direction |
+| Bookmarked or unbookmarked a post | Your own bookmarking |
+| Pinned or unpinned a post | Your own pinning |
+| Poll ended | A poll you voted in has finished |
+| Voted in a poll | You cast a vote |
+| Edited a post, or one you follow was edited | Either direction |
+| Sent a post or reply | Your post or reply was published or scheduled |
+| Deleted a post | You deleted one of your posts |
+| Action failed | Any of the above failed |
+
+Blocking, muting, and hiding boosts have no sound, since borrowing the follow sound for
+them would be misleading and the screen reader announces them anyway.
+
+Sounds for things that *arrive* (mentions, direct messages, new home posts, and
+notifications that somebody favorited, boosted, followed, or edited) follow the
+notification mode on the General tab: they play in `Sound only` and `Sound and
+notifications`, and are silent in `Classic Windows Notifications` or `Disabled`.
+
+Sounds for things *you do* always play, subject only to this tab, because they confirm
+an action you just took rather than announcing something that arrived.
+
+Buttons under the list:
+
+- `Play`: hear the selected event's sound. This works even when the event is unchecked,
+  so you can audition a sound before switching it back on.
+- `Change...`: pick any `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`, or `.opus` file.
+  Choosing a file also re-checks that event.
+- `Reset`: hand the selected event back to the active pack, dropping any file you chose for it.
+- `Reset all`: hand every event back to the active pack.
+- `Open sounds folder`: open your personal sound folder, creating it and a `packs` folder
+  inside it if they are not there yet, along with a readme listing the filename each event
+  answers to.
+
+### Sound Packs
+
+A pack is a folder of sounds named after the events they play for, such as `mention.mp3`
+and `follow.mp3`. Packs live under `packs` in your personal sound folder.
+
+Fedra ships no packs. To make one, press `Open sounds folder`, create a folder under
+`packs`, name it whatever you like, and put your files in it. It appears in the
+`Sound pack` list the next time you open the options. The readme in that folder lists
+every filename Fedra looks for.
+
+A pack may use `.mp3`, `.wav`, `.ogg`, `.flac`, or `.m4a`. A pack does not have to be
+complete: any event it does not provide falls back to `boop.mp3`, so a pack of one file
+is perfectly valid.
+
+Picking a file with `Change...` overrides the pack for that one event and survives
+switching packs, until you press `Reset` to hand the event back to the pack.
+
+Updating Fedra never touches your sound folder, so your packs and edits survive an
+upgrade.
+
 
 ### Templates Tab
 Customize how posts appear in each timeline using [Jinja2-style](https://jinja.palletsprojects.com/en/stable/templates/) templates.
@@ -360,7 +448,32 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 - Installed build: `%APPDATA%\Fedra\config.json`
 - Portable/uninstalled run: `config.json` next to the executable
 
+Sound settings live under the `sounds` key: `enabled` is the master switch, `volume` is 0 to 100,
+`pack` names the active pack, and `events` maps an event name to its `enabled` flag and `file`. An
+empty `file` means the event takes its sound from the pack, or from `boop.mp3` if the pack
+does not provide one; a bare name is looked up in your `sounds` folder and then in Fedra's,
+and an absolute path is used as given.
+
 ## Changelog
+
+### Unreleased
+* Added per-event notification sounds. Mentions, direct messages, new home-timeline posts, new
+  followers, follow requests, favorites, boosts, bookmarks, pins, ended polls, poll votes, edited
+  posts, sent posts, deleted posts, and failures each have their own sound instead of sharing a
+  single beep.
+* Sounds are tied to actions in both directions, so favoriting a post and having one of yours
+  favorited play the same sound, as do boosting, following, and editing.
+* Added a Sounds tab to the options dialog for setting the master switch, the volume, and the sound
+  used by each event, with a Play button to audition one and a file picker to replace it.
+* Added a `Sound and notifications` notification mode, for a Windows notification and a sound
+  together.
+* Added sound packs, so a whole set of sounds can be swapped in one step rather than fifteen
+  files at a time. A pack is a folder of files named after the events they play for.
+* No per-event audio is bundled. Every event falls back to the existing `boop.mp3`, so an
+  untouched install sounds exactly as it did before, and the sounds you do hear are ones you
+  chose.
+* Custom sounds and packs are read from `sounds` in your configuration folder, which takes
+  precedence over the sounds Fedra ships with and is left alone by updates.
 
 ### Version 0.5.0
 * Account usernames are now properly resolved when replying to a post from a remote instance's local timeline.
