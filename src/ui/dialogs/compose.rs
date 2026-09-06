@@ -45,6 +45,7 @@ impl PostVisibility {
 
 #[derive(Debug, Clone)]
 pub struct PostResult {
+	pub interaction_author: Option<crate::mastodon::Account>,
 	pub content: String,
 	pub visibility: PostVisibility,
 	pub sensitive: bool,
@@ -75,6 +76,8 @@ pub struct PostPoll {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct ComposeDialogConfig {
+	pub autocomplete: Option<crate::autocomplete::Session>,
+	pub interaction_author: Option<crate::mastodon::Account>,
 	pub title_prefix: String,
 	pub ok_label: String,
 	pub initial_content: String,
@@ -784,6 +787,9 @@ pub fn prompt_for_compose(
 	initial_media: Vec<PostMedia>,
 	initial_poll: Option<PostPoll>,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
+	if config.autocomplete.as_ref().is_some_and(|session| !session.eligible()) {
+		return None;
+	}
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
 	let title_prefix = config.title_prefix.clone();
 	let ok_label = config.ok_label.clone();
@@ -812,6 +818,15 @@ pub fn prompt_for_compose(
 
 	let content_label = StaticText::builder(&panel).with_label("&What's on your mind?").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
+	let autocomplete_button = Button::builder(&panel).with_label("&Autocomplete...").build();
+	autocomplete_button.enable(config.autocomplete.is_some());
+	if let Some(session) = config.autocomplete.clone() {
+		// Let the native button mnemonic handle Alt+A, including its system-character
+		// message, before opening another modal dialog.
+		autocomplete_button.on_click(move |_| {
+			super::autocomplete_picker::insert(dialog, content_text, &session);
+		});
+	}
 	let cw_checkbox = CheckBox::builder(&panel).with_label("&Content warning").build();
 	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
 	let cw_text = TextCtrl::builder(&panel).build();
@@ -885,6 +900,7 @@ pub fn prompt_for_compose(
 	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
 	main_sizer.add(&content_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&content_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	main_sizer.add(&autocomplete_button, 0, SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&cw_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&cw_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&cw_text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
@@ -1105,6 +1121,7 @@ pub fn prompt_for_compose(
 	}
 	Some((
 		PostResult {
+			interaction_author: config.interaction_author.clone(),
 			content: trimmed.to_string(),
 			visibility,
 			sensitive: *sensitive_state.borrow(),
@@ -1122,6 +1139,7 @@ pub fn prompt_for_compose(
 
 pub fn prompt_for_post(
 	frame: &Frame,
+	autocomplete: Option<crate::autocomplete::Session>,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	enter_to_send: bool,
@@ -1133,6 +1151,8 @@ pub fn prompt_for_post(
 		poll_limits,
 		enter_to_send,
 		ComposeDialogConfig {
+			autocomplete,
+			interaction_author: None,
 			title_prefix: "Post".to_string(),
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),
@@ -1153,6 +1173,7 @@ pub fn prompt_for_post(
 
 pub fn prompt_for_reply(
 	frame: &Frame,
+	autocomplete: Option<crate::autocomplete::Session>,
 	replying_to: &Status,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
@@ -1201,6 +1222,8 @@ pub fn prompt_for_reply(
 		poll_limits,
 		enter_to_send,
 		ComposeDialogConfig {
+			autocomplete,
+			interaction_author: Some(replying_to.account.clone()),
 			title_prefix: format!("Reply to {author}"),
 			ok_label: "Post".to_string(),
 			initial_content: mention,
@@ -1221,6 +1244,7 @@ pub fn prompt_for_reply(
 
 pub fn prompt_for_edit(
 	frame: &Frame,
+	autocomplete: Option<crate::autocomplete::Session>,
 	status: &Status,
 	source_text: Option<&str>,
 	max_chars: Option<usize>,
@@ -1252,6 +1276,8 @@ pub fn prompt_for_edit(
 		poll_limits,
 		enter_to_send,
 		ComposeDialogConfig {
+			autocomplete,
+			interaction_author: None,
 			title_prefix: "Edit Post".to_string(),
 			ok_label: "Save".to_string(),
 			initial_content: source_text.map(ToOwned::to_owned).unwrap_or_else(|| status.display_text()),
@@ -1272,6 +1298,7 @@ pub fn prompt_for_edit(
 
 pub fn prompt_for_quote(
 	frame: &Frame,
+	autocomplete: Option<crate::autocomplete::Session>,
 	quoting: &Status,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
@@ -1292,6 +1319,8 @@ pub fn prompt_for_quote(
 		poll_limits,
 		enter_to_send,
 		ComposeDialogConfig {
+			autocomplete,
+			interaction_author: Some(quoting.account.clone()),
 			title_prefix: format!("Quote {author}"),
 			ok_label: "Post".to_string(),
 			initial_content: String::new(),

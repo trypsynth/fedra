@@ -399,6 +399,8 @@ pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 				locked: false,
 				bot: false,
 				discoverable: None,
+				moved: None,
+				suspended: None,
 				source: None,
 			},
 		};
@@ -564,6 +566,8 @@ pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 				locked: false,
 				bot: false,
 				discoverable: None,
+				moved: None,
+				suspended: None,
 				source: None,
 			});
 		}
@@ -583,8 +587,7 @@ pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 
 	if let Some(net) = &state.network_handle {
 		net.send(NetworkCommand::ToggleFollow {
-			account_id: if selected_user.id.is_empty() { None } else { Some(selected_user.id) },
-			acct: selected_user.acct.clone(),
+			acct: selected_user.full_acct(),
 			target_name: selected_user.username.clone(),
 		});
 	} else {

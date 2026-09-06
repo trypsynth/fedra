@@ -77,6 +77,7 @@ impl MastodonClient {
 		}
 		let response =
 			self.http.post(url).bearer_auth(access_token).form(&params).send().context("Failed to post status")?;
+		let response = Self::observed(response);
 		let status = response.status();
 		if !status.is_success() {
 			let body = response.text().unwrap_or_default();
@@ -111,6 +112,7 @@ impl MastodonClient {
 		}
 		let response =
 			self.http.post(url).bearer_auth(access_token).multipart(form).send().context("Failed to upload media")?;
+		let response = Self::observed(response);
 		let status = response.status();
 		let response = response.error_for_status().context("Instance rejected media upload")?;
 		let payload: MediaResponse = response.json().context("Invalid media upload response")?;
@@ -132,6 +134,7 @@ impl MastodonClient {
 				.bearer_auth(access_token)
 				.send()
 				.context("Failed to check media processing status")?;
+			let response = Self::observed(response);
 			match response.status() {
 				StatusCode::OK => return Ok(()),
 				StatusCode::PARTIAL_CONTENT => {}

@@ -56,6 +56,10 @@ pub struct Account {
 	#[serde(default)]
 	pub discoverable: Option<bool>,
 	#[serde(default)]
+	pub moved: Option<Box<Account>>,
+	#[serde(default)]
+	pub suspended: Option<bool>,
+	#[serde(default)]
 	pub source: Option<Source>,
 }
 

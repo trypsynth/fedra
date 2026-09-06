@@ -125,8 +125,13 @@ pub fn switch_to_account(
 	}
 
 	state.network_handle = None;
+	state.autocomplete.pause();
+	state.current_user_id = None;
 	let active_id =
 		state.config.active_account_id.clone().or_else(|| state.config.accounts.first().map(|a| a.id.clone()));
+	if let Some(id) = &active_id {
+		state.autocomplete.select(id.clone());
+	}
 
 	if let Some(id) = &active_id {
 		if let Some(mgr) = state.account_timelines.remove(id) {
@@ -146,7 +151,9 @@ pub fn switch_to_account(
 	};
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
-	state.network_handle = network::start_network(url.clone(), token.clone(), state.ui_waker.clone()).ok();
+	if let Some(session) = state.autocomplete_session() {
+		state.network_handle = network::start_network(url.clone(), token.clone(), state.ui_waker.clone(), session).ok();
+	}
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
 		if let Ok(info) = client.get_instance_info() {
@@ -176,6 +183,13 @@ pub fn switch_to_account(
 		} else if let Some(active) = state.active_account() {
 			state.current_user_id = active.user_id.clone();
 		}
+	}
+
+	if let Some(account) = state.active_account()
+		&& let Some(user_id) = &account.user_id
+		&& let Some(client) = &state.client
+	{
+		state.autocomplete.activate(account.id.clone(), client.base_url().clone(), token, user_id.clone());
 	}
 
 	if state.timeline_manager.len() == 0 {

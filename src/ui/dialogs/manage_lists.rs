@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
@@ -15,7 +15,12 @@ pub struct ManageListsDialog {
 }
 
 impl ManageListsDialog {
-	pub fn new<F>(frame: &Frame, lists: Vec<crate::mastodon::List>, net_tx: Sender<NetworkCommand>, on_close: F) -> Self
+	pub fn new<F>(
+		frame: &Frame,
+		lists: Vec<crate::mastodon::List>,
+		net_tx: crate::network::NetworkSender,
+		on_close: F,
+	) -> Self
 	where
 		F: Fn() + 'static + Clone,
 	{

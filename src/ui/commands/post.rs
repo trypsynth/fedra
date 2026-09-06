@@ -22,6 +22,7 @@ use crate::{
 
 pub(super) fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: Option<String>) -> network::PostData {
 	network::PostData {
+		interaction_author: post.interaction_author,
 		content: post.content,
 		visibility: post.visibility.as_api_str().to_string(),
 		sensitive: post.sensitive,
@@ -169,9 +170,15 @@ pub fn run_edit_post_dialog(
 ) {
 	let max_post_chars = state.max_post_chars;
 	let enter_to_send = state.config.enter_to_send;
-	let Some((edit, config)) =
-		dialogs::prompt_for_edit(frame, target, source_text, max_post_chars, &state.poll_limits, enter_to_send)
-	else {
+	let Some((edit, config)) = dialogs::prompt_for_edit(
+		frame,
+		state.autocomplete_session(),
+		target,
+		source_text,
+		max_post_chars,
+		&state.poll_limits,
+		enter_to_send,
+	) else {
 		return;
 	};
 	if let Some(handle) = &state.network_handle {
@@ -231,9 +238,14 @@ pub(super) fn new_post(ctx: &mut UiCommandContext<'_>) {
 			_ => None,
 		})
 	};
-	let Some((post, config)) =
-		dialogs::prompt_for_post(frame, max_post_chars, &poll_limits, enter_to_send, default_visibility)
-	else {
+	let Some((post, config)) = dialogs::prompt_for_post(
+		frame,
+		state.autocomplete_session(),
+		max_post_chars,
+		&poll_limits,
+		enter_to_send,
+		default_visibility,
+	) else {
 		return;
 	};
 	if let Some(handle) = &state.network_handle {
@@ -257,6 +269,7 @@ pub(super) fn continue_thread(ctx: &mut UiCommandContext<'_>, mut status: Box<St
 	let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
 	let Some((reply, config)) = dialogs::prompt_for_reply(
 		frame,
+		state.autocomplete_session(),
 		&status,
 		max_post_chars,
 		&state.poll_limits,
@@ -271,12 +284,13 @@ pub(super) fn continue_thread(ctx: &mut UiCommandContext<'_>, mut status: Box<St
 		state.pending_thread_continuation = reply.continue_thread;
 		state.pending_post = Some(crate::PendingPost {
 			config,
-			operation: crate::PostOperation::Reply { in_reply_to_id: status.id.clone() },
+			operation: crate::PostOperation::Reply { in_reply_to_id: status.id.clone(), foreign_url: None },
 			last_result: reply.clone(),
 		});
 		let post_data = post_result_to_data(reply, None);
 		handle.send(NetworkCommand::Reply {
 			in_reply_to_id: status.id.clone(),
+			interaction_author: post_data.interaction_author,
 			content: post_data.content,
 			visibility: post_data.visibility,
 			sensitive: post_data.sensitive,
@@ -306,6 +320,7 @@ pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
 	let self_acct = state.active_account().and_then(|account| account.acct.as_deref());
 	let Some((reply, config)) = dialogs::prompt_for_reply(
 		frame,
+		state.autocomplete_session(),
 		target,
 		max_post_chars,
 		&state.poll_limits,
@@ -320,7 +335,10 @@ pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
 		state.pending_thread_continuation = reply.continue_thread;
 		state.pending_post = Some(crate::PendingPost {
 			config,
-			operation: crate::PostOperation::Reply { in_reply_to_id: target.id.clone() },
+			operation: crate::PostOperation::Reply {
+				in_reply_to_id: target.id.clone(),
+				foreign_url: foreign_url(state, target.url.as_ref()),
+			},
 			last_result: reply.clone(),
 		});
 		let post_data = post_result_to_data(reply, None);
@@ -339,6 +357,7 @@ pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
 		}
 		handle.send(NetworkCommand::Reply {
 			in_reply_to_id: target.id.clone(),
+			interaction_author: post_data.interaction_author,
 			content: post_data.content,
 			visibility: post_data.visibility,
 			sensitive: post_data.sensitive,
@@ -389,9 +408,14 @@ pub(super) fn prompt_for_quote(ctx: &mut UiCommandContext<'_>, target: Box<Statu
 		return;
 	}
 	let target_id = target.id.clone();
-	let Some((post, config)) =
-		dialogs::prompt_for_quote(frame, &target, state.max_post_chars, &state.poll_limits, state.config.enter_to_send)
-	else {
+	let Some((post, config)) = dialogs::prompt_for_quote(
+		frame,
+		state.autocomplete_session(),
+		&target,
+		state.max_post_chars,
+		&state.poll_limits,
+		state.config.enter_to_send,
+	) else {
 		return;
 	};
 	if let Some(handle) = &state.network_handle {
@@ -863,8 +887,13 @@ pub(super) fn recover_draft(ctx: &mut UiCommandContext<'_>) {
 
 	let cmd = match pending.operation {
 		crate::PostOperation::NewPost => NetworkCommand::PostStatus { post: post_data },
-		crate::PostOperation::Reply { ref in_reply_to_id } => NetworkCommand::Reply {
+		crate::PostOperation::Reply { foreign_url: Some(ref url), .. } => NetworkCommand::ResolveAndInteract {
+			url: url.clone(),
+			interaction: ForeignInteraction::Reply(Box::new(post_data)),
+		},
+		crate::PostOperation::Reply { ref in_reply_to_id, .. } => NetworkCommand::Reply {
 			in_reply_to_id: in_reply_to_id.clone(),
+			interaction_author: post_data.interaction_author,
 			content: post_data.content,
 			visibility: post_data.visibility,
 			sensitive: post_data.sensitive,

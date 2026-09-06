@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
@@ -22,7 +22,7 @@ impl ManageListMembersDialog {
 		list_id: String,
 		list_title: &str,
 		members: Vec<Account>,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: crate::network::NetworkSender,
 		on_close: F,
 	) -> Self
 	where

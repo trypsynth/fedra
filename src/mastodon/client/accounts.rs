@@ -5,7 +5,75 @@ use reqwest::{Url, blocking::multipart};
 
 use crate::mastodon::{Account, MastodonClient, Relationship};
 
+pub struct AccountPage {
+	pub accounts: Vec<Account>,
+	pub next: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct InvalidAccountPagination;
+impl std::fmt::Display for InvalidAccountPagination {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str("Unsafe or invalid account pagination link")
+	}
+}
+impl std::error::Error for InvalidAccountPagination {}
+
+fn validate_page_url(base: &Url, expected: &Url, url: &Url) -> Result<()> {
+	anyhow::ensure!(
+		url.origin() == base.origin()
+			&& url.path() == expected.path()
+			&& url.username().is_empty()
+			&& url.password().is_none()
+			&& url.fragment().is_none(),
+		InvalidAccountPagination
+	);
+	Ok(())
+}
+
 impl MastodonClient {
+	#[cfg(test)]
+	pub fn autocomplete_page(&self, token: &str, id: &str, following: bool, next: Option<&str>) -> Result<AccountPage> {
+		self.autocomplete_page_observed(token, id, following, next, || {})
+	}
+
+	pub fn autocomplete_page_observed(
+		&self,
+		token: &str,
+		id: &str,
+		following: bool,
+		next: Option<&str>,
+		request_started: impl FnOnce(),
+	) -> Result<AccountPage> {
+		let source = if following { "following" } else { "followers" };
+		let expected = self.base_url.join(&format!("api/v1/accounts/{id}/{source}"))?;
+		let mut url = next.map_or_else(|| Ok(expected.clone()), Url::parse).map_err(|_| InvalidAccountPagination)?;
+		validate_page_url(&self.base_url, &expected, &url)?;
+		if next.is_none() {
+			url.query_pairs_mut().append_pair("limit", "80");
+		}
+		let request = self.http.get(url).bearer_auth(token);
+		request_started();
+		let response = Self::observed(request.send()?).error_for_status()?;
+		anyhow::ensure!(response.status().is_success(), "Unexpected account-list response status");
+		let mut next = None;
+		for header in response.headers().get_all("link") {
+			for link in header.to_str()?.split(',') {
+				let mut parts = link.split(';');
+				let address = parts.next().unwrap_or_default().trim().trim_start_matches('<').trim_end_matches('>');
+				if parts.any(|p| {
+					p.trim()
+						.strip_prefix("rel=")
+						.is_some_and(|rel| rel.trim_matches('"').split_whitespace().any(|r| r == "next"))
+				}) {
+					let target = response.url().join(address)?;
+					validate_page_url(&self.base_url, &expected, &target)?;
+					next = Some(target.to_string());
+				}
+			}
+		}
+		Ok(AccountPage { accounts: response.json()?, next })
+	}
 	pub fn get_account(&self, access_token: &str, account_id: &str) -> Result<Account> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}"))?;
 		self.get_json(access_token, url, "fetch account")
@@ -35,7 +103,7 @@ impl MastodonClient {
 		if let Some(token) = access_token {
 			req = req.bearer_auth(token);
 		}
-		let response = req.send()?.error_for_status()?;
+		let response = Self::observed(req.send()?).error_for_status()?;
 		let next_max_id = Self::next_max_id(&response);
 		let accounts: Vec<Account> = response.json()?;
 		Ok((accounts, next_max_id))
@@ -109,6 +177,15 @@ impl MastodonClient {
 	}
 
 	pub fn get_relationships(&self, access_token: &str, account_ids: &[String]) -> Result<Vec<Relationship>> {
+		self.get_relationships_observed(access_token, account_ids, || {})
+	}
+
+	pub fn get_relationships_observed(
+		&self,
+		access_token: &str,
+		account_ids: &[String],
+		request_started: impl FnOnce(),
+	) -> Result<Vec<Relationship>> {
 		let mut url = self.base_url.join("api/v1/accounts/relationships")?;
 		{
 			let mut query = url.query_pairs_mut();
@@ -116,6 +193,7 @@ impl MastodonClient {
 				query.append_pair("id[]", id);
 			}
 		}
+		request_started();
 		self.get_json(access_token, url, "fetch relationships")
 	}
 

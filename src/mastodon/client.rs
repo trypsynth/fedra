@@ -10,6 +10,7 @@ mod statuses;
 mod tags;
 mod timelines;
 
+pub use accounts::InvalidAccountPagination;
 use anyhow::{Context, Result};
 use reqwest::{
 	Url,
@@ -32,6 +33,32 @@ pub struct AppCredentials {
 }
 
 impl MastodonClient {
+	pub fn for_autocomplete(base_url: Url) -> Result<Self> {
+		Self::autocomplete_with_timeouts(
+			base_url,
+			std::time::Duration::from_secs(5),
+			std::time::Duration::from_secs(15),
+		)
+	}
+
+	pub fn autocomplete_with_timeouts(
+		base_url: Url,
+		connect: std::time::Duration,
+		total: std::time::Duration,
+	) -> Result<Self> {
+		let http = Client::builder()
+			.user_agent("Fedra/0.1")
+			.connect_timeout(connect)
+			.timeout(total)
+			.redirect(reqwest::redirect::Policy::none())
+			.build()?;
+		Ok(Self { base_url, http })
+	}
+
+	fn observed(response: Response) -> Response {
+		crate::autocomplete::rate::observe(&response);
+		response
+	}
 	pub fn new(base_url: Url) -> Result<Self> {
 		let http = Client::builder().user_agent("Fedra/0.1").build().context("Failed to create HTTP client")?;
 		Ok(Self { base_url, http })
@@ -47,9 +74,8 @@ impl MastodonClient {
 	/// `what` names the operation as a verb phrase, e.g. `"favorite status"`, and is
 	/// used to build the error context for each stage of the request.
 	fn send_json<T: DeserializeOwned>(request: RequestBuilder, what: &str) -> Result<T> {
-		let response = request
-			.send()
-			.with_context(|| format!("Failed to {what}"))?
+		let _activity = crate::autocomplete::rate::foreground();
+		let response = Self::observed(request.send().with_context(|| format!("Failed to {what}"))?)
 			.error_for_status()
 			.with_context(|| format!("Instance rejected request to {what}"))?;
 		response.json().with_context(|| format!("Invalid response while trying to {what}"))
@@ -57,9 +83,8 @@ impl MastodonClient {
 
 	/// Like [`Self::send_json`], but also returns the `max_id` of the next page, if any.
 	fn send_json_paged<T: DeserializeOwned>(request: RequestBuilder, what: &str) -> Result<(T, Option<String>)> {
-		let response = request
-			.send()
-			.with_context(|| format!("Failed to {what}"))?
+		let _activity = crate::autocomplete::rate::foreground();
+		let response = Self::observed(request.send().with_context(|| format!("Failed to {what}"))?)
 			.error_for_status()
 			.with_context(|| format!("Instance rejected request to {what}"))?;
 		let next_max_id = Self::next_max_id(&response);
@@ -69,9 +94,8 @@ impl MastodonClient {
 
 	/// Sends `request` and discards the body, for endpoints that return no content.
 	fn send_empty(request: RequestBuilder, what: &str) -> Result<()> {
-		request
-			.send()
-			.with_context(|| format!("Failed to {what}"))?
+		let _activity = crate::autocomplete::rate::foreground();
+		Self::observed(request.send().with_context(|| format!("Failed to {what}"))?)
 			.error_for_status()
 			.with_context(|| format!("Instance rejected request to {what}"))?;
 		Ok(())

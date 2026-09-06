@@ -5,6 +5,7 @@
 
 mod accounts;
 mod auth;
+mod autocomplete;
 mod config;
 mod html;
 mod mastodon;
@@ -17,6 +18,8 @@ mod text;
 mod timeline;
 mod ui;
 mod ui_wake;
+
+const ID_AUTOCOMPLETE_WAKE: i32 = 29_900;
 
 use std::{
 	cell::Cell,
@@ -72,7 +75,7 @@ pub struct ContextMenuState {
 
 pub(crate) enum PostOperation {
 	NewPost,
-	Reply { in_reply_to_id: String },
+	Reply { in_reply_to_id: String, foreign_url: Option<String> },
 	Edit { status_id: String },
 	Quote { quoted_status_id: String },
 }
@@ -84,6 +87,7 @@ pub(crate) struct PendingPost {
 }
 
 pub(crate) struct AppState {
+	pub(crate) autocomplete: autocomplete::Service,
 	pub(crate) config: Config,
 	pub(crate) timeline_manager: TimelineManager,
 	pub(crate) account_timelines: HashMap<String, TimelineManager>,
@@ -116,8 +120,14 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-	fn new(config: Config, ui_waker: UiWaker, instance_checker: Option<SingleInstanceChecker>) -> Self {
+	fn new(
+		config: Config,
+		ui_waker: UiWaker,
+		instance_checker: Option<SingleInstanceChecker>,
+		autocomplete: autocomplete::Service,
+	) -> Self {
 		Self {
+			autocomplete,
 			config,
 			timeline_manager: TimelineManager::new(),
 			account_timelines: HashMap::new(),
@@ -155,6 +165,10 @@ impl AppState {
 			.active_account_id
 			.as_ref()
 			.map_or_else(|| self.config.accounts.first(), |id| self.config.accounts.iter().find(|a| &a.id == id))
+	}
+
+	pub(crate) fn autocomplete_session(&self) -> Option<autocomplete::Session> {
+		self.active_account().map(|account| self.autocomplete.session(account.id.clone()))
 	}
 
 	pub(crate) fn active_account_mut(&mut self) -> Option<&mut config::Account> {
@@ -229,17 +243,20 @@ fn main() {
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let shortcuts_cell = Rc::new(std::cell::RefCell::new(config.shortcuts.clone()));
-		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
+		let autocomplete_waker = UiWaker::with_event(frame, ui_alive.clone(), ID_AUTOCOMPLETE_WAKE);
+		let autocomplete = autocomplete::Service::start(
+			config::config_dir().join("autocomplete-cache.json"),
+			config.accounts.iter().map(|a| a.id.clone()).collect(),
+			autocomplete_waker.clone(),
+		);
+		let mut state = AppState::new(config, ui_waker.clone(), instance_checker, autocomplete.clone());
 		let mc = MediaCtrl::builder(&frame).with_size(Size::new(0, 0)).build();
 		let sound_path = get_sound_path();
 		if sound_path.exists() {
 			mc.load(&sound_path.to_string_lossy());
 		}
 		state.media_ctrl = Some(mc);
-		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
-			frame.close(true);
-			return;
-		}
+		let close_after_init = state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, &state);
 		}
@@ -247,6 +264,30 @@ fn main() {
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone(), &state.config.hotkey));
 		let app_shell_close = app_shell.clone();
 		state.app_shell = Some(app_shell);
+		let autocomplete_events = autocomplete.clone();
+		let autocomplete_close_sent = Cell::new(false);
+		let autocomplete_ui_tx = ui_tx.clone();
+		let autocomplete_initial_wake = autocomplete_waker.clone();
+		frame.bind_with_id_internal(EventType::MENU, ID_AUTOCOMPLETE_WAKE, move |_| {
+			autocomplete_waker.reset();
+			ui::dialogs::autocomplete_picker::dispatch_update();
+			if let Some(result) = autocomplete_events.shutdown_result()
+				&& !autocomplete_close_sent.replace(true)
+			{
+				if let Err(error) = result {
+					ui::dialogs::show_error(
+						&frame,
+						&anyhow::anyhow!("Autocomplete could not save all cache or log updates: {error}"),
+					);
+				}
+				frame.show(false);
+				app_shell_close.cleanup();
+				let _ = autocomplete_ui_tx.send(UiCommand::AppClosing);
+			}
+		});
+		// Startup prompts may have drained posted events before the handlers were installed.
+		autocomplete_initial_wake.reset();
+		autocomplete_initial_wake.wake();
 
 		if state.config.check_for_updates_on_startup {
 			crate::ui::update_check::run_update_check(frame, true);
@@ -261,7 +302,8 @@ fn main() {
 		let timeline_list_wake = timeline_list;
 		let mut state = state;
 		let context_menu_state_for_handlers = state.context_menu_state.clone();
-		let ui_waker_handler = ui_waker.clone();
+		let ui_waker_initial = ui_waker.clone();
+		let ui_waker_handler = ui_waker;
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
 		let sort_order_drain = sort_order_cell.clone();
@@ -367,24 +409,19 @@ fn main() {
 			shortcuts_cell,
 		);
 		let shutdown_close = is_shutting_down;
-		let frame_close = frame;
-		let ui_tx_close = ui_tx.clone();
-		let ui_waker_close = ui_waker;
 		frame.on_close(move |event| {
-			if shutdown_close.get() {
-				event.skip(true); // Actually close
-			} else {
-				shutdown_close.set(true);
-				let _ = ui_tx_close.send(UiCommand::AppClosing);
-				ui_waker_close.wake();
-				// Hide the window and clean up the tray icon before destruction begins,
-				// so the screen reader doesn't announce the window during teardown.
-				frame_close.show(false);
-				app_shell_close.cleanup();
-				event.skip(false); // Wait for AppClosing command to be processed
+			if !shutdown_close.replace(true) {
+				autocomplete.shutdown();
 			}
+			event.skip(false); // Repeated closes cannot bypass the final cache save.
 		});
-		frame.show(true);
-		frame.centre();
+		ui_waker_initial.reset();
+		ui_waker_initial.wake();
+		if close_after_init {
+			frame.close(true);
+		} else {
+			frame.show(true);
+			frame.centre();
+		}
 	});
 }

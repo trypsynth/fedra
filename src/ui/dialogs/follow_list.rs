@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use wxdragon::{event::MenuEvents, prelude::*};
 
@@ -28,7 +28,7 @@ impl FollowListDialog {
 		first_page: &[Account],
 		total_count: u64,
 		account_id: Option<String>,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: crate::network::NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
@@ -198,6 +198,7 @@ impl FollowListDialog {
 			let rel = relationships_handler.borrow().get(&account_id).cloned();
 			let cmd = match id {
 				user_actions::ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
+					target_acct: account.full_acct(),
 					account_id,
 					target_name,
 					reblogs: true,
@@ -213,12 +214,14 @@ impl FollowListDialog {
 					},
 				},
 				user_actions::ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
+					target_acct: account.full_acct(),
 					account_id,
 					target_name,
 					reblogs: true,
 					action: crate::network::RelationshipAction::ShowBoosts,
 				},
 				user_actions::ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
+					target_acct: account.full_acct(),
 					account_id,
 					target_name,
 					reblogs: false,

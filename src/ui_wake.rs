@@ -11,13 +11,27 @@ use crate::{ID_UI_WAKE, UiCommand};
 #[derive(Clone)]
 pub struct UiWaker {
 	frame_ptr: usize,
+	event_id: i32,
 	pending: Arc<AtomicBool>,
 	alive: Arc<AtomicBool>,
 }
 
 impl UiWaker {
+	#[cfg(test)]
+	pub(crate) fn silent() -> Self {
+		Self {
+			frame_ptr: 0,
+			event_id: 0,
+			pending: Arc::new(AtomicBool::new(false)),
+			alive: Arc::new(AtomicBool::new(false)),
+		}
+	}
 	pub(crate) fn new(frame: Frame, alive: Arc<AtomicBool>) -> Self {
-		Self { frame_ptr: frame.handle_ptr() as usize, pending: Arc::new(AtomicBool::new(false)), alive }
+		Self::with_event(frame, alive, ID_UI_WAKE)
+	}
+
+	pub(crate) fn with_event(frame: Frame, alive: Arc<AtomicBool>, event_id: i32) -> Self {
+		Self { frame_ptr: frame.handle_ptr() as usize, event_id, pending: Arc::new(AtomicBool::new(false)), alive }
 	}
 
 	pub(crate) fn wake(&self) {
@@ -29,7 +43,7 @@ impl UiWaker {
 			if handle.is_null() {
 				return;
 			}
-			unsafe { ffi::wxd_Window_PostMenuCommand(handle, ID_UI_WAKE) };
+			unsafe { ffi::wxd_Window_PostMenuCommand(handle, self.event_id) };
 		}
 	}
 

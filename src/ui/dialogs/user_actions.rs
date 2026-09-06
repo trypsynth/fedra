@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, fmt::Write, rc::Rc};
 
 use wxdragon::prelude::*;
 
@@ -62,7 +62,7 @@ pub(crate) fn setup_actions_button(
 	button: Button,
 	account: Rc<RefCell<Account>>,
 	relationship: Rc<RefCell<Option<Relationship>>>,
-	net_tx: Sender<NetworkCommand>,
+	net_tx: crate::network::NetworkSender,
 	ui_tx: crate::ui_wake::UiCommandSender,
 ) {
 	let relationship_click = relationship.clone();
@@ -136,6 +136,7 @@ pub(crate) fn setup_actions_button(
 		}
 		let cmd = match id {
 			ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
+				target_acct: account.full_acct(),
 				account_id,
 				target_name,
 				reblogs: true,
@@ -151,12 +152,14 @@ pub(crate) fn setup_actions_button(
 				},
 			},
 			ID_ACTION_SHOW_BOOSTS => NetworkCommand::FollowAccount {
+				target_acct: account.full_acct(),
 				account_id,
 				target_name,
 				reblogs: true,
 				action: crate::network::RelationshipAction::ShowBoosts,
 			},
 			ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
+				target_acct: account.full_acct(),
 				account_id,
 				target_name,
 				reblogs: false,

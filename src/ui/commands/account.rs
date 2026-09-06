@@ -87,8 +87,19 @@ pub(super) fn remove_account(ctx: &mut UiCommandContext<'_>, id: String) {
 	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let ui_tx = ctx.ui_tx;
-	let is_active = state.config.active_account_id.as_ref() == Some(&id);
+	let is_active = state.active_account().is_some_and(|account| account.id == id);
 	state.config.accounts.retain(|a| a.id != id);
+	state.autocomplete.remove(id.clone());
+	if is_active {
+		state.config.active_account_id = None;
+		state.network_handle = None;
+		state.autocomplete.pause();
+		state.timeline_manager = crate::timeline::TimelineManager::new();
+		state.cw_expanded.clear();
+		state.current_user_id = None;
+		state.pending_post = None;
+	}
+	let _ = config::ConfigStore::new().save(&state.config);
 	state.account_timelines.remove(&id);
 	state.account_cw_expanded.remove(&id);
 

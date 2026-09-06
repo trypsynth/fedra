@@ -101,6 +101,14 @@ The dialog offers:
 
 If `Use enter to send posts` is enabled, `Enter` posts from the content field; otherwise use the Post button.
 
+## Autocomplete users
+
+Click the **Autocomplete...** button below the post body, or press `Alt+A` to insert or complete a mention where your cursor resides. This works in new posts, replies, quotes, edits, and recovered drafts. The user picker searches your account's following, followers, and people you have successfully favorited, boosted, replied to, quoted, or followed in Fedra. Available entries can be used while the cache builds or refreshes in the background.
+
+Use `Alt+F` for the Filter field and `Alt+U` for the Users list. Type the beginning of a display name or username, optionally including `@` and part of its instance domain; matching is case insensitive`. Clear the filter to show everyone. Use the arrow keys to select a user and `Enter` to insert their full address. `Escape` or Cancel leaves your text and selection unchanged.
+
+Autocomplete replaces selected text or the mention touching your cursor. Inside an ordinary word, it inserts after that word. The cache is separate for each signed-in account and refreshes daily; successful unfollows and blocks remove users from it.
+
 ## Options
 Open options with `Ctrl+,`.
 

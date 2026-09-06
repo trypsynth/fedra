@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
@@ -22,7 +22,7 @@ impl ProfileDialog {
 		frame: &Frame,
 		account: MastodonAccount,
 		current_user_id: Option<&str>,
-		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
+		net_tx: crate::network::NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
@@ -320,7 +320,7 @@ impl HashtagDialog {
 	pub fn new<F>(
 		frame: &Frame,
 		tags: Vec<Tag>,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: crate::network::NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_close: F,
 	) -> Self

@@ -1,5 +1,6 @@
 mod accounts;
 mod auth;
+pub mod autocomplete_picker;
 mod common;
 mod compose;
 mod filters;

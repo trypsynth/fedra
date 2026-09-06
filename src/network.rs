@@ -35,6 +35,7 @@ pub enum RelationshipAction {
 
 #[derive(Debug, Clone)]
 pub struct PostData {
+	pub interaction_author: Option<Account>,
 	pub content: String,
 	pub visibility: String,
 	pub sensitive: bool,
@@ -123,6 +124,7 @@ pub enum NetworkCommand {
 	},
 	Reply {
 		in_reply_to_id: String,
+		interaction_author: Option<Account>,
 		content: String,
 		visibility: String,
 		sensitive: bool,
@@ -141,12 +143,12 @@ pub enum NetworkCommand {
 	},
 	FollowAccount {
 		account_id: String,
+		target_acct: String,
 		target_name: String,
 		reblogs: bool,
 		action: RelationshipAction,
 	},
 	ToggleFollow {
-		account_id: Option<String>,
 		acct: String,
 		target_name: String,
 	},
@@ -564,9 +566,23 @@ fn edit_with_media(
 }
 
 pub struct NetworkHandle {
-	pub command_tx: Sender<NetworkCommand>,
+	pub command_tx: NetworkSender,
 	response_rx: Receiver<NetworkResponse>,
 	_thread: JoinHandle<()>,
+}
+
+#[derive(Clone)]
+pub struct NetworkSender(Sender<QueuedCommand>);
+struct QueuedCommand {
+	command: NetworkCommand,
+	_foreground: crate::autocomplete::rate::ForegroundGuard,
+}
+impl NetworkSender {
+	pub fn send(&self, command: NetworkCommand) -> Result<(), Box<mpsc::SendError<NetworkCommand>>> {
+		self.0
+			.send(QueuedCommand { command, _foreground: crate::autocomplete::rate::foreground() })
+			.map_err(|error| Box::new(mpsc::SendError(error.0.command)))
+	}
 }
 
 impl NetworkHandle {
@@ -597,19 +613,68 @@ impl Drop for NetworkHandle {
 	}
 }
 
-pub fn start_network(base_url: Url, access_token: String, ui_waker: UiWaker) -> Result<NetworkHandle> {
+pub fn start_network(
+	base_url: Url,
+	access_token: String,
+	ui_waker: UiWaker,
+	autocomplete: crate::autocomplete::Session,
+) -> Result<NetworkHandle> {
 	let client = MastodonClient::new(base_url)?;
 	let (cmd_tx, cmd_rx) = mpsc::channel();
 	let (resp_tx, resp_rx) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		network_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker);
+		network_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker, &autocomplete);
 	});
-	Ok(NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread })
+	Ok(NetworkHandle { command_tx: NetworkSender(cmd_tx), response_rx: resp_rx, _thread: thread })
 }
 
 fn send_response(responses: &Sender<NetworkResponse>, ui_waker: &UiWaker, response: NetworkResponse) {
 	let _ = responses.send(response);
 	ui_waker.wake();
+}
+
+fn capture_publication(
+	session: &crate::autocomplete::Session,
+	base: &Url,
+	result: &Result<PostSubmission>,
+	author: Option<&Account>,
+) {
+	if matches!(result, Ok(PostSubmission::Published(_)))
+		&& let Some(author) = author
+	{
+		session.interaction(crate::autocomplete::Entry::from_account(author, base));
+	}
+}
+
+/// Runs in the originating account's worker, even when its UI receiver has been dropped.
+fn capture_response(
+	client: &MastodonClient,
+	session: &crate::autocomplete::Session,
+	revision: u64,
+	response: &NetworkResponse,
+) {
+	use crate::autocomplete::{Change, Entry};
+	match response {
+		NetworkResponse::Favorited { result: Ok(status), .. } | NetworkResponse::Boosted { result: Ok(status), .. } => {
+			let target = status.reblog.as_deref().unwrap_or(status);
+			session.interaction(Entry::from_account(&target.account, client.base_url()));
+		}
+		NetworkResponse::RelationshipUpdated { action, result: Ok(relationship), .. } => match action {
+			RelationshipAction::Unfollow | RelationshipAction::CancelFollowRequest => {
+				session.relationship(relationship.id.clone(), Change::Unfollow);
+			}
+			RelationshipAction::Block => session.relationship(relationship.id.clone(), Change::Block),
+			RelationshipAction::Unblock => session.relationship(relationship.id.clone(), Change::Unblock),
+			_ => (),
+		},
+		NetworkResponse::RelationshipLoaded { result: Ok(relationship), .. } => {
+			session.observed_relationships(vec![relationship.clone()], revision);
+		}
+		NetworkResponse::RelationshipsForListLoaded { results, .. } => {
+			session.observed_relationships(results.clone(), revision);
+		}
+		_ => (),
+	}
 }
 
 fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineData {
@@ -676,12 +741,23 @@ fn first_relationship_result(relationships: Vec<Relationship>) -> Result<Relatio
 fn network_loop(
 	client: &MastodonClient,
 	access_token: &str,
-	commands: &Receiver<NetworkCommand>,
+	commands: &Receiver<QueuedCommand>,
 	responses: &Sender<NetworkResponse>,
 	ui_waker: &UiWaker,
+	autocomplete: &crate::autocomplete::Session,
 ) {
+	let observation_revision = std::cell::Cell::new(0);
+	let send_response = |responses: &Sender<NetworkResponse>, waker: &UiWaker, response: NetworkResponse| {
+		capture_response(client, autocomplete, observation_revision.get(), &response);
+		send_response(responses, waker, response);
+	};
 	loop {
-		match commands.recv() {
+		let Ok(QueuedCommand { command, _foreground }) = commands.recv() else {
+			break;
+		};
+		observation_revision.set(autocomplete.snapshot().revision);
+		let command: Result<NetworkCommand, mpsc::RecvError> = Ok(command);
+		match command {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
 				let result = match timeline_type {
 					TimelineType::Notifications | TimelineType::Mentions => client
@@ -870,6 +946,7 @@ fn network_loop(
 								None,
 								post.scheduled_at.as_deref(),
 							);
+							capture_publication(autocomplete, client.base_url(), &res, Some(&status.account));
 							send_response(responses, ui_waker, NetworkResponse::PostComplete(res));
 						}
 					}
@@ -901,6 +978,7 @@ fn network_loop(
 					post.quoted_status_id.as_deref(),
 					post.scheduled_at.as_deref(),
 				);
+				capture_publication(autocomplete, client.base_url(), &result, post.interaction_author.as_ref());
 				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
 			}
 			Ok(NetworkCommand::EditStatus { status_id, content, sensitive, spoiler_text, language, media, poll }) => {
@@ -955,6 +1033,7 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::Reply {
 				in_reply_to_id,
+				interaction_author,
 				content,
 				visibility,
 				sensitive,
@@ -980,6 +1059,7 @@ fn network_loop(
 					None,
 					scheduled_at.as_deref(),
 				);
+				capture_publication(autocomplete, client.base_url(), &result, interaction_author.as_ref());
 				send_response(responses, ui_waker, NetworkResponse::Replied(result));
 			}
 			Ok(NetworkCommand::FollowTag { name }) => {
@@ -1098,24 +1178,23 @@ fn network_loop(
 				let result = client.get_following_page(access_token, &account_id, Some(&max_id));
 				send_response(responses, ui_waker, NetworkResponse::FollowingNextPageLoaded { result });
 			}
-			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
-				let result = client.follow_account_with_options(access_token, &account_id, reblogs);
+			Ok(NetworkCommand::FollowAccount { account_id, target_acct, target_name, reblogs, action }) => {
+				let result = client.lookup_account(access_token, &target_acct).and_then(|account| {
+					let result = client.follow_account_with_options(access_token, &account.id, reblogs);
+					if result.is_ok() && action == RelationshipAction::Follow {
+						autocomplete.follow(crate::autocomplete::Entry::from_account(&account, client.base_url()));
+					}
+					result
+				});
 				send_response(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
 				);
 			}
-			Ok(NetworkCommand::ToggleFollow { account_id, acct, target_name }) => {
-				let resolved_id = if let Some(id) = account_id {
-					Some(id)
-				} else if let Ok(account) = client.lookup_account(access_token, &acct) {
-					Some(account.id)
-				} else {
-					None
-				};
-
-				if let Some(id) = resolved_id {
+			Ok(NetworkCommand::ToggleFollow { acct, target_name }) => {
+				if let Ok(account) = client.lookup_account(access_token, &acct) {
+					let id = account.id.clone();
 					if let Ok(mut rels) = client.get_relationships(access_token, slice::from_ref(&id)) {
 						if let Some(rel) = rels.pop() {
 							let (action, result) = if rel.following {
@@ -1128,6 +1207,10 @@ fn network_loop(
 									client.follow_account_with_options(access_token, &id, true),
 								)
 							};
+							if result.is_ok() && action == RelationshipAction::Follow {
+								autocomplete
+									.follow(crate::autocomplete::Entry::from_account(&account, client.base_url()));
+							}
 							send_response(
 								responses,
 								ui_waker,
