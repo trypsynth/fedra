@@ -16,18 +16,18 @@ ego-tree = "0.11.0"
 minijinja = { version = "2.24.0", default-features = false, features = ["macros", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-ship-shape = "0.1.7"
+ship-shape = "0.2.0"
 scraper = { version = "0.27.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
 wx-utils = "0.2.0"
-wxdragon = { version = "0.9.20", features = ["media-ctrl", "webview"] }
-accesskit = "0.24.1"
+wxdragon = { version = "0.9.21", features = ["media-ctrl", "webview"] }
+accesskit = "0.25.0"
 
 [target.'cfg(windows)'.dependencies]
-accesskit_windows = "0.34.0"
+accesskit_windows = "0.35.0"
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
 
 [build-dependencies]
