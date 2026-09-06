@@ -1,5 +1,5 @@
 use std::{
-	collections::HashMap,
+	collections::{BTreeMap, HashMap},
 	env, fs, io,
 	path::{Path, PathBuf},
 	time::{SystemTime, UNIX_EPOCH},
@@ -46,6 +46,8 @@ pub struct Config {
 	pub default_timelines: Vec<DefaultTimeline>,
 	#[serde(default)]
 	pub notification_preference: NotificationPreference,
+	#[serde(default)]
+	pub sounds: SoundSettings,
 	#[serde(default = "default_check_for_updates")]
 	pub check_for_updates_on_startup: bool,
 	#[serde(default)]
@@ -102,6 +104,105 @@ pub enum NotificationPreference {
 	Classic,
 	SoundOnly,
 	Disabled,
+	/// Show a Windows notification *and* play the sound for the event.
+	SoundAndClassic,
+}
+
+impl NotificationPreference {
+	/// Whether this mode shows a desktop notification.
+	#[must_use]
+	pub const fn shows_toast(self) -> bool {
+		matches!(self, Self::Classic | Self::SoundAndClassic)
+	}
+
+	/// Whether this mode plays a sound.
+	#[must_use]
+	pub const fn plays_sound(self) -> bool {
+		matches!(self, Self::SoundOnly | Self::SoundAndClassic)
+	}
+}
+
+/// Sound chosen for a single event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventSound {
+	/// Whether this event plays a sound at all.
+	pub enabled: bool,
+	/// A bare file name resolved against the sound directories, or an absolute path.
+	pub file: String,
+}
+
+/// Name of the sound pack used when none is configured.
+///
+/// Fedra ships no pack, so nothing on disk answers to this until the user makes one. It stays
+/// the name every other pack falls back to, and the name the Sounds tab shows when the folder is
+/// still empty.
+pub const DEFAULT_SOUND_PACK: &str = "default";
+
+fn default_sound_pack() -> String {
+	DEFAULT_SOUND_PACK.to_string()
+}
+
+/// Notification sound settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundSettings {
+	/// Master switch; when false no event plays a sound.
+	pub enabled: bool,
+	/// Playback volume, 0-100.
+	pub volume: u8,
+	/// Folder name of the active sound pack.
+	#[serde(default = "default_sound_pack")]
+	pub pack: String,
+	/// Per-event overrides, keyed by [`crate::sounds::SoundEvent::key`].
+	///
+	/// An entry with an empty `file` takes its sound from the active pack, so switching packs
+	/// keeps any per-event muting the user has set up.
+	pub events: BTreeMap<String, EventSound>,
+}
+
+impl Default for SoundSettings {
+	fn default() -> Self {
+		Self { enabled: true, volume: 80, pack: default_sound_pack(), events: BTreeMap::new() }
+	}
+}
+
+impl SoundSettings {
+	/// Settings for `event`, falling back to the shipped defaults when unset.
+	///
+	/// The default `file` is empty, meaning the active pack supplies the sound.
+	#[must_use]
+	pub fn for_event(&self, event: crate::sounds::SoundEvent) -> EventSound {
+		self.events
+			.get(event.key())
+			.cloned()
+			.unwrap_or_else(|| EventSound { enabled: event.default_enabled(), file: String::new() })
+	}
+
+	/// Whether `event` should make a sound at all.
+	#[must_use]
+	pub fn plays(&self, event: crate::sounds::SoundEvent) -> bool {
+		self.enabled && self.for_event(event).enabled
+	}
+
+	/// The file to play for `event`, or `None` when it is silenced or has no sound on disk.
+	///
+	/// An explicit per-event file wins; otherwise the active pack is consulted, and finally the
+	/// default pack, so a pack missing one sound falls back rather than going silent.
+	#[must_use]
+	pub fn file_for(&self, event: crate::sounds::SoundEvent) -> Option<String> {
+		if !self.plays(event) {
+			return None;
+		}
+		let setting = self.for_event(event);
+		if !setting.file.trim().is_empty() {
+			return Some(setting.file);
+		}
+		crate::sounds::SoundPlayer::pack_file(&self.pack, event)
+	}
+
+	/// Replace the settings for `event`.
+	pub fn set_event(&mut self, event: crate::sounds::SoundEvent, setting: EventSound) {
+		self.events.insert(event.key().to_string(), setting);
+	}
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1025,6 +1126,7 @@ impl Default for Config {
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),
+			sounds: SoundSettings::default(),
 			check_for_updates_on_startup: true,
 			update_channel: UpdateChannel::default(),
 			hotkey: HotkeyConfig::default(),

@@ -38,6 +38,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			default_timelines: state.config.default_timelines.clone(),
 			restore_open_timelines: state.config.restore_open_timelines,
 			notification_preference: state.config.notification_preference,
+			sounds: state.config.sounds.clone(),
 			hotkey: state.config.hotkey.clone(),
 			shortcuts: state.config.shortcuts.clone(),
 			templates: state.config.templates.clone(),
@@ -63,6 +64,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			default_timelines,
 			restore_open_timelines,
 			notification_preference,
+			sounds,
 			hotkey,
 			shortcuts,
 			templates,
@@ -95,6 +97,17 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		state.config.default_timelines = default_timelines;
 		state.config.restore_open_timelines = restore_open_timelines;
 		state.config.notification_preference = notification_preference;
+		// Rebuild the cached media controls so changed files and volume take effect immediately.
+		let sounds_changed = state.config.sounds != sounds;
+		state.config.sounds = sounds;
+		if let Some(player) = &state.sound_player {
+			player.set_volume(state.config.sounds.volume);
+		}
+		if sounds_changed {
+			// Loading a whole pack takes long enough to be heard as a stall, so let the dialog
+			// finish closing first and do it on the next pass through the command queue.
+			let _ = ui_tx.send(UiCommand::ReloadSounds);
+		}
 		state.config.hotkey = hotkey;
 		state.config.shortcuts = shortcuts;
 		*shortcuts_cell.borrow_mut() = state.config.shortcuts.clone();
@@ -139,6 +152,17 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 				);
 			}
 		}
+	}
+}
+
+/// Reload every sound for the active pack.
+///
+/// Deferred out of the options dialog so closing it stays responsive; by the time this runs the
+/// main window is back, and no notification can arrive in between.
+pub(super) fn reload_sounds(ctx: &mut UiCommandContext<'_>) {
+	let state = &mut *ctx.state;
+	if let Some(player) = &state.sound_player {
+		player.preload(&state.config.sounds);
 	}
 }
 

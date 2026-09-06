@@ -37,7 +37,9 @@ use crate::{
 /// Commands that can be triggered by UI events.
 pub enum UiCommand {
 	NewPost,
-	Reply { reply_all: bool },
+	Reply {
+		reply_all: bool,
+	},
 	Quote,
 	DeletePost,
 	EditPost,
@@ -57,6 +59,8 @@ pub enum UiCommand {
 	TimelineSelectionChanged(usize),
 	TimelineEntrySelectionChanged(usize),
 	ShowOptions,
+	/// Load the current sound pack once the options dialog has already closed.
+	ReloadSounds,
 	CustomizeShortcuts,
 	ManageAccounts,
 	SwitchAccount(String),
@@ -93,7 +97,10 @@ pub enum UiCommand {
 	ToggleWindowVisibility,
 	SetQuickActionKeysEnabled(bool),
 	SwitchTimelineByIndex(usize),
-	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
+	OAuthResult {
+		result: Result<auth::OAuthResult, String>,
+		instance_url: Url,
+	},
 	CancelAuth,
 	EditProfile,
 	ViewHelp,
@@ -164,6 +171,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::TimelineEntrySelectionChanged(index) => timeline::timeline_entry_selection_changed(ctx, index),
 		UiCommand::ShowOptions => settings::show_options(ctx),
 		UiCommand::CustomizeShortcuts => settings::customize_shortcuts(ctx),
+		UiCommand::ReloadSounds => settings::reload_sounds(ctx),
 		UiCommand::ManageAccounts => account::manage_accounts(ctx),
 		UiCommand::SwitchAccount(id) => account::switch_account(ctx, id),
 		UiCommand::SwitchNextAccount => account::switch_next_account(ctx),
