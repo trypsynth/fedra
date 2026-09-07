@@ -126,9 +126,11 @@ pub fn process_stream_events(
 						&& !status.should_hide(&filter_context)
 						&& status.matches_filter(&timeline_filter, current_user_id)
 					{
-						timeline.entries.insert(0, TimelineEntry::Status(Box::new(*status)));
-						if is_active {
-							active_needs_update = true;
+						if !timeline.entries.iter().any(|entry| entry.id() == status.id) {
+							timeline.entries.insert(0, TimelineEntry::Status(Box::new(*status)));
+							if is_active {
+								active_needs_update = true;
+							}
 						}
 					}
 				}
@@ -175,9 +177,11 @@ pub fn process_stream_events(
 							if notification.kind == "mention" {
 								mention_forwards.push(notification.clone());
 							}
-							timeline.entries.insert(0, TimelineEntry::Notification(Box::new(*notification)));
-							if is_active {
-								active_needs_update = true;
+							if !timeline.entries.iter().any(|entry| entry.id() == notification.id) {
+								timeline.entries.insert(0, TimelineEntry::Notification(Box::new(*notification)));
+								if is_active {
+									active_needs_update = true;
+								}
 							}
 						}
 					}
