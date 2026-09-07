@@ -362,6 +362,13 @@ Press `Ctrl+I` (or `I` in Quick Action Keys mode) on a post with media attachmen
 
 ## Changelog
 
+### Version 0.5.1
+* Added native ARM64 builds for Windows on ARM devices.
+* Control+enter now sends posts when focused anywhere in the compose dialog.
+* Fixed Fedra occasionally interacting with the rong post in timelines.
+* Fixed pressing control on its own sometimes triggering the delete post action.
+* The media player now tells you how to install the Windows Media Player Legacy optional feature if it fails to initialize, instead of showing a generic error.
+
 ### Version 0.5.0
 * Account usernames are now properly resolved when replying to a post from a remote instance's local timeline.
 * Added a hotkey customization dialog! It is now possible to change any keybinding in Fedra, for both the regular and quick key modes, through a simple and intuitive dialog.
