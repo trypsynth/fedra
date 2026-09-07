@@ -1,7 +1,7 @@
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
-use wxdragon::prelude::*;
+use wxdragon::{event::KeyboardEvent, prelude::*};
 
 use super::common::{KEY_RETURN, show_warning};
 use crate::{
@@ -1044,16 +1044,39 @@ pub fn prompt_for_compose(
 	let dialog_enter = dialog;
 	let content_text_enter = content_text;
 	let title_prefix_enter = title_prefix.clone();
+	dialog.bind_internal(EventType::CHAR_HOOK, move |event| {
+		let key_event = KeyboardEvent::new(event);
+		if key_event.get_key_code() == Some(KEY_RETURN)
+			&& key_event.control_down()
+			&& !key_event.shift_down()
+			&& !key_event.alt_down()
+			&& !key_event.meta_down()
+		{
+			let content = content_text_enter.get_value();
+			let char_count = content.trim().chars().count();
+			if char_count > max_chars {
+				show_warning(
+					&dialog_enter,
+					format!("Post is {char_count} characters, which exceeds the {max_chars} character limit."),
+					&title_prefix_enter,
+				);
+			} else {
+				dialog_enter.end_modal(ID_OK);
+			}
+			key_event.event.skip(false);
+		} else {
+			key_event.event.skip(true);
+		}
+	});
+
+	let dialog_enter = dialog;
+	let content_text_enter = content_text;
+	let title_prefix_enter = title_prefix.clone();
 	content_text.on_key_down(move |event| {
 		if let WindowEventData::Keyboard(ref key_event) = event {
 			let key = key_event.get_key_code();
-			let shift = key_event.shift_down();
-			let ctrl = key_event.control_down();
-			let should_submit = if enter_to_send {
-				key == Some(KEY_RETURN) && !shift && !ctrl
-			} else {
-				key == Some(KEY_RETURN) && ctrl
-			};
+			let should_submit =
+				enter_to_send && key == Some(KEY_RETURN) && !key_event.shift_down() && !key_event.control_down();
 
 			if should_submit {
 				let content = content_text_enter.get_value();
