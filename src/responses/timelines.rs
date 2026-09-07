@@ -9,6 +9,7 @@ use crate::{
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs,
+		menu::update_menu_labels,
 		timeline_view::{sync_timeline_selection_from_list, update_active_timeline_ui},
 	},
 };
@@ -165,6 +166,9 @@ pub(super) fn loaded(
 		status_snapshots
 	};
 	merge_snapshots(ctx, &status_snapshots);
+	if let Some(mb) = ctx.frame.get_menu_bar() {
+		update_menu_labels(&mb, ctx.state);
+	}
 	if should_find_next {
 		ctx.dispatch(UiCommand::FindNext);
 	}
@@ -286,6 +290,9 @@ pub(super) fn search_loaded(
 		status_snapshots
 	};
 	merge_snapshots(ctx, &status_snapshots);
+	if let Some(mb) = ctx.frame.get_menu_bar() {
+		update_menu_labels(&mb, ctx.state);
+	}
 }
 
 pub(super) fn search_failed(
