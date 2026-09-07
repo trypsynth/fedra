@@ -349,16 +349,13 @@ impl Status {
 			self.quote.as_ref().and_then(|q| q.quoted_status.as_ref()).map_or_else(
 				|| (String::new(), String::new(), String::new(), String::new(), String::new()),
 				|quote| {
-					if content.starts_with("RE: http") {
-						if let Some(url_end) = content.find('\n') {
-							content = content[url_end..].trim().to_string();
-						} else if content.split_whitespace().count() <= 2 {
-							content.clear();
-						}
-					}
+					strip_re_prefix(&mut content);
 					let author = quote.account.timeline_display_name(options.display_name_emoji_mode);
 					let username = format!("@{}", quote.account.acct);
-					let content = quote.content_with_cw(options.cw_display, cw_expanded);
+					let mut content = quote.content_with_cw(options.cw_display, cw_expanded);
+					// The quoted post can itself be a quote of another post, in which case its
+					// content carries the same plain-text "RE: <link>" fallback that ours does.
+					strip_re_prefix(&mut content);
 					let media = quote
 						.media_summary(options.cw_display, cw_expanded)
 						.map(|s| format!(" {s}"))
@@ -512,6 +509,18 @@ impl Status {
 		}
 		summary.push(']');
 		Some(summary)
+	}
+}
+
+/// Strips the plain-text "RE: <link>" fallback that quote posts carry in their content for
+/// clients that don't understand structured quotes, leaving just the post's own text.
+fn strip_re_prefix(content: &mut String) {
+	if content.starts_with("RE: http") {
+		if let Some(url_end) = content.find('\n') {
+			*content = content[url_end..].trim().to_string();
+		} else if content.split_whitespace().count() <= 2 {
+			content.clear();
+		}
 	}
 }
 
