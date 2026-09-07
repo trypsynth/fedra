@@ -9,7 +9,7 @@ use std::{
 	time::Duration,
 };
 
-use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, Tree, TreeUpdate};
+use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, TreeInfo, TreeUpdate};
 use accesskit_windows::SubclassingAdapter;
 use url::Url;
 use windows::{
@@ -46,7 +46,7 @@ impl ActivationHandler for MediaActivationHandler {
 
 		Some(TreeUpdate {
 			nodes: vec![(LR_ANNOUNCEMENT_ID, ann_node), (LR_ROOT_ID, root)],
-			tree: Some(Tree::new(LR_ROOT_ID)),
+			tree: Some(TreeInfo::new(LR_ROOT_ID)),
 			focus: LR_ROOT_ID,
 			tree_id: accesskit::TreeId::ROOT,
 		})

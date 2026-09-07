@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, Tree, TreeUpdate};
+use accesskit::{ActionHandler, ActionRequest, ActivationHandler, Node, NodeId, Role, TreeInfo, TreeUpdate};
 use accesskit_windows::SubclassingAdapter;
 use windows::Win32::Foundation::HWND;
 use wxdragon::{prelude::*, widgets::panel::PanelStyle};
@@ -66,7 +66,12 @@ impl ActivationHandler for TimelineActivationHandler {
 
 		root.set_children(children);
 		nodes.push((ROOT_ID, root));
-		Some(TreeUpdate { nodes, tree: Some(Tree::new(ROOT_ID)), focus: focus_id, tree_id: accesskit::TreeId::ROOT })
+		Some(TreeUpdate {
+			nodes,
+			tree: Some(TreeInfo::new(ROOT_ID)),
+			focus: focus_id,
+			tree_id: accesskit::TreeId::ROOT,
+		})
 	}
 }
 
