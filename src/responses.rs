@@ -1,1526 +1,257 @@
-use std::cell::Cell;
+mod accounts;
+mod helpers;
+mod lists;
+mod statuses;
+mod stream;
+mod tags;
+mod timeline_updates;
+mod timelines;
 
+use std::cell::{Cell, RefCell};
+
+pub use stream::process_stream_events;
 use wxdragon::prelude::*;
 
+use self::helpers::{spoken_failure, summarize_api_error};
 use crate::{
 	AppState, UiCommand,
-	config::{AutoloadMode, ConfigStore, SortOrder},
-	mastodon::{Poll, Status},
-	network::{NetworkCommand, NetworkResponse, TimelineData},
-	streaming,
-	timeline::{TimelineEntry, TimelineType},
+	config::{AutoloadMode, ShortcutsConfig, SortOrder},
+	network::NetworkResponse,
+	timeline::TimelineType,
 	ui::{
-		dialogs::{self, UserLookupAction},
+		commands::{UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
-		timeline_view::{sync_timeline_selection_from_list, update_active_timeline_ui},
+		timeline_list::TimelineList,
+		timeline_view::update_active_timeline_ui,
 	},
 	ui_wake::UiCommandSender,
 };
 
-fn summarize_api_error(err: &anyhow::Error) -> String {
-	for cause in err.chain().skip(1) {
-		let mut message = cause.to_string();
-		if message.trim().is_empty() {
-			continue;
-		}
-		if message.starts_with("HTTP status")
-			&& let Some((head, _)) = message.split_once(" for url")
-		{
-			message = head.to_string();
-		}
-		return message;
-	}
-	err.to_string()
-}
-
-fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
-	format!("{prefix}: {}", summarize_api_error(err))
-}
-
-/// Re-fetches all open user timelines belonging to the current account so that
-/// pinned-post ordering reflects the latest pin state.
-fn refresh_own_user_timelines(state: &AppState) {
-	let Some(current_user_id) = &state.current_user_id else { return };
-	let Some(handle) = &state.network_handle else { return };
-	let types = state.timeline_manager.open_timeline_types();
-	for tt in types {
-		if let crate::timeline::TimelineType::User { ref id, .. } = tt
-			&& id == current_user_id
-		{
-			handle.send(NetworkCommand::FetchTimeline { timeline_type: tt, limit: Some(40), max_id: None });
-		}
-	}
-}
-
-fn merge_status_snapshot_by_id(state: &mut AppState, status_id: &str, snapshot: &Status) -> bool {
-	let mut updated = false;
-	for timeline in state.timeline_manager.iter_mut() {
-		for entry in &mut timeline.entries {
-			if let Some(status) = entry.as_status_mut() {
-				if status.id == status_id {
-					*status = snapshot.clone();
-					updated = true;
-				}
-				if let Some(ref mut reblog) = status.reblog
-					&& reblog.id == status_id
-				{
-					**reblog = snapshot.clone();
-					updated = true;
-				}
-			}
-		}
-	}
-	updated
-}
-
-fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
-	let mut updated = merge_status_snapshot_by_id(state, &snapshot.id, snapshot);
-	if let Some(reblog) = &snapshot.reblog {
-		updated |= merge_status_snapshot_by_id(state, &reblog.id, reblog);
-	}
-	updated
-}
-
-/// Processes streaming events from WebSocket connections.
-pub fn process_stream_events(
-	state: &mut AppState,
-	timeline_list: &crate::ui::timeline_list::TimelineList,
-	suppress_selection: &Cell<bool>,
-	frame: &Frame,
-) {
-	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
-	let mut active_needs_update = false;
-	let mut processed_notification_ids = std::collections::HashSet::new();
-	let mut status_snapshots: Vec<Status> = Vec::new();
-	let mut mention_forwards: Vec<Box<crate::mastodon::Notification>> = Vec::new();
-	let mut own_post_forwards: Vec<Box<Status>> = Vec::new();
-	let mut own_delete_forwards: Vec<String> = Vec::new();
-
-	for timeline in state.timeline_manager.iter_mut() {
-		let Some(handle) = &timeline.stream_handle else { continue };
-		let events = handle.drain();
-		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
-		let filter_context = timeline.timeline_type.filter_context();
-		let template_key = timeline.timeline_type.template_key();
-		let timeline_filter = state.config.filters.resolve(template_key);
-		let current_user_id_string = state
-			.config
-			.active_account_id
-			.as_deref()
-			.and_then(|id| state.config.accounts.iter().find(|a| a.id == id).and_then(|a| a.user_id.clone()));
-		let current_user_id = current_user_id_string.as_deref();
-		if is_active {
-			let effective_sort_order = timeline.effective_sort_order(&state.config);
-			sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
-		}
-		for event in events {
-			match event {
-				streaming::StreamEvent::Update { timeline_type, status } => {
-					status_snapshots.push((*status).clone());
-					// The user stream (Home) is the only stream that carries our own posts;
-					// user timelines have no stream of their own, so forward them by hand.
-					if timeline_type == TimelineType::Home && current_user_id == Some(status.account.id.as_str()) {
-						own_post_forwards.push(status.clone());
-					}
-					if timeline.timeline_type == timeline_type
-						&& !status.should_hide(&filter_context)
-						&& status.matches_filter(&timeline_filter, current_user_id)
-					{
-						if !timeline.entries.iter().any(|entry| entry.id() == status.id) {
-							timeline.entries.insert(0, TimelineEntry::Status(Box::new(*status)));
-							if is_active {
-								active_needs_update = true;
-							}
-						}
-					}
-				}
-				streaming::StreamEvent::StatusUpdate { status, .. } => {
-					status_snapshots.push((*status).clone());
-				}
-				streaming::StreamEvent::Delete { timeline_type, id } => {
-					if timeline_type == TimelineType::Home {
-						own_delete_forwards.push(id.clone());
-					}
-					if timeline.timeline_type == timeline_type {
-						timeline.entries.retain(|entry| entry.as_status().is_none_or(|s| s.id != id));
-						if is_active {
-							active_needs_update = true;
-						}
-					}
-				}
-				streaming::StreamEvent::Notification { timeline_type, notification } => {
-					if let Some(status) = notification.status.as_deref() {
-						status_snapshots.push(status.clone());
-					}
-					if timeline.timeline_type == timeline_type {
-						if !processed_notification_ids.contains(&notification.id) {
-							let pref = state.config.notification_preference;
-							match pref {
-								crate::config::NotificationPreference::Classic => {
-									if let Some(app_shell) = &state.app_shell {
-										crate::notifications::show_notification(app_shell, &notification);
-									}
-								}
-								crate::config::NotificationPreference::SoundOnly => {
-									if let Some(mc) = &state.media_ctrl {
-										mc.stop();
-										mc.play();
-									}
-								}
-								crate::config::NotificationPreference::Disabled => {}
-							}
-							processed_notification_ids.insert(notification.id.clone());
-						}
-						if notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
-							&& notification.matches_filter(&timeline_filter, current_user_id)
-						{
-							if notification.kind == "mention" {
-								mention_forwards.push(notification.clone());
-							}
-							if !timeline.entries.iter().any(|entry| entry.id() == notification.id) {
-								timeline.entries.insert(0, TimelineEntry::Notification(Box::new(*notification)));
-								if is_active {
-									active_needs_update = true;
-								}
-							}
-						}
-					}
-				}
-				streaming::StreamEvent::Conversation { timeline_type, conversation } => {
-					if timeline.timeline_type == timeline_type
-						&& let Some(mut status) = conversation.last_status
-						&& !status.should_hide(&filter_context)
-						&& status.matches_filter(&timeline_filter, current_user_id)
-					{
-						status.conversation_id = Some(conversation.id);
-						status_snapshots.push(status.clone());
-						if let Some(conv_id) = &status.conversation_id {
-							timeline.entries.retain(|entry| {
-								if let TimelineEntry::Status(s) = entry {
-									s.conversation_id.as_deref() != Some(conv_id)
-								} else {
-									true
-								}
-							});
-						}
-						timeline.entries.insert(0, TimelineEntry::Status(Box::new(status)));
-						if is_active {
-							active_needs_update = true;
-						}
-					}
-				}
-				streaming::StreamEvent::Connected(timeline_type)
-				| streaming::StreamEvent::Disconnected(timeline_type) => {
-					let _ = timeline_type;
-				}
-			}
-		}
-	}
-	if !mention_forwards.is_empty() {
-		if let Some(mentions_tl) = state.timeline_manager.get_mut(&TimelineType::Mentions) {
-			let existing_ids: std::collections::HashSet<String> =
-				mentions_tl.entries.iter().map(|e| e.id().to_string()).collect();
-			for notif in mention_forwards {
-				if !existing_ids.contains(&notif.id) {
-					mentions_tl.entries.insert(0, TimelineEntry::Notification(notif));
-				}
-			}
-			if active_type.as_ref() == Some(&TimelineType::Mentions) {
-				active_needs_update = true;
-			}
-		}
-	}
-
-	if !own_post_forwards.is_empty() || !own_delete_forwards.is_empty() {
-		let current_user_id = state.current_user_id.clone();
-		if let Some(current_user_id) = current_user_id {
-			for timeline in state.timeline_manager.iter_mut() {
-				let TimelineType::User { ref id, .. } = timeline.timeline_type else { continue };
-				if *id != current_user_id {
-					continue;
-				}
-				let filter_context = timeline.timeline_type.filter_context();
-				let timeline_filter = state.config.filters.resolve(timeline.timeline_type.template_key());
-				let mut changed = false;
-				if !own_delete_forwards.is_empty() {
-					let before = timeline.entries.len();
-					timeline
-						.entries
-						.retain(|entry| entry.as_status().is_none_or(|s| !own_delete_forwards.contains(&s.id)));
-					changed |= timeline.entries.len() != before;
-				}
-				// New posts go below any pinned posts, which the timeline fetch keeps at the front.
-				// Inserting each one at that same index leaves the newest first, as on Home.
-				let insert_at = timeline.entries.iter().take_while(|e| e.as_status().is_some_and(|s| s.pinned)).count();
-				for status in &own_post_forwards {
-					if timeline.entries.iter().any(|e| e.as_status().is_some_and(|s| s.id == status.id)) {
-						continue;
-					}
-					if status.should_hide(&filter_context)
-						|| !status.matches_filter(&timeline_filter, Some(current_user_id.as_str()))
-					{
-						continue;
-					}
-					timeline.entries.insert(insert_at, TimelineEntry::Status(status.clone()));
-					changed = true;
-				}
-				if changed && active_type.as_ref() == Some(&timeline.timeline_type) {
-					active_needs_update = true;
-				}
-			}
-		}
-	}
-
-	let mut merged_any = false;
-	for snapshot in &status_snapshots {
-		if merge_status_snapshot(state, snapshot) {
-			merged_any = true;
-		}
-	}
-	if merged_any {
-		active_needs_update = true;
-	}
-	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-	let active_index = state.timeline_manager.active_index();
-	if active_needs_update
-		&& let Some(view_options) = view_options
-		&& let Some(active) = state.timeline_manager.active_mut()
-	{
-		update_active_timeline_ui(
-			timeline_list,
-			active,
-			suppress_selection,
-			&view_options,
-			&state.cw_expanded,
-			active_index,
-		);
-		if let Some(mb) = frame.get_menu_bar() {
-			update_menu_labels(&mb, state);
-		}
-	}
-}
-
-/// Processes network responses from the background network thread.
+/// Everything a response handler needs to update application state and the UI.
 pub struct NetworkResponseContext<'a> {
 	pub frame: &'a Frame,
 	pub state: &'a mut AppState,
 	pub timelines_selector: ListBox,
-	pub timeline_list: crate::ui::timeline_list::TimelineList,
+	pub timeline_list: TimelineList,
 	pub suppress_selection: &'a Cell<bool>,
-	pub live_region: &'a crate::ui::timeline_list::TimelineList,
+	pub live_region: &'a TimelineList,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
 	pub autoload_mode: &'a Cell<AutoloadMode>,
 	pub sort_order_cell: &'a Cell<SortOrder>,
 	pub tray_hidden: &'a Cell<bool>,
-	pub shortcuts_cell: &'a std::cell::RefCell<crate::config::ShortcutsConfig>,
+	pub shortcuts_cell: &'a RefCell<ShortcutsConfig>,
 	pub ui_tx: &'a UiCommandSender,
 }
 
+impl NetworkResponseContext<'_> {
+	fn announce(&self, message: &str) {
+		self.live_region.announce(message);
+	}
+
+	fn announce_failure(&self, prefix: &str, err: &anyhow::Error) {
+		self.announce(&spoken_failure(prefix, err));
+	}
+
+	/// Runs a UI command through the same path the main loop uses.
+	fn dispatch(&mut self, cmd: UiCommand) {
+		let mut ctx = UiCommandContext {
+			state: &mut *self.state,
+			frame: self.frame,
+			timelines_selector: self.timelines_selector,
+			timeline_list: self.timeline_list.clone(),
+			suppress_selection: self.suppress_selection,
+			live_region: self.live_region,
+			quick_action_keys_enabled: self.quick_action_keys_enabled,
+			autoload_mode: self.autoload_mode,
+			sort_order_cell: self.sort_order_cell,
+			tray_hidden: self.tray_hidden,
+			shortcuts_cell: self.shortcuts_cell,
+			ui_tx: self.ui_tx,
+		};
+		handle_ui_command(cmd, &mut ctx);
+	}
+
+	/// Redraws the active timeline so entry changes reach the screen reader.
+	fn refresh_active_timeline(&mut self) {
+		let state = &mut *self.state;
+		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
+		let active_index = state.timeline_manager.active_index();
+		if let Some(view_options) = view_options
+			&& let Some(active) = state.timeline_manager.active_mut()
+		{
+			update_active_timeline_ui(
+				&self.timeline_list,
+				active,
+				self.suppress_selection,
+				&view_options,
+				&state.cw_expanded,
+				active_index,
+			);
+		}
+	}
+
+	fn refresh_menu_labels(&mut self) {
+		if let Some(mb) = self.frame.get_menu_bar() {
+			update_menu_labels(&mb, self.state);
+		}
+	}
+}
+
 /// Processes network responses from the background network thread.
-#[allow(clippy::too_many_lines)]
 pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
-	let frame = ctx.frame;
-	let state = &mut *ctx.state;
-	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = &ctx.timeline_list;
-	let suppress_selection = ctx.suppress_selection;
-	let live_region = ctx.live_region;
-	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
-	let autoload_mode = ctx.autoload_mode;
-	let sort_order_cell = ctx.sort_order_cell;
-	let tray_hidden = ctx.tray_hidden;
-	let shortcuts_cell = ctx.shortcuts_cell;
-	let ui_tx = ctx.ui_tx;
-	let Some(handle) = &state.network_handle else { return };
-	let active_type = state.timeline_manager.active().map(|t| t.timeline_type.clone());
-	macro_rules! dispatch_ui_command {
-		($cmd:expr) => {{
-			let mut ctx = crate::ui::commands::UiCommandContext {
-				state,
-				frame,
-				timelines_selector,
-				timeline_list: timeline_list.clone(),
-				suppress_selection,
-				live_region,
-				quick_action_keys_enabled,
-				autoload_mode,
-				sort_order_cell,
-				tray_hidden,
-				shortcuts_cell,
-				ui_tx,
-			};
-			crate::ui::commands::handle_ui_command($cmd, &mut ctx);
-		}};
-	}
-	for response in handle.drain() {
-		match response {
-			NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
-				let mut should_find_next = false;
-				let mut should_find_prev = false;
-				let is_active = active_type.as_ref() == Some(&timeline_type);
-				let mut status_snapshots: Vec<Status> = Vec::new();
-				let view_options = state.timeline_view_options_for(&timeline_type);
-				let _text_options = &view_options.text_options;
-				// Extract any pending position restore for this timeline's initial load.
-				let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
-				let restore_id = if max_id.is_none() {
-					state
-						.pending_restore_post_id
-						.as_ref()
-						.and_then(|(rt, id)| if *rt == timeline_type { Some(id.clone()) } else { None })
-				} else {
-					None
-				};
-				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					if is_active {
-						let effective_sort_order = timeline.effective_sort_order(&state.config);
-						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
-					}
-					let filter_context = timeline_type.filter_context();
-					let template_key = timeline_type.template_key();
-					let timeline_filter = state.config.filters.resolve(template_key);
-					let current_user_id_string = state.config.active_account_id.as_deref().and_then(|id| {
-						state.config.accounts.iter().find(|a| a.id == id).and_then(|a| a.user_id.clone())
-					});
-					let current_user_id = current_user_id_string.as_deref();
-
-					let (new_entries, next_max_id): (Vec<TimelineEntry>, Option<String>) = match data {
-						TimelineData::Statuses(statuses, next) => (
-							statuses
-								.into_iter()
-								.filter(|s| {
-									!s.should_hide(&filter_context)
-										&& s.matches_filter(&timeline_filter, current_user_id)
-								})
-								.map(|s| TimelineEntry::Status(Box::new(s)))
-								.collect(),
-							next,
-						),
-						TimelineData::Notifications(notifications, next) => (
-							notifications
-								.into_iter()
-								.filter(|n| {
-									n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
-										&& n.matches_filter(&timeline_filter, current_user_id)
-								})
-								.map(|n| TimelineEntry::Notification(Box::new(n)))
-								.collect(),
-							next,
-						),
-						TimelineData::Conversations(conversations, next) => (
-							conversations
-								.into_iter()
-								.filter_map(|c| {
-									c.last_status
-										.filter(|s| {
-											!s.should_hide(&filter_context)
-												&& s.matches_filter(&timeline_filter, current_user_id)
-										})
-										.map(|mut s| {
-											s.conversation_id = Some(c.id);
-											TimelineEntry::Status(Box::new(s))
-										})
-								})
-								.collect(),
-							next,
-						),
-					};
-					for entry in &new_entries {
-						if let Some(status) = entry.as_status() {
-							status_snapshots.push(status.clone());
-						}
-					}
-
-					if max_id.is_some() {
-						let existing_ids: std::collections::HashSet<&str> =
-							timeline.entries.iter().map(super::timeline::TimelineEntry::id).collect();
-						let filtered: Vec<TimelineEntry> =
-							new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
-						if filtered.is_empty() {
-							live_region.announce("No more posts");
-						} else {
-							timeline.entries.extend(filtered.clone());
-						}
-
-						if is_active {
-							if let Some(idx) = timeline_index_opt {
-								update_active_timeline_ui(
-									timeline_list,
-									timeline,
-									suppress_selection,
-									&view_options,
-									&state.cw_expanded,
-									idx,
-								);
-							}
-						}
-					} else {
-						timeline.entries = new_entries;
-						// Restore selected post if it exists in the freshly loaded entries.
-						if let Some(ref id) = restore_id {
-							if timeline.entries.iter().any(|e| e.id() == id.as_str()) {
-								timeline.selected_id = Some(id.clone());
-							}
-						}
-						if is_active {
-							if let Some(idx) = timeline_index_opt {
-								update_active_timeline_ui(
-									timeline_list,
-									timeline,
-									suppress_selection,
-									&view_options,
-									&state.cw_expanded,
-									idx,
-								);
-							}
-						}
-					}
-					timeline.next_max_id = next_max_id;
-					timeline.loading_more = false;
-					timeline.loading_more_in_background = false;
-					if is_active && timeline.pending_find_next {
-						timeline.pending_find_next = false;
-						should_find_next = true;
-					}
-					if is_active && timeline.pending_find_prev {
-						timeline.pending_find_prev = false;
-						should_find_prev = true;
-					}
-				}
-				// Clear the pending restore if it was for this timeline (whether found or not).
-				if restore_id.is_some() {
-					state.pending_restore_post_id = None;
-				}
-				if !status_snapshots.is_empty() {
-					let mut merged_any = false;
-					for snapshot in &status_snapshots {
-						if merge_status_snapshot(state, snapshot) {
-							merged_any = true;
-						}
-					}
-					if merged_any {
-						let view_options =
-							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-						let active_index = state.timeline_manager.active_index();
-						if let Some(view_options) = view_options
-							&& let Some(active) = state.timeline_manager.active_mut()
-						{
-							update_active_timeline_ui(
-								timeline_list,
-								active,
-								suppress_selection,
-								&view_options,
-								&state.cw_expanded,
-								active_index,
-							);
-						}
-					}
-				}
-				if should_find_next {
-					dispatch_ui_command!(crate::ui::commands::UiCommand::FindNext);
-				}
-				if should_find_prev {
-					dispatch_ui_command!(crate::ui::commands::UiCommand::FindPrev);
-				}
-			}
-			NetworkResponse::TimelineLoaded { timeline_type, result: Err(ref err), max_id } => {
-				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					timeline.loading_more = false;
-				}
-				if max_id.is_some() {
-					live_region.announce("Failed to load more posts");
-				} else {
-					live_region.announce(&spoken_failure("Failed to load timeline", err));
-				}
-			}
-			NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
-				ui_tx.send(crate::ui::commands::UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
-			}
-			NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
-				live_region.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
-				ui_tx.send(crate::ui::commands::UiCommand::PromptForQuote(Box::new(focus))).unwrap();
-			}
-			NetworkResponse::StatusSourceFetched { mut status, result } => {
-				let source_text = match result {
-					Ok(source) => {
-						if !source.spoiler_text.is_empty() {
-							status.spoiler_text = source.spoiler_text;
-						}
-						Some(source.text)
-					}
-					Err(err) => {
-						live_region.announce(&format!(
-							"Could not fetch source text, editing with stripped HTML: {}",
-							summarize_api_error(&err)
-						));
-						None
-					}
-				};
-				crate::ui::commands::run_edit_post_dialog(frame, state, &status, source_text.as_deref());
-			}
-			NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
-				live_region.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
-				let action = state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);
-				match action {
-					UserLookupAction::Profile => {
-						if let Some(net) = &state.network_handle {
-							net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-							let net_tx = net.command_tx.clone();
-							let ui_tx_timeline = ui_tx.clone();
-							let timeline_type = TimelineType::User {
-								id: account.id.clone(),
-								name: account.display_name_or_username().to_string(),
-							};
-							let ui_tx_close = ui_tx.clone();
-
-							let dlg = dialogs::ProfileDialog::new(
-								frame,
-								account.clone(),
-								state.current_user_id.as_deref(),
-								net_tx,
-								ui_tx.clone(),
-								move || {
-									let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-								},
-								move || {
-									let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-								},
-							);
-							dlg.show();
-							state.profile_dialog = Some(dlg);
-						} else {
-							live_region.announce("Network not available");
-						}
-					}
-					UserLookupAction::Timeline => {
-						let timeline_type = TimelineType::User {
-							id: account.id.clone(),
-							name: account.display_name_or_username().to_string(),
-						};
-						dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
-					}
-				}
-			}
-			NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
-				state.pending_user_lookup_action = None;
-				live_region.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Published(status))) => {
-				state.pending_post = None;
-				live_region.announce("Posted");
-				if state.pending_thread_continuation {
-					state.pending_thread_continuation = false;
-					dispatch_ui_command!(UiCommand::ContinueThread(status));
-				}
-			}
-			NetworkResponse::PostComplete(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
-				state.pending_post = None;
-				state.pending_thread_continuation = false;
-				live_region.announce(&format!(
-					"Post scheduled for {}",
-					crate::mastodon::friendly_time_local(&scheduled.scheduled_at)
-				));
-			}
-			NetworkResponse::PostComplete(Err(ref err)) => {
-				state.pending_thread_continuation = false;
-				live_region.announce(&spoken_failure("Failed to post", err));
-				dispatch_ui_command!(UiCommand::RecoverDraft);
-			}
-			NetworkResponse::Favorited { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.favourited = status.favourited;
-					s.favourites_count = status.favourites_count;
-				});
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Favorited");
-			}
-			NetworkResponse::Favorited { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to favorite", err));
-			}
-			NetworkResponse::Bookmarked { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.bookmarked = status.bookmarked;
-				});
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Bookmarked");
-			}
-			NetworkResponse::Bookmarked { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to bookmark", err));
-			}
-			NetworkResponse::Unfavorited { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.favourited = status.favourited;
-					s.favourites_count = status.favourites_count;
-				});
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Unfavorited");
-			}
-			NetworkResponse::Unfavorited { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to unfavorite", err));
-			}
-			NetworkResponse::Unbookmarked { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.bookmarked = status.bookmarked;
-				});
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Unbookmarked");
-			}
-			NetworkResponse::Unbookmarked { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to unbookmark", err));
-			}
-			NetworkResponse::Pinned { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.pinned = status.pinned;
-				});
-				refresh_own_user_timelines(state);
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Post pinned");
-			}
-			NetworkResponse::Pinned { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to pin post", err));
-			}
-			NetworkResponse::Unpinned { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.pinned = status.pinned;
-				});
-				refresh_own_user_timelines(state);
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Post unpinned");
-			}
-			NetworkResponse::Unpinned { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to unpin post", err));
-			}
-			NetworkResponse::Boosted { status_id, result: Ok(status) } => {
-				// The returned status is the reblog wrapper, get the inner status
-				if let Some(inner) = &status.reblog {
-					update_status_in_timelines(state, &status_id, |s| {
-						s.reblogged = inner.reblogged;
-						s.reblogs_count = inner.reblogs_count;
-					});
-				}
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Boosted");
-			}
-			NetworkResponse::Boosted { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to boost", err));
-			}
-			NetworkResponse::Unboosted { status_id, result: Ok(status) } => {
-				update_status_in_timelines(state, &status_id, |s| {
-					s.reblogged = status.reblogged;
-					s.reblogs_count = status.reblogs_count;
-				});
-				if let Some(mb) = frame.get_menu_bar() {
-					update_menu_labels(&mb, state);
-				}
-				live_region.announce("Unboosted");
-			}
-			NetworkResponse::Unboosted { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to unboost", err));
-			}
-			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Published(status))) => {
-				live_region.announce("Reply sent");
-				if state.pending_thread_continuation {
-					state.pending_thread_continuation = false;
-					dispatch_ui_command!(UiCommand::ContinueThread(status));
-				}
-			}
-			NetworkResponse::Replied(Ok(crate::mastodon::PostSubmission::Scheduled(scheduled))) => {
-				state.pending_thread_continuation = false;
-				live_region.announce(&format!(
-					"Reply scheduled for {}",
-					crate::mastodon::friendly_time_local(&scheduled.scheduled_at)
-				));
-			}
-			NetworkResponse::Replied(Err(ref err)) => {
-				state.pending_thread_continuation = false;
-				live_region.announce(&spoken_failure("Failed to reply", err));
-			}
-			NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => {
-				remove_status_from_timelines(state, &status_id);
-				{
-					let view_options =
-						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-					let active_index = state.timeline_manager.active_index();
-					if let Some(view_options) = view_options
-						&& let Some(active) = state.timeline_manager.active_mut()
-					{
-						update_active_timeline_ui(
-							timeline_list,
-							active,
-							suppress_selection,
-							&view_options,
-							&state.cw_expanded,
-							active_index,
-						);
-					}
-				}
-				live_region.announce("Deleted");
-			}
-			NetworkResponse::StatusDeleted { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to delete", err));
-			}
-			NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => {
-				let status_clone = status.clone();
-				update_status_in_timelines(state, &status.id, move |s| *s = status_clone.clone());
-				{
-					let view_options =
-						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-					let active_index = state.timeline_manager.active_index();
-					if let Some(view_options) = view_options
-						&& let Some(active) = state.timeline_manager.active_mut()
-					{
-						update_active_timeline_ui(
-							timeline_list,
-							active,
-							suppress_selection,
-							&view_options,
-							&state.cw_expanded,
-							active_index,
-						);
-					}
-				}
-				live_region.announce("Edited");
-			}
-			NetworkResponse::StatusEdited { result: Err(ref err), .. } => {
-				live_region.announce(&spoken_failure("Failed to edit", err));
-			}
-			NetworkResponse::TagFollowed { name, result: Ok(_) } => {
-				update_tag_in_timelines(state, &name, true);
-				if let Some(dlg) = &state.hashtag_dialog {
-					dlg.update_tag(&name, true);
-				}
-				live_region.announce(&format!("Followed #{name}"));
-			}
-			NetworkResponse::TagFollowed { name, result: Err(err) } => {
-				live_region.announce(&format!("Failed to follow #{name}: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::TagUnfollowed { name, result: Ok(_) } => {
-				update_tag_in_timelines(state, &name, false);
-				if let Some(dlg) = &state.hashtag_dialog {
-					dlg.update_tag(&name, false);
-				}
-				live_region.announce(&format!("Unfollowed #{name}"));
-			}
-			NetworkResponse::TagUnfollowed { name, result: Err(err) } => {
-				live_region.announce(&format!("Failed to unfollow #{name}: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::TagsInfoFetched { result: Ok(tags) } => {
-				if let Some(handle) = &state.network_handle {
-					let net_tx = handle.command_tx.clone();
-					let ui_tx_dlg = ui_tx.clone();
-					let dlg = dialogs::HashtagDialog::new(frame, tags, net_tx, ui_tx.clone(), move || {
-						let _ = ui_tx_dlg.send(UiCommand::HashtagDialogClosed);
-					});
-					dlg.show();
-					state.hashtag_dialog = Some(dlg);
-				}
-			}
-			NetworkResponse::TagsInfoFetched { result: Err(err) } => {
-				live_region.announce(&spoken_failure("Failed to load hashtags", &err));
-			}
-			NetworkResponse::TagMuted { name, result: Ok(()) } => {
-				if let Some(dlg) = &state.hashtag_dialog {
-					dlg.update_tag_muted(&name, true);
-				}
-				live_region.announce(&format!("Muted #{name}"));
-			}
-			NetworkResponse::TagMuted { name, result: Err(err) } => {
-				live_region.announce(&format!("Failed to mute #{name}: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::TagUnmuted { name, result: Ok(()) } => {
-				if let Some(dlg) = &state.hashtag_dialog {
-					dlg.update_tag_muted(&name, false);
-				}
-				live_region.announce(&format!("Unmuted #{name}"));
-			}
-			NetworkResponse::TagUnmuted { name, result: Err(err) } => {
-				live_region.announce(&format!("Failed to unmute #{name}: {}", summarize_api_error(&err)));
-			}
-			NetworkResponse::RebloggedByLoaded { result: Ok(accounts), .. } => {
-				if let Some((account, action)) =
-					dialogs::prompt_for_account_list(frame, "Boosts", "Users who boosted this post", &accounts)
-				{
-					match action {
-						UserLookupAction::Profile => {
-							if let Some(net) = &state.network_handle {
-								net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-								let net_tx = net.command_tx.clone();
-								let ui_tx_timeline = ui_tx.clone();
-								let timeline_type = TimelineType::User {
-									id: account.id.clone(),
-									name: account.display_name_or_username().to_string(),
-								};
-								let ui_tx_close = ui_tx.clone();
-								let dlg = dialogs::ProfileDialog::new(
-									frame,
-									account.clone(),
-									state.current_user_id.as_deref(),
-									net_tx,
-									ui_tx.clone(),
-									move || {
-										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-									},
-									move || {
-										let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-									},
-								);
-								dlg.show();
-								state.profile_dialog = Some(dlg);
-							} else {
-								live_region.announce("Network not available");
-							}
-						}
-						UserLookupAction::Timeline => {
-							let timeline_type = TimelineType::User {
-								id: account.id.clone(),
-								name: account.display_name_or_username().to_string(),
-							};
-							dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
-						}
-					}
-				}
-			}
-			NetworkResponse::RebloggedByLoaded { result: Err(err), .. } => {
-				live_region.announce(&spoken_failure("Failed to load boosts", &err));
-			}
-			NetworkResponse::FavoritedByLoaded { result: Ok(accounts), .. } => {
-				if let Some((account, action)) =
-					dialogs::prompt_for_account_list(frame, "Favorites", "Users who favorited this post", &accounts)
-				{
-					match action {
-						UserLookupAction::Profile => {
-							if let Some(net) = &state.network_handle {
-								net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-								let net_tx = net.command_tx.clone();
-								let ui_tx_timeline = ui_tx.clone();
-								let timeline_type = TimelineType::User {
-									id: account.id.clone(),
-									name: account.display_name_or_username().to_string(),
-								};
-								let ui_tx_close = ui_tx.clone();
-								let dlg = dialogs::ProfileDialog::new(
-									frame,
-									account.clone(),
-									state.current_user_id.as_deref(),
-									net_tx,
-									ui_tx.clone(),
-									move || {
-										let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-									},
-									move || {
-										let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-									},
-								);
-								dlg.show();
-								state.profile_dialog = Some(dlg);
-							} else {
-								live_region.announce("Network not available");
-							}
-						}
-						UserLookupAction::Timeline => {
-							let timeline_type = TimelineType::User {
-								id: account.id.clone(),
-								name: account.display_name_or_username().to_string(),
-							};
-							dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
-						}
-					}
-				}
-			}
-			NetworkResponse::FavoritedByLoaded { result: Err(err), .. } => {
-				live_region.announce(&spoken_failure("Failed to load favorites", &err));
-			}
-			NetworkResponse::FollowersLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
-				if accounts.is_empty() && next_max_id.is_none() {
-					live_region.announce("No followers found");
-					continue;
-				}
-				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
-					Some(tx) => tx,
-					None => continue,
-				};
-				let ui_tx_timeline = ui_tx.clone();
-				let ui_tx_close = ui_tx.clone();
-				let ui_tx_dlg = ui_tx.clone();
-				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
-				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
-				let followers_parent: &dyn wxdragon::window::WxWidget =
-					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
-				let dlg = dialogs::FollowListDialog::new(
-					followers_parent,
-					"Followers",
-					"Users who follow this person:",
-					&accounts,
-					total_count,
-					account_id_opt,
-					net_tx_dlg,
-					ui_tx_dlg,
-					move |account| {
-						let timeline_type = TimelineType::User {
-							id: account.id.clone(),
-							name: account.display_name_or_username().to_string(),
-						};
-						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
-					},
-					move || {
-						let _ = ui_tx_close.send(UiCommand::FollowersDialogClosed);
-					},
-				);
-				dlg.show();
-				if next_max_id.is_none() {
-					dlg.mark_loaded();
-				}
-				state.followers_dialog = Some(dlg);
-				if let Some(h) = &state.network_handle {
-					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
-					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
-					if let Some(max_id) = next_max_id {
-						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
-					}
-				}
-			}
-			NetworkResponse::FollowersLoaded { result: Err(err), .. } => {
-				live_region.announce(&spoken_failure("Failed to load followers", &err));
-			}
-			NetworkResponse::FollowersNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
-				let should_fetch = if let Some(dlg) = &state.followers_dialog {
-					if !accounts.is_empty() {
-						dlg.append_accounts(&accounts);
-					}
-					if accounts.is_empty() || next_max_id.is_none() {
-						dlg.mark_loaded();
-						None
-					} else {
-						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
-					}
-				} else {
-					None
-				};
-				if let Some(h) = &state.network_handle {
-					if !accounts.is_empty() {
-						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
-						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: true });
-					}
-					if let Some((account_id, max_id)) = should_fetch {
-						let _ = h.send(NetworkCommand::FetchNextFollowersPage { account_id, max_id });
-					}
-				}
-			}
-			NetworkResponse::FollowersNextPageLoaded { result: Err(err) } => {
-				if let Some(dlg) = &state.followers_dialog {
-					dlg.mark_loaded();
-				}
-				live_region.announce(&spoken_failure("Failed to load more followers", &err));
-			}
-			NetworkResponse::FollowingLoaded { result: Ok((accounts, next_max_id)), total_count, account_id } => {
-				if accounts.is_empty() && next_max_id.is_none() {
-					live_region.announce("No following found");
-					continue;
-				}
-				let net_tx_dlg = match state.network_handle.as_ref().map(|h| h.command_tx.clone()) {
-					Some(tx) => tx,
-					None => continue,
-				};
-				let ui_tx_timeline = ui_tx.clone();
-				let ui_tx_close = ui_tx.clone();
-				let ui_tx_dlg = ui_tx.clone();
-				let account_id_opt = next_max_id.as_ref().map(|_| account_id.clone());
-				let profile_dlg_handle = state.profile_dialog.as_ref().map(|pd| pd.dialog_handle());
-				let following_parent: &dyn wxdragon::window::WxWidget =
-					profile_dlg_handle.as_ref().map_or(frame as _, |d| d as _);
-				let dlg = dialogs::FollowListDialog::new(
-					following_parent,
-					"Following",
-					"Users this person follows:",
-					&accounts,
-					total_count,
-					account_id_opt,
-					net_tx_dlg,
-					ui_tx_dlg,
-					move |account| {
-						let timeline_type = TimelineType::User {
-							id: account.id.clone(),
-							name: account.display_name_or_username().to_string(),
-						};
-						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
-					},
-					move || {
-						let _ = ui_tx_close.send(UiCommand::FollowingDialogClosed);
-					},
-				);
-				dlg.show();
-				if next_max_id.is_none() {
-					dlg.mark_loaded();
-				}
-				state.following_dialog = Some(dlg);
-				if let Some(h) = &state.network_handle {
-					let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
-					let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
-					if let Some(max_id) = next_max_id {
-						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
-					}
-				}
-			}
-			NetworkResponse::FollowingLoaded { result: Err(err), .. } => {
-				live_region.announce(&spoken_failure("Failed to load following", &err));
-			}
-			NetworkResponse::FollowingNextPageLoaded { result: Ok((accounts, next_max_id)) } => {
-				let should_fetch = if let Some(dlg) = &state.following_dialog {
-					if !accounts.is_empty() {
-						dlg.append_accounts(&accounts);
-					}
-					if accounts.is_empty() || next_max_id.is_none() {
-						dlg.mark_loaded();
-						None
-					} else {
-						dlg.account_id.as_ref().map(|id| (id.clone(), next_max_id.unwrap()))
-					}
-				} else {
-					None
-				};
-				if let Some(h) = &state.network_handle {
-					if !accounts.is_empty() {
-						let account_ids = accounts.iter().map(|a| a.id.clone()).collect();
-						let _ = h.send(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers: false });
-					}
-					if let Some((account_id, max_id)) = should_fetch {
-						let _ = h.send(NetworkCommand::FetchNextFollowingPage { account_id, max_id });
-					}
-				}
-			}
-			NetworkResponse::FollowingNextPageLoaded { result: Err(err) } => {
-				if let Some(dlg) = &state.following_dialog {
-					dlg.mark_loaded();
-				}
-				live_region.announce(&spoken_failure("Failed to load more following", &err));
-			}
-			NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
-				let dialog = if for_followers { &state.followers_dialog } else { &state.following_dialog };
-				if let Some(dlg) = dialog {
-					dlg.update_relationships(&results);
-				}
-			}
-			NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => match result {
-				Ok(rel) => {
-					if let Some(dlg) = &state.profile_dialog {
-						dlg.update_relationship(&rel);
-					}
-					if let Some(dlg) = &state.followers_dialog {
-						dlg.update_relationships(&[rel.clone()]);
-					}
-					if let Some(dlg) = &state.following_dialog {
-						dlg.update_relationships(&[rel.clone()]);
-					}
-					let msg = match action {
-						crate::network::RelationshipAction::Follow => format!("Followed {target_name}"),
-						crate::network::RelationshipAction::Unfollow => format!("Unfollowed {target_name}"),
-						crate::network::RelationshipAction::CancelFollowRequest => {
-							format!("Canceled follow request to {target_name}")
-						}
-						crate::network::RelationshipAction::AcceptFollowRequest => {
-							format!("Accepted follow request from {target_name}")
-						}
-						crate::network::RelationshipAction::RejectFollowRequest => {
-							format!("Rejected follow request from {target_name}")
-						}
-						crate::network::RelationshipAction::Block => format!("Blocked {target_name}"),
-						crate::network::RelationshipAction::Unblock => format!("Unblocked {target_name}"),
-						crate::network::RelationshipAction::Mute => format!("Muted {target_name}"),
-						crate::network::RelationshipAction::Unmute => format!("Unmuted {target_name}"),
-						crate::network::RelationshipAction::ShowBoosts => {
-							format!("Showing boosts from {target_name}")
-						}
-						crate::network::RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
-					};
-					live_region.announce(&msg);
-				}
-				Err(err) => {
-					live_region.announce(&spoken_failure("Failed to update relationship", &err));
-				}
-			},
-			NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
-				if let Ok(rel) = result
-					&& let Some(dlg) = &state.profile_dialog
-				{
-					dlg.update_relationship(&rel);
-				}
-			}
-			NetworkResponse::AccountFetched { result } => {
-				if let Ok(account) = result
-					&& let Some(dlg) = &state.profile_dialog
-				{
-					dlg.update_account(&account);
-				}
-			}
-			NetworkResponse::PollVoted { result } => match result {
-				Ok(poll) => {
-					update_poll_in_timelines(state, &poll);
-					let view_options =
-						state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-					let active_index = state.timeline_manager.active_index();
-					if let Some(view_options) = view_options
-						&& let Some(active) = state.timeline_manager.active_mut()
-					{
-						update_active_timeline_ui(
-							timeline_list,
-							active,
-							suppress_selection,
-							&view_options,
-							&state.cw_expanded,
-							active_index,
-						);
-					}
-					live_region.announce("Vote submitted");
-				}
-				Err(err) => {
-					live_region.announce(&spoken_failure("Failed to vote", &err));
-				}
-			},
-			NetworkResponse::CredentialsFetched { result: Ok(account) } => {
-				if let Some(update) = dialogs::show_profile_edit_dialog(frame, &account)
-					&& let Some(handle) = &state.network_handle
-				{
-					handle.send(NetworkCommand::UpdateProfile { update });
-				}
-			}
-			NetworkResponse::CredentialsFetched { result: Err(err) } => {
-				live_region.announce(&spoken_failure("Failed to fetch profile", &err));
-			}
-			NetworkResponse::ProfileUpdated { result: Ok(account) } => {
-				live_region.announce("Profile updated");
-				if let Some(active) = state.active_account_mut() {
-					active.default_post_visibility = account.source.and_then(|s| s.privacy);
-				}
-				let _ = ConfigStore::new().save(&state.config);
-				let _ = ui_tx.send(UiCommand::Refresh);
-			}
-			NetworkResponse::ProfileUpdated { result: Err(err) } => {
-				live_region.announce(&spoken_failure("Failed to update profile", &err));
-			}
-			NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
-				if let Some(dlg) = &state.manage_list_members_dialog
-					&& matches!(search_type, crate::mastodon::SearchType::Accounts)
-				{
-					let labels: Vec<String> = results
-						.accounts
-						.iter()
-						.map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct))
-						.collect();
-					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-					let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
-
-					if let Some(account) =
-						dialogs::prompt_for_account_choice(dlg.get_dialog(), &accounts_ref, &label_refs)
-						&& let Some(handle) = &state.network_handle
-					{
-						handle.send(NetworkCommand::AddListAccount {
-							list_id: dlg.get_list_id().to_string(),
-							account_id: account.id,
-						});
-					}
-					return;
-				}
-
-				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
-				let is_active = active_type.as_ref() == Some(&timeline_type);
-				let mut status_snapshots: Vec<Status> = Vec::new();
-				let view_options = state.timeline_view_options_for(&timeline_type);
-				let _text_options = &view_options.text_options;
-				let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
-				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					if is_active {
-						let effective_sort_order = timeline.effective_sort_order(&state.config);
-						sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
-					}
-					let mut new_entries: Vec<TimelineEntry> = Vec::new();
-					for account in results.accounts {
-						new_entries.push(TimelineEntry::Account(account));
-					}
-					for hashtag in results.hashtags {
-						new_entries.push(TimelineEntry::Hashtag(hashtag));
-					}
-					for status in results.statuses {
-						new_entries.push(TimelineEntry::Status(Box::new(status)));
-					}
-					for entry in &new_entries {
-						if let Some(status) = entry.as_status() {
-							status_snapshots.push(status.clone());
-						}
-					}
-					let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
-					if is_load_more {
-						if new_entries.is_empty() {
-							live_region.announce("No more results");
-						} else {
-							timeline.entries.extend(new_entries.clone());
-							if is_active {
-								if let Some(idx) = timeline_index_opt {
-									update_active_timeline_ui(
-										timeline_list,
-										timeline,
-										suppress_selection,
-										&view_options,
-										&state.cw_expanded,
-										idx,
-									);
-								}
-							}
-						}
-					} else {
-						timeline.entries = new_entries;
-						if is_active {
-							if let Some(idx) = timeline_index_opt {
-								update_active_timeline_ui(
-									timeline_list,
-									timeline,
-									suppress_selection,
-									&view_options,
-									&state.cw_expanded,
-									idx,
-								);
-							}
-						}
-					}
-					timeline.loading_more = false;
-				}
-				if !status_snapshots.is_empty() {
-					let mut merged_any = false;
-					for snapshot in &status_snapshots {
-						if merge_status_snapshot(state, snapshot) {
-							merged_any = true;
-						}
-					}
-					if merged_any {
-						let view_options =
-							state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-						let active_index = state.timeline_manager.active_index();
-						if let Some(view_options) = view_options
-							&& let Some(active) = state.timeline_manager.active_mut()
-						{
-							update_active_timeline_ui(
-								timeline_list,
-								active,
-								suppress_selection,
-								&view_options,
-								&state.cw_expanded,
-								active_index,
-							);
-						}
-					}
-				}
-			}
-			NetworkResponse::SearchLoaded { query, search_type, result: Err(ref err), .. } => {
-				let timeline_type = TimelineType::Search { query: query.clone(), search_type };
-				if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
-					timeline.loading_more = false;
-				}
-				live_region.announce(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
-			}
-			NetworkResponse::ListsFetched { result: Ok(lists) } => {
-				if let Some(account_id) = state.pending_add_to_list_user.take() {
-					if lists.is_empty() {
-						live_region.announce("No lists found to add user to");
-					} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists, "Add to List", "Add")
-					{
-						if let Some(handle) = &state.network_handle {
-							handle.send(NetworkCommand::AddListAccount { list_id: list.id, account_id });
-						}
-					}
-				} else if let Some(dlg) = &state.manage_lists_dialog {
-					dlg.update_lists(lists);
-				} else if lists.is_empty() {
-					live_region.announce("No lists found");
-				} else if let Some(list) = dialogs::show_list_selection_dialog(frame, &lists, "Open List", "Open") {
-					let timeline_type = TimelineType::List { id: list.id, title: list.title };
-					dispatch_ui_command!(UiCommand::OpenTimeline(timeline_type));
-				}
-			}
-			NetworkResponse::ListsFetched { result: Err(err) } => {
-				live_region.announce(&spoken_failure("Failed to fetch lists", &err));
-			}
-			NetworkResponse::ListCreated { result: Ok(list) } => {
-				live_region.announce(&format!("List '{}' created", list.title));
-				if let Some(handle) = &state.network_handle {
-					handle.send(NetworkCommand::FetchLists);
-				}
-			}
-			NetworkResponse::ListCreated { result: Err(err) }
-			| NetworkResponse::ListUpdated { result: Err(err) }
-			| NetworkResponse::ListDeleted { result: Err(err), .. }
-			| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
-			| NetworkResponse::ListAccountAdded { result: Err(err), .. }
-			| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => {
-				state.pending_add_to_list_user = None;
-				let parent: &dyn WxWidget = if let Some(dlg) = &state.manage_list_members_dialog {
-					dlg.get_dialog()
-				} else if let Some(dlg) = &state.manage_lists_dialog {
-					dlg.get_dialog()
-				} else {
-					frame
-				};
-				dialogs::show_error(parent, &err);
-			}
-			NetworkResponse::ListUpdated { result: Ok(list) } => {
-				live_region.announce(&format!("List '{}' updated", list.title));
-				if let Some(handle) = &state.network_handle {
-					handle.send(NetworkCommand::FetchLists);
-				}
-			}
-
-			NetworkResponse::ListDeleted { id: _, result: Ok(()) } => {
-				live_region.announce("List deleted");
-				if let Some(handle) = &state.network_handle {
-					handle.send(NetworkCommand::FetchLists);
-				}
-			}
-
-			NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
-				if let Some(dlg) = &state.manage_list_members_dialog {
-					if dlg.get_list_id() == list_id {
-						dlg.update_members(members);
-						return;
-					}
-				}
-				if let Some(dlg) = &state.manage_lists_dialog {
-					let list_title = dlg.get_list_title(&list_id).unwrap_or_default();
-					if let Some(handle) = &state.network_handle {
-						let net_tx = handle.command_tx.clone();
-						let ui_tx_dlg = ui_tx.clone();
-						let members_dlg = dialogs::ManageListMembersDialog::new(
-							dlg.get_dialog(),
-							list_id,
-							&list_title,
-							members,
-							net_tx,
-							move || {
-								let _ = ui_tx_dlg.send(UiCommand::ManageListMembersDialogClosed);
-							},
-						);
-						members_dlg.show();
-						state.manage_list_members_dialog = Some(members_dlg);
-					}
-				}
-			}
-
-			NetworkResponse::ListAccountAdded { result: Ok(()), .. } => {
-				live_region.announce("Member added");
-				if let Some(dlg) = &state.manage_list_members_dialog
-					&& let Some(handle) = &state.network_handle
-				{
-					handle.send(NetworkCommand::FetchListAccounts { list_id: dlg.get_list_id().to_string() });
-				}
-			}
-
-			NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => {
-				live_region.announce("Member removed");
-				if let Some(dlg) = &state.manage_list_members_dialog
-					&& let Some(handle) = &state.network_handle
-				{
-					handle.send(NetworkCommand::FetchListAccounts { list_id: dlg.get_list_id().to_string() });
-				}
-			}
-		}
-	}
-	let _ = frame;
-}
-
-pub fn update_poll_in_timelines(state: &mut AppState, poll: &Poll) {
-	for timeline in state.timeline_manager.iter_mut() {
-		for entry in &mut timeline.entries {
-			if let Some(status) = entry.as_status_mut() {
-				if let Some(p) = &mut status.poll
-					&& p.id == poll.id
-				{
-					*p = poll.clone();
-				}
-				if let Some(reblog) = &mut status.reblog
-					&& let Some(p) = &mut reblog.poll
-					&& p.id == poll.id
-				{
-					*p = poll.clone();
-				}
-			}
-		}
+	let Some(handle) = &ctx.state.network_handle else { return };
+	let responses = handle.drain();
+	let active_type = ctx.state.timeline_manager.active().map(|t| t.timeline_type.clone());
+	for response in responses {
+		handle_response(ctx, response, active_type.as_ref());
 	}
 }
 
-/// Removes a status from all timelines.
-pub fn remove_status_from_timelines(state: &mut AppState, status_id: &str) {
-	for timeline in state.timeline_manager.iter_mut() {
-		timeline.entries.retain(|entry| {
-			if let Some(status) = entry.as_status() {
-				if status.id == status_id {
-					return false;
-				}
-				if let Some(reblog) = &status.reblog
-					&& reblog.id == status_id
-				{
-					return false;
-				}
-			}
-			true
-		});
-	}
-}
-
-/// Updates a status in all timelines where it appears.
-pub fn update_status_in_timelines<F>(state: &mut AppState, status_id: &str, updater: F)
-where
-	F: Fn(&mut Status),
-{
-	for timeline in state.timeline_manager.iter_mut() {
-		for entry in &mut timeline.entries {
-			if let Some(status) = entry.as_status_mut() {
-				// Check the status itself
-				if status.id == status_id {
-					updater(status);
-				}
-				// Check if it's a reblog of the target
-				if let Some(ref mut reblog) = status.reblog
-					&& reblog.id == status_id
-				{
-					updater(reblog);
-				}
+fn handle_response(
+	ctx: &mut NetworkResponseContext<'_>,
+	response: NetworkResponse,
+	active_type: Option<&TimelineType>,
+) {
+	match response {
+		NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
+			timelines::loaded(ctx, timeline_type, data, max_id, active_type);
+		}
+		NetworkResponse::TimelineLoaded { timeline_type, result: Err(err), max_id } => {
+			timelines::load_failed(ctx, &timeline_type, &err, max_id.is_some());
+		}
+		NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
+			ctx.ui_tx.send(UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
+		}
+		NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
+			ctx.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err)));
+		}
+		NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
+			ctx.ui_tx.send(UiCommand::PromptForQuote(Box::new(focus))).unwrap();
+		}
+		NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
+			ctx.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
+		}
+		NetworkResponse::StatusSourceFetched { status, result } => statuses::source_fetched(ctx, *status, result),
+		NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
+			accounts::lookup_succeeded(ctx, &account);
+		}
+		NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
+			ctx.state.pending_user_lookup_action = None;
+			ctx.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
+		}
+		NetworkResponse::PostComplete(result) => statuses::post_complete(ctx, result),
+		NetworkResponse::Favorited { status_id, result } => {
+			statuses::action(ctx, &status_id, result, &statuses::FAVORITE);
+		}
+		NetworkResponse::Unfavorited { status_id, result } => {
+			statuses::action(ctx, &status_id, result, &statuses::UNFAVORITE);
+		}
+		NetworkResponse::Bookmarked { status_id, result } => {
+			statuses::action(ctx, &status_id, result, &statuses::BOOKMARK);
+		}
+		NetworkResponse::Unbookmarked { status_id, result } => {
+			statuses::action(ctx, &status_id, result, &statuses::UNBOOKMARK);
+		}
+		NetworkResponse::Pinned { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::PIN),
+		NetworkResponse::Unpinned { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::UNPIN),
+		NetworkResponse::Boosted { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::BOOST),
+		NetworkResponse::Unboosted { status_id, result } => {
+			statuses::action(ctx, &status_id, result, &statuses::UNBOOST);
+		}
+		NetworkResponse::Replied(result) => statuses::replied(ctx, result),
+		NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => statuses::deleted(ctx, &status_id),
+		NetworkResponse::StatusDeleted { result: Err(err), .. } => ctx.announce_failure("Failed to delete", &err),
+		NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => statuses::edited(ctx, &status),
+		NetworkResponse::StatusEdited { result: Err(err), .. } => ctx.announce_failure("Failed to edit", &err),
+		NetworkResponse::PollVoted { result } => statuses::poll_voted(ctx, result),
+		NetworkResponse::TagFollowed { name, result } => tags::following_changed(ctx, &name, &result, true),
+		NetworkResponse::TagUnfollowed { name, result } => tags::following_changed(ctx, &name, &result, false),
+		NetworkResponse::TagMuted { name, result } => tags::muted_changed(ctx, &name, &result, true),
+		NetworkResponse::TagUnmuted { name, result } => tags::muted_changed(ctx, &name, &result, false),
+		NetworkResponse::TagsInfoFetched { result: Ok(tags) } => tags::info_fetched(ctx, tags),
+		NetworkResponse::TagsInfoFetched { result: Err(err) } => {
+			ctx.announce_failure("Failed to load hashtags", &err);
+		}
+		NetworkResponse::RebloggedByLoaded { result: Ok(accounts) } => {
+			accounts::pick_from_account_list(ctx, &accounts, "Boosts", "Users who boosted this post");
+		}
+		NetworkResponse::RebloggedByLoaded { result: Err(err) } => {
+			ctx.announce_failure("Failed to load boosts", &err);
+		}
+		NetworkResponse::FavoritedByLoaded { result: Ok(accounts) } => {
+			accounts::pick_from_account_list(ctx, &accounts, "Favorites", "Users who favorited this post");
+		}
+		NetworkResponse::FavoritedByLoaded { result: Err(err) } => {
+			ctx.announce_failure("Failed to load favorites", &err);
+		}
+		NetworkResponse::FollowersLoaded { result, total_count, account_id } => {
+			accounts::follow_list_loaded(ctx, accounts::FollowList::Followers, result, total_count, account_id);
+		}
+		NetworkResponse::FollowingLoaded { result, total_count, account_id } => {
+			accounts::follow_list_loaded(ctx, accounts::FollowList::Following, result, total_count, account_id);
+		}
+		NetworkResponse::FollowersNextPageLoaded { result } => {
+			accounts::follow_list_next_page(ctx, accounts::FollowList::Followers, result);
+		}
+		NetworkResponse::FollowingNextPageLoaded { result } => {
+			accounts::follow_list_next_page(ctx, accounts::FollowList::Following, result);
+		}
+		NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
+			let dialog = if for_followers { &ctx.state.followers_dialog } else { &ctx.state.following_dialog };
+			if let Some(dlg) = dialog {
+				dlg.update_relationships(&results);
 			}
 		}
-	}
-}
-
-/// Updates the following state of a tag in all timelines.
-pub fn update_tag_in_timelines(state: &mut AppState, tag_name: &str, following: bool) {
-	for timeline in state.timeline_manager.iter_mut() {
-		for entry in &mut timeline.entries {
-			if let Some(status) = entry.as_status_mut() {
-				let check_status = |s: &mut Status| {
-					for tag in &mut s.tags {
-						if tag.name.eq_ignore_ascii_case(tag_name) {
-							tag.following = following;
-						}
-					}
-				};
-				check_status(status);
-				if let Some(ref mut reblog) = status.reblog {
-					check_status(reblog);
-				}
+		NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => {
+			accounts::relationship_updated(ctx, &target_name, action, result);
+		}
+		NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
+			if let Ok(rel) = result
+				&& let Some(dlg) = &ctx.state.profile_dialog
+			{
+				dlg.update_relationship(&rel);
 			}
 		}
+		NetworkResponse::AccountFetched { result } => {
+			if let Ok(account) = result
+				&& let Some(dlg) = &ctx.state.profile_dialog
+			{
+				dlg.update_account(&account);
+			}
+		}
+		NetworkResponse::CredentialsFetched { result: Ok(account) } => accounts::credentials_fetched(ctx, &account),
+		NetworkResponse::CredentialsFetched { result: Err(err) } => {
+			ctx.announce_failure("Failed to fetch profile", &err);
+		}
+		NetworkResponse::ProfileUpdated { result: Ok(account) } => accounts::profile_updated(ctx, account),
+		NetworkResponse::ProfileUpdated { result: Err(err) } => {
+			ctx.announce_failure("Failed to update profile", &err);
+		}
+		NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
+			timelines::search_loaded(ctx, query, search_type, results, offset, active_type);
+		}
+		NetworkResponse::SearchLoaded { query, search_type, result: Err(err), .. } => {
+			timelines::search_failed(ctx, &query, search_type, &err);
+		}
+		NetworkResponse::ListsFetched { result: Ok(lists) } => lists::fetched(ctx, lists),
+		NetworkResponse::ListsFetched { result: Err(err) } => ctx.announce_failure("Failed to fetch lists", &err),
+		NetworkResponse::ListCreated { result: Ok(list) } => {
+			lists::changed(ctx, &format!("List '{}' created", list.title));
+		}
+		NetworkResponse::ListUpdated { result: Ok(list) } => {
+			lists::changed(ctx, &format!("List '{}' updated", list.title));
+		}
+		NetworkResponse::ListDeleted { id: _, result: Ok(()) } => lists::changed(ctx, "List deleted"),
+		NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
+			lists::accounts_fetched(ctx, list_id, members);
+		}
+		NetworkResponse::ListAccountAdded { result: Ok(()), .. } => lists::membership_changed(ctx, "Member added"),
+		NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => lists::membership_changed(ctx, "Member removed"),
+		NetworkResponse::ListCreated { result: Err(err) }
+		| NetworkResponse::ListUpdated { result: Err(err) }
+		| NetworkResponse::ListDeleted { result: Err(err), .. }
+		| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
+		| NetworkResponse::ListAccountAdded { result: Err(err), .. }
+		| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => lists::operation_failed(ctx, &err),
 	}
 }
