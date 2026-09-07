@@ -656,7 +656,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 			{
 				let name = format!("Thread: {}", quoted_status.account.display_name_or_username());
 				let timeline_type = TimelineType::Thread { id: quoted_status.id.clone(), name };
-				Some((timeline_type, *quoted_status.clone()))
+				Some((timeline_type, quoted_status.id.clone()))
 			} else {
 				live_region.announce("No quoted post");
 				None
@@ -664,14 +664,18 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 		},
 	);
 
-	if let Some((timeline_type, focus_status)) = quoted_info {
-		state.pending_restore_post_id = Some((timeline_type.clone(), focus_status.id.clone()));
+	if let Some((timeline_type, status_id)) = quoted_info {
+		state.pending_restore_post_id = Some((timeline_type.clone(), status_id.clone()));
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
 		let Some(handle) = &state.network_handle else {
 			live_region.announce("Network not available");
 			return;
 		};
-		handle.send(NetworkCommand::FetchThread { timeline_type, focus: Box::new(focus_status) });
+		// The embedded quoted_status is a shallow copy from the quoting post's JSON and may not
+		// carry its own nested quote data, so fetch the full status fresh by id instead of
+		// reusing it as the thread focus (otherwise the quote inside it looked broken until the
+		// thread was manually refreshed).
+		handle.send(NetworkCommand::FetchThreadById { timeline_type, status_id });
 	}
 }
 
