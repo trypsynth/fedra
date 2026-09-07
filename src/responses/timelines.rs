@@ -112,6 +112,7 @@ pub(super) fn loaded(
 				} else {
 					timeline.entries.extend(filtered.clone());
 				}
+				timeline.next_max_id = next_max_id;
 
 				if is_active {
 					if let Some(idx) = timeline_index_opt {
@@ -126,7 +127,24 @@ pub(super) fn loaded(
 					}
 				}
 			} else {
-				timeline.entries = new_entries;
+				// A fresh fetch of the newest posts (initial open, or a manual/background
+				// refresh). If the timeline already has entries loaded, merge instead of
+				// replacing outright, so posts the user has already scrolled past (and their
+				// selection/scroll position) survive a refresh instead of being wiped by a
+				// full page of just-fetched newest posts.
+				let was_initial_load = timeline.entries.is_empty();
+				if was_initial_load {
+					timeline.entries = new_entries;
+				} else {
+					let existing_ids: std::collections::HashSet<&str> =
+						timeline.entries.iter().map(crate::timeline::TimelineEntry::id).collect();
+					let mut fresh: Vec<TimelineEntry> =
+						new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
+					if !fresh.is_empty() {
+						fresh.extend(std::mem::take(&mut timeline.entries));
+						timeline.entries = fresh;
+					}
+				}
 				// Restore selected post if it exists in the freshly loaded entries.
 				if let Some(ref id) = restore_id {
 					if timeline.entries.iter().any(|e| e.id() == id.as_str()) {
@@ -145,8 +163,13 @@ pub(super) fn loaded(
 						);
 					}
 				}
+				// Only adopt the new pagination cursor on the initial load; a merge keeps
+				// the existing (older) cursor, which still correctly points past the
+				// combined list's oldest entry for "load more".
+				if was_initial_load {
+					timeline.next_max_id = next_max_id;
+				}
 			}
-			timeline.next_max_id = next_max_id;
 			timeline.loading_more = false;
 			timeline.loading_more_in_background = false;
 			if is_active && timeline.pending_find_next {
