@@ -30,7 +30,11 @@ pub(super) fn refresh_own_user_timelines(state: &AppState) {
 		if let crate::timeline::TimelineType::User { ref id, .. } = tt
 			&& id == current_user_id
 		{
-			handle.send(NetworkCommand::FetchTimeline { timeline_type: tt, limit: Some(40), max_id: None });
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type: tt,
+				limit: Some(u32::from(state.config.fetch_limit)),
+				max_id: None,
+			});
 		}
 	}
 }

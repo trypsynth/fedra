@@ -222,12 +222,17 @@ pub fn switch_to_account(
 							handle.send(NetworkCommand::FetchThreadById { timeline_type: t, status_id: id });
 						}
 						TimelineType::Search { query, search_type } => {
-							handle.send(NetworkCommand::Search { query, search_type, limit: Some(40), offset: None });
+							handle.send(NetworkCommand::Search {
+								query,
+								search_type,
+								limit: Some(u32::from(state.config.fetch_limit)),
+								offset: None,
+							});
 						}
 						_ => {
 							handle.send(NetworkCommand::FetchTimeline {
 								timeline_type: t,
-								limit: Some(40),
+								limit: Some(u32::from(state.config.fetch_limit)),
 								max_id: None,
 							});
 						}
@@ -259,7 +264,11 @@ pub fn switch_to_account(
 				if state.timeline_manager.open(t.clone())
 					&& let Some(handle) = &state.network_handle
 				{
-					handle.send(NetworkCommand::FetchTimeline { timeline_type: t, limit: Some(40), max_id: None });
+					handle.send(NetworkCommand::FetchTimeline {
+						timeline_type: t,
+						limit: Some(u32::from(state.config.fetch_limit)),
+						max_id: None,
+					});
 				}
 			}
 		}
