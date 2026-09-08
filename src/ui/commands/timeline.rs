@@ -36,7 +36,11 @@ pub(super) fn refresh_timeline(state: &AppState, live_region: &crate::ui::timeli
 	};
 	match &state.network_handle {
 		Some(handle) => {
-			handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type,
+				limit: Some(u32::from(state.config.fetch_limit)),
+				max_id: None,
+			});
 		}
 		None => {
 			live_region.announce("Network not available");
@@ -50,7 +54,7 @@ pub(super) fn poll_non_streaming_timelines(state: &AppState) {
 		if timeline.stream_handle.is_none() && timeline.timeline_type.stream_params().is_some() {
 			handle.send(NetworkCommand::FetchTimeline {
 				timeline_type: timeline.timeline_type.clone(),
-				limit: Some(40),
+				limit: Some(u32::from(state.config.fetch_limit)),
 				max_id: None,
 			});
 		}
@@ -112,7 +116,7 @@ pub(super) fn open_timeline(
 		if let Some(handle) = &state.network_handle {
 			handle.send(NetworkCommand::FetchTimeline {
 				timeline_type: timeline_type.clone(),
-				limit: Some(40),
+				limit: Some(u32::from(state.config.fetch_limit)),
 				max_id: None,
 			});
 		}
@@ -556,7 +560,11 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				frame,
 			);
 			if let Some(handle) = &state.network_handle {
-				handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: Some(40), max_id: None });
+				handle.send(NetworkCommand::FetchTimeline {
+					timeline_type,
+					limit: Some(u32::from(state.config.fetch_limit)),
+					max_id: None,
+				});
 			}
 		}
 		TimelineEntry::Notification(notification) if notification.kind == "follow_request" => {
@@ -690,7 +698,12 @@ pub(super) fn search(ctx: &mut UiCommandContext<'_>) {
 		let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
 		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::Search { query, search_type, limit: Some(40), offset: None });
+			handle.send(NetworkCommand::Search {
+				query,
+				search_type,
+				limit: Some(u32::from(state.config.fetch_limit)),
+				offset: None,
+			});
 		}
 	}
 }

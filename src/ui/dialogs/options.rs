@@ -319,7 +319,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	autoload_sizer.add(&autoload_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	autoload_sizer.add(&autoload_choice, 1, SizerFlag::Expand, 0);
 	let fetch_limit_label =
-		StaticText::builder(&timeline_panel).with_label("Posts to &fetch when loading more:").build();
+		StaticText::builder(&timeline_panel).with_label("Posts to &fetch per request:").build();
 	let fetch_limit_spin =
 		SpinCtrl::builder(&timeline_panel).with_range(1, 40).with_initial_value(i32::from(fetch_limit)).build();
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
