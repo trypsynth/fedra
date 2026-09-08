@@ -1,3 +1,4 @@
+use wx_utils::set_menu_item_label as set_item_label;
 use wxdragon::prelude::*;
 
 use crate::{
@@ -164,13 +165,6 @@ pub fn build_menu_bar() -> MenuBar {
 		.append(timelines_menu, "&Timelines")
 		.append(help_menu, "&Help")
 		.build()
-}
-
-fn set_item_label(menu_bar: &MenuBar, id: i32, base: &str, shortcut: &str) {
-	if let Some(item) = menu_bar.find_item(id) {
-		let label = if shortcut.is_empty() { base.to_string() } else { format!("{base}\t{shortcut}") };
-		item.set_label(&label);
-	}
 }
 
 pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
