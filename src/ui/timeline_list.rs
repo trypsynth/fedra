@@ -339,37 +339,61 @@ impl TimelineList {
 			}
 		}
 
-		let mut root = Node::new(Role::ListBox);
-		root.set_size_of_set(unique_entries.len());
-		let mut children = Vec::with_capacity(unique_entries.len());
-		let mut nodes = Vec::with_capacity(unique_entries.len() + 1);
 		let valid_focus = selected_id
 			.filter(|id| unique_entries.iter().any(|(eid, _)| eid == id))
 			.or_else(|| unique_entries.first().map(|(id, _)| *id));
 		let focus_id = valid_focus.unwrap_or(ROOT_ID);
+
+		let state_rc = { self.inner.borrow().state.clone() };
+		let mut state = state_rc.borrow_mut();
+		let old_selected_id = state.selected_index.and_then(|i| state.entries.get(i)).map(|(id, _)| *id);
+		// If the item that currently holds screen-reader focus isn't changing, leave its node
+		// alone: rebuilding it, even with identical content, makes AT clients like NVDA
+		// re-announce it whenever the list refreshes in the background (new items arriving,
+		// the periodic relative-time refresh, etc). Entries other than the focused one are
+		// still refreshed freely, since property changes on non-focused nodes are silent.
+		let selection_is_moving = old_selected_id != Some(focus_id);
+		let old_positions: std::collections::HashMap<NodeId, (usize, String)> =
+			state.entries.iter().enumerate().map(|(i, (id, text))| (*id, (i, text.clone()))).collect();
+
+		let mut children = Vec::with_capacity(unique_entries.len());
+		let mut nodes = Vec::new();
 		for (i, (id, text)) in unique_entries.iter().enumerate() {
 			children.push(*id);
+			let is_focus_target = *id == focus_id;
+			if is_focus_target && !selection_is_moving {
+				continue;
+			}
+			let needs_selection_clear = selection_is_moving && Some(*id) == old_selected_id;
+			let unchanged = !is_focus_target
+				&& !needs_selection_clear
+				&& old_positions.get(id).is_some_and(|(old_i, old_text)| *old_i == i && old_text == text);
+			if unchanged {
+				continue;
+			}
 			let mut node = Node::new(Role::ListBoxOption);
 			node.set_label(text.clone());
 			node.add_action(accesskit::Action::Focus);
 			node.set_position_in_set(i);
-			if *id == focus_id {
+			if is_focus_target {
 				node.set_selected(true);
 			}
 			nodes.push((*id, node));
 		}
-		let state_rc = { self.inner.borrow().state.clone() };
-		let mut state = state_rc.borrow_mut();
+		children.push(ANNOUNCEMENT_ID);
+		// Do not push ANNOUNCEMENT_ID to nodes here, so AccessKit uses the existing node.
+
+		let entry_count = unique_entries.len();
 		state.entries = unique_entries;
 		if let Some(id) = valid_focus {
 			state.selected_index = state.entries.iter().position(|(nid, _)| *nid == id);
 		} else {
 			state.selected_index = None;
 		}
-		children.push(ANNOUNCEMENT_ID);
-		// Do not push ANNOUNCEMENT_ID to nodes here, so AccessKit uses the existing node.
 		drop(state);
 
+		let mut root = Node::new(Role::ListBox);
+		root.set_size_of_set(entry_count);
 		root.set_children(children);
 		nodes.push((ROOT_ID, root));
 		let update = TreeUpdate { nodes, tree: None, focus: focus_id, tree_id: accesskit::TreeId::ROOT };
