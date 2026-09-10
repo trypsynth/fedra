@@ -12,13 +12,16 @@ pub fn run_update_check(frame: Frame, silent: bool) {
 		crate::config::UpdateChannel::Stable => ShipChannel::Stable,
 		crate::config::UpdateChannel::Dev => ShipChannel::Dev,
 	};
-	let updater_config = Arc::new(UpdaterConfig::new(
-		FEDRA_GITHUB_REPO,
-		"fedra",
-		"Fedra",
-		FEDRA_MINISIGN_KEY,
-		format!("fedra/{}", env!("CARGO_PKG_VERSION")),
-	));
+	let updater_config = Arc::new(
+		UpdaterConfig::new(
+			FEDRA_GITHUB_REPO,
+			"fedra",
+			"Fedra",
+			FEDRA_MINISIGN_KEY,
+			format!("fedra/{}", env!("CARGO_PKG_VERSION")),
+		)
+		.with_asset_suffix(if cfg!(target_arch = "aarch64") { "-arm64" } else { "-x64" }),
+	);
 	ship_shape::ui::run_update_check(
 		updater_config,
 		frame.handle_ptr() as usize,
