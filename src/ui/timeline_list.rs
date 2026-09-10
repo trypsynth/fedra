@@ -27,6 +27,13 @@ struct ListState {
 	current_tree_announcement: Option<String>,
 	search_buffer: String,
 	last_search_time: Option<Instant>,
+	// The label actually last shown to the AT tree for whichever item is (or was) frozen
+	// while focused (see update_entries). Kept separate from `entries`, which always holds
+	// the freshest text, so that when focus moves off that item we can restore the label it
+	// was really displaying instead of jumping straight to the latest text -- doing the
+	// latter would fire a Name change in the same update as the focus change, causing NVDA
+	// to re-announce the item it's leaving right before announcing the one it's landing on.
+	frozen_label: Option<(NodeId, String)>,
 }
 
 struct TimelineActivationHandler {
@@ -122,6 +129,7 @@ impl TimelineList {
 			current_tree_announcement: None,
 			search_buffer: String::new(),
 			last_search_time: None,
+			frozen_label: None,
 		}));
 		let cb_ptr = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 		let adapter = SubclassingAdapter::new(
@@ -246,12 +254,21 @@ impl TimelineList {
 			let mut nodes = Vec::new();
 			if let Some(old) = old_idx {
 				if old != new_idx {
-					if let Some((old_id, old_text)) = state.entries.get(old) {
+					if let Some((old_id, old_text)) = state.entries.get(old).map(|(id, t)| (*id, t.clone())) {
+						// Use whatever was actually last displayed for this item, not the
+						// freshest text -- see `frozen_label` doc comment.
+						let label = match state.frozen_label.take() {
+							Some((fid, ftext)) if fid == old_id => ftext,
+							other => {
+								state.frozen_label = other;
+								old_text
+							}
+						};
 						let mut old_node = Node::new(Role::ListBoxOption);
-						old_node.set_label(old_text.clone());
+						old_node.set_label(label);
 						old_node.add_action(accesskit::Action::Focus);
 						old_node.set_position_in_set(old);
-						nodes.push((*old_id, old_node));
+						nodes.push((old_id, old_node));
 					}
 				}
 			}
@@ -362,6 +379,14 @@ impl TimelineList {
 			children.push(*id);
 			let is_focus_target = *id == focus_id;
 			if is_focus_target && !selection_is_moving {
+				// Still focused: leave the AT node alone (see comment above), but remember
+				// what's actually displayed so that if focus later moves off this item, we
+				// can restore that instead of jumping straight to the latest text -- see
+				// `frozen_label` doc comment.
+				if state.frozen_label.as_ref().is_none_or(|(fid, _)| *fid != *id) {
+					let displayed = old_positions.get(id).map(|(_, t)| t.clone()).unwrap_or_else(|| text.clone());
+					state.frozen_label = Some((*id, displayed));
+				}
 				continue;
 			}
 			let needs_selection_clear = selection_is_moving && Some(*id) == old_selected_id;
@@ -371,8 +396,22 @@ impl TimelineList {
 			if unchanged {
 				continue;
 			}
+			let label = if needs_selection_clear {
+				match state.frozen_label.take() {
+					Some((fid, ftext)) if fid == *id => ftext,
+					other => {
+						state.frozen_label = other;
+						text.clone()
+					}
+				}
+			} else {
+				if state.frozen_label.as_ref().is_some_and(|(fid, _)| *fid == *id) {
+					state.frozen_label = None;
+				}
+				text.clone()
+			};
 			let mut node = Node::new(Role::ListBoxOption);
-			node.set_label(text.clone());
+			node.set_label(label);
 			node.add_action(accesskit::Action::Focus);
 			node.set_position_in_set(i);
 			if is_focus_target {
@@ -413,12 +452,21 @@ impl TimelineList {
 		let mut nodes = Vec::new();
 		if let Some(old) = old_idx {
 			if Some(old) != new_idx {
-				if let Some((old_id, old_text)) = state.entries.get(old) {
+				if let Some((old_id, old_text)) = state.entries.get(old).map(|(id, t)| (*id, t.clone())) {
+					// Use whatever was actually last displayed for this item, not the
+					// freshest text -- see `frozen_label` doc comment.
+					let label = match state.frozen_label.take() {
+						Some((fid, ftext)) if fid == old_id => ftext,
+						other => {
+							state.frozen_label = other;
+							old_text
+						}
+					};
 					let mut old_node = Node::new(Role::ListBoxOption);
-					old_node.set_label(old_text.clone());
+					old_node.set_label(label);
 					old_node.add_action(accesskit::Action::Focus);
 					old_node.set_position_in_set(old);
-					nodes.push((*old_id, old_node));
+					nodes.push((old_id, old_node));
 				}
 			}
 		}
