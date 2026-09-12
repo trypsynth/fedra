@@ -7,7 +7,7 @@ use crate::{
 		AutoloadMode, ContentWarningDisplay, DefaultTimeline, DisplayNameEmojiMode, HotkeyConfig,
 		NotificationPreference, PerTimelineTemplates, PostTemplates, SortOrder,
 	},
-	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE},
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE},
 };
 
 pub fn prompt_for_default_timelines(frame: &Frame, initial: &[DefaultTimeline]) -> Option<Vec<DefaultTimeline>> {
@@ -189,7 +189,7 @@ pub struct OptionsDialogResult {
 	pub window_title_template: String,
 }
 
-type TemplateState = HashMap<String, (String, String, String)>;
+type TemplateState = HashMap<String, (String, String, String, String)>;
 
 pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<OptionsDialogResult> {
 	let OptionsDialogInput {
@@ -388,12 +388,14 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let timeline_keys: Vec<&str> = vec![
 		"Home",
 		"Notifications",
+		"Mentions",
 		"Direct Messages",
 		"Local",
 		"Federated",
 		"Bookmarks",
 		"Favorites",
 		"User Timelines",
+		"Sent",
 		"Threads",
 		"Search Results",
 		"Hashtag Timelines",
@@ -436,6 +438,13 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 				.unwrap_or(crate::template::DEFAULT_QUOTE_TEMPLATE),
 		)
 		.build();
+	let favorite_template_label = StaticText::builder(&template_panel).with_label("&Favorite template:").build();
+	let favorite_template_text = TextCtrl::builder(&template_panel)
+		.with_style(TextCtrlStyle::MultiLine)
+		.with_value(
+			templates.per_timeline.get("Home").and_then(|pt| pt.favorite.as_deref()).unwrap_or(DEFAULT_FAVORITE_TEMPLATE),
+		)
+		.build();
 	let template_button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let reset_button = Button::builder(&template_panel).with_label("Reset to default").build();
 	template_button_sizer.add(&reset_button, 0, SizerFlag::empty(), 0);
@@ -468,6 +477,13 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		8,
 	);
 	template_sizer.add(&quote_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	template_sizer.add(
+		&favorite_template_label,
+		0,
+		SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top,
+		8,
+	);
+	template_sizer.add(&favorite_template_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	template_sizer.add_sizer(&template_button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	template_panel.set_sizer(template_sizer, true);
 	notebook.add_page(&template_panel, "Templates", false, None);
@@ -475,8 +491,17 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let filters_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let filters_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
-	let filter_timeline_keys: Vec<&str> =
-		vec!["Home", "Notifications", "Local", "Federated", "List Timelines", "User Timelines", "Hashtag Timelines"];
+	let filter_timeline_keys: Vec<&str> = vec![
+		"Home",
+		"Notifications",
+		"Mentions",
+		"Local",
+		"Federated",
+		"List Timelines",
+		"User Timelines",
+		"Sent",
+		"Hashtag Timelines",
+	];
 	let filter_timeline_key_strings: Vec<String> = filter_timeline_keys.iter().map(|s| (*s).to_string()).collect();
 	let filter_timeline_label = StaticText::builder(&filters_panel).with_label("&Timeline:").build();
 	let filter_timeline_choice = ComboBox::builder(&filters_panel)
@@ -652,7 +677,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	setup_cb_handler(&cb_no_media, update_filters_state.clone());
 	setup_cb_handler(&cb_your_posts, update_filters_state.clone());
 	setup_cb_handler(&cb_your_replies, update_filters_state);
-	// State for template editing: maps timeline key -> (post_template, boost_template, quote_template)
+	// State for template editing: maps timeline key -> (post_template, boost_template, quote_template, favorite_template)
 	let template_state: Rc<RefCell<TemplateState>> = Rc::new(RefCell::new(HashMap::new()));
 	{
 		let mut state = template_state.borrow_mut();
@@ -662,16 +687,26 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			let boost = pt.and_then(|p| p.boost.as_deref()).unwrap_or(DEFAULT_BOOST_TEMPLATE).to_string();
 			let quote =
 				pt.and_then(|p| p.quote.as_deref()).unwrap_or(crate::template::DEFAULT_QUOTE_TEMPLATE).to_string();
-			state.insert((*key).to_string(), (post, boost, quote));
+			let favorite = pt.and_then(|p| p.favorite.as_deref()).unwrap_or(DEFAULT_FAVORITE_TEMPLATE).to_string();
+			state.insert((*key).to_string(), (post, boost, quote, favorite));
 		}
 	}
 	let ts_change = template_state.clone();
 	let post_text_change = post_template_text;
 	let boost_text_change = boost_template_text;
 	let quote_text_change = quote_template_text;
+	let favorite_text_change = favorite_template_text;
+	let favorite_label_change = favorite_template_label;
+	let template_panel_change = template_panel;
+	let dialog_change = dialog;
 	let prev_selection: Rc<RefCell<String>> = Rc::new(RefCell::new("Home".to_string()));
 	let prev_sel_change = prev_selection.clone();
 	let timeline_keys_clone = timeline_keys.clone();
+	// The favorite template only applies to notification entries, which only ever appear in
+	// the Notifications timeline, so hide the field everywhere else to avoid implying it does
+	// something for timelines that never show favourite notifications.
+	favorite_label_change.show(false);
+	favorite_text_change.show(false);
 	template_timeline_choice.on_selection_changed(move |_| {
 		let Some(new_index) = template_timeline_choice.get_selection() else { return };
 		let new_index = new_index as usize;
@@ -681,33 +716,47 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			let prev = prev_sel_change.borrow().clone();
 			state.insert(
 				prev,
-				(post_text_change.get_value(), boost_text_change.get_value(), quote_text_change.get_value()),
+				(
+					post_text_change.get_value(),
+					boost_text_change.get_value(),
+					quote_text_change.get_value(),
+					favorite_text_change.get_value(),
+				),
 			);
 		}
 		let state = ts_change.borrow();
-		if let Some((post, boost, quote)) = state.get(*new_key) {
+		if let Some((post, boost, quote, favorite)) = state.get(*new_key) {
 			post_text_change.set_value(post);
 			boost_text_change.set_value(boost);
 			quote_text_change.set_value(quote);
+			favorite_text_change.set_value(favorite);
 		}
+		let show_favorite = *new_key == "Notifications";
+		favorite_label_change.show(show_favorite);
+		favorite_text_change.show(show_favorite);
+		template_panel_change.layout();
+		dialog_change.layout();
 		*prev_sel_change.borrow_mut() = (*new_key).to_string();
 	});
 	let ts_reset = template_state.clone();
 	let post_text_reset = post_template_text;
 	let boost_text_reset = boost_template_text;
 	let quote_text_reset = quote_template_text;
+	let favorite_text_reset = favorite_template_text;
 	let prev_sel_reset = prev_selection.clone();
 	reset_button.on_click(move |_| {
 		let current_key = prev_sel_reset.borrow().clone();
 		post_text_reset.set_value(DEFAULT_POST_TEMPLATE);
 		boost_text_reset.set_value(DEFAULT_BOOST_TEMPLATE);
 		quote_text_reset.set_value(crate::template::DEFAULT_QUOTE_TEMPLATE);
+		favorite_text_reset.set_value(DEFAULT_FAVORITE_TEMPLATE);
 		ts_reset.borrow_mut().insert(
 			current_key,
 			(
 				DEFAULT_POST_TEMPLATE.to_string(),
 				DEFAULT_BOOST_TEMPLATE.to_string(),
 				crate::template::DEFAULT_QUOTE_TEMPLATE.to_string(),
+				DEFAULT_FAVORITE_TEMPLATE.to_string(),
 			),
 		);
 	});
@@ -773,22 +822,38 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		let current_key = prev_selection.borrow().clone();
 		ts.insert(
 			current_key,
-			(post_template_text.get_value(), boost_template_text.get_value(), quote_template_text.get_value()),
+			(
+				post_template_text.get_value(),
+				boost_template_text.get_value(),
+				quote_template_text.get_value(),
+				favorite_template_text.get_value(),
+			),
 		);
 	}
 	let new_templates = {
 		let ts = template_state.borrow();
 		let mut per_timeline = HashMap::new();
 		for key in &timeline_keys {
-			if let Some((post, boost, quote)) = ts.get(*key) {
+			if let Some((post, boost, quote, favorite)) = ts.get(*key) {
 				let post_override = if post == DEFAULT_POST_TEMPLATE { None } else { Some(post.clone()) };
 				let boost_override = if boost == DEFAULT_BOOST_TEMPLATE { None } else { Some(boost.clone()) };
 				let quote_override =
 					if quote == crate::template::DEFAULT_QUOTE_TEMPLATE { None } else { Some(quote.clone()) };
-				if post_override.is_some() || boost_override.is_some() || quote_override.is_some() {
+				let favorite_override =
+					if favorite == DEFAULT_FAVORITE_TEMPLATE { None } else { Some(favorite.clone()) };
+				if post_override.is_some()
+					|| boost_override.is_some()
+					|| quote_override.is_some()
+					|| favorite_override.is_some()
+				{
 					per_timeline.insert(
 						(*key).to_string(),
-						PerTimelineTemplates { post: post_override, boost: boost_override, quote: quote_override },
+						PerTimelineTemplates {
+							post: post_override,
+							boost: boost_override,
+							quote: quote_override,
+							favorite: favorite_override,
+						},
 					);
 				}
 			}

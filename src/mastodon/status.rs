@@ -381,6 +381,8 @@ impl Status {
 			poll,
 			booster: String::new(),
 			booster_username: String::new(),
+			favoriter: String::new(),
+			favoriter_username: String::new(),
 			quote_author,
 			quote_username,
 			quote_content,

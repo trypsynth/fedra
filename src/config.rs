@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE};
+use crate::template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE};
 
 const APP_NAME: &str = "Fedra";
 const CONFIG_FILENAME: &str = "config.json";
@@ -673,6 +673,10 @@ impl PostTemplates {
 	pub fn resolve_quote_template(&self, key: &str) -> &str {
 		self.per_timeline.get(key).and_then(|pt| pt.quote.as_deref()).unwrap_or(DEFAULT_QUOTE_TEMPLATE)
 	}
+
+	pub fn resolve_favorite_template(&self, key: &str) -> &str {
+		self.per_timeline.get(key).and_then(|pt| pt.favorite.as_deref()).unwrap_or(DEFAULT_FAVORITE_TEMPLATE)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -683,6 +687,8 @@ pub struct PerTimelineTemplates {
 	pub boost: Option<String>,
 	#[serde(rename = "quote_template")]
 	pub quote: Option<String>,
+	#[serde(rename = "favorite_template")]
+	pub favorite: Option<String>,
 }
 
 const fn default_enter_to_send() -> bool {

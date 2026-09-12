@@ -6,7 +6,7 @@ use crate::{
 	config::{Config, ContentWarningDisplay, DisplayNameEmojiMode, SortOrder},
 	mastodon::{Account, FilterContext, Notification, SearchType, Status, Tag},
 	streaming::StreamHandle,
-	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE},
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,16 +112,18 @@ impl TimelineType {
 		!matches!(self, Self::Thread { .. })
 	}
 
-	pub const fn template_key(&self) -> &str {
+	pub fn template_key(&self) -> &str {
 		match self {
 			Self::Home => "Home",
 			Self::List { .. } => "List Timelines",
-			Self::Notifications | Self::Mentions => "Notifications",
+			Self::Notifications => "Notifications",
+			Self::Mentions => "Mentions",
 			Self::Direct => "Direct Messages",
 			Self::Local | Self::InstanceLocal { .. } => "Local",
 			Self::Federated => "Federated",
 			Self::Bookmarks => "Bookmarks",
 			Self::Favorites => "Favorites",
+			Self::User { name, .. } if name == "Sent" => "Sent",
 			Self::User { .. } => "User Timelines",
 			Self::Thread { .. } => "Threads",
 			Self::Search { .. } => "Search Results",
@@ -146,6 +148,7 @@ pub struct TimelineTextOptions {
 	pub post_template: String,
 	pub boost_template: String,
 	pub quote_template: String,
+	pub favorite_template: String,
 	pub filter_context: FilterContext,
 }
 
@@ -159,6 +162,7 @@ impl TimelineTextOptions {
 			post_template: config.templates.resolve_post_template(key).to_string(),
 			boost_template: config.templates.resolve_boost_template(key).to_string(),
 			quote_template: config.templates.resolve_quote_template(key).to_string(),
+			favorite_template: config.templates.resolve_favorite_template(key).to_string(),
 			filter_context: timeline_type.filter_context(),
 		}
 	}
@@ -171,6 +175,7 @@ impl TimelineTextOptions {
 			post_template: DEFAULT_POST_TEMPLATE.to_string(),
 			boost_template: DEFAULT_BOOST_TEMPLATE.to_string(),
 			quote_template: DEFAULT_QUOTE_TEMPLATE.to_string(),
+			favorite_template: DEFAULT_FAVORITE_TEMPLATE.to_string(),
 			filter_context: FilterContext::Unknown,
 		}
 	}
