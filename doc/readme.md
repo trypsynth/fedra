@@ -149,6 +149,7 @@ Customize how posts appear in each timeline using [Jinja2-style](https://jinja.p
 
 - Select a timeline from the dropdown (or **Global Default** to set the fallback used by all timelines without their own override).
 - Edit the **Window title template**, **Post template**, **Boost template**, and **Quote template** text fields.
+- When the Notifications timeline is selected, a **Favorite template** field also appears, controlling how "X favorited your post" entries are rendered, the same way the Boost template controls boost entries. It's hidden for other timelines since they never show favorite notifications.
 - Click **Reset to default** to restore the selected timeline's templates to the global default (or restore the global default to the built-in default).
 
 Templates are rendered per-entry each time a timeline is displayed. If a template contains a syntax error, the entry falls back to `author: content`.
@@ -172,6 +173,8 @@ Templates are rendered per-entry each time a timeline is displayed. If a templat
 | `{{ poll }}` | Poll summary, or empty if none |
 | `{{ booster }}` | Display name of the person who boosted (boost template only; empty for regular posts) |
 | `{{ booster_username }}` | `@acct` handle of the booster (boost template only) |
+| `{{ favoriter }}` | Display name of the person who favorited your post (favorite template only) |
+| `{{ favoriter_username }}` | `@acct` handle of the favoriter (favorite template only) |
 | `{{ quote_author }}` | Display name of the quoted post's author (quote/boost templates) |
 | `{{ quote_username }}` | `@acct` handle of the quoted post's author (quote/boost templates) |
 | `{{ quote_content }}` | Text content of the quoted post (quote/boost templates) |

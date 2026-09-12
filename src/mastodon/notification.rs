@@ -72,9 +72,15 @@ impl Notification {
 					render_template(&options.boost_template, &vars)
 				},
 			),
-			"favourite" => {
-				format!("{} favorited {}", actor, self.status_text(options, cw_expanded))
-			}
+			"favourite" => self.status.as_ref().map_or_else(
+				|| format!("{actor} favorited a post"),
+				|status| {
+					let mut vars = status.build_template_vars(options, cw_expanded, &options.filter_context);
+					vars.favoriter.clone_from(&actor);
+					vars.favoriter_username = format!("@{}", self.account.acct);
+					render_template(&options.favorite_template, &vars)
+				},
+			),
 			"follow" => format!("{actor} followed you"),
 			"follow_request" => format!("{actor} requested to follow you"),
 			"poll" => format!("Poll ended: {}", self.status_text(options, cw_expanded)),

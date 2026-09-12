@@ -3,6 +3,7 @@ use minijinja::{Environment, context};
 pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_QUOTE_TEMPLATE: &str = "{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_FAVORITE_TEMPLATE: &str = "{{ favoriter }} favorited {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_WINDOW_TITLE_TEMPLATE: &str = "Fedra - {{ account }}";
 
 pub struct WindowTitleTemplateVars {
@@ -37,6 +38,8 @@ pub struct PostTemplateVars {
 	pub poll: String,
 	pub booster: String,
 	pub booster_username: String,
+	pub favoriter: String,
+	pub favoriter_username: String,
 	pub quote_author: String,
 	pub quote_username: String,
 	pub quote_content: String,
@@ -62,6 +65,8 @@ pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
 		poll => vars.poll,
 		booster => vars.booster,
 		booster_username => vars.booster_username,
+		favoriter => vars.favoriter,
+		favoriter_username => vars.favoriter_username,
 		quote_author => vars.quote_author,
 		quote_username => vars.quote_username,
 		quote_content => vars.quote_content,
