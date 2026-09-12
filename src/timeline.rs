@@ -130,27 +130,6 @@ impl TimelineType {
 			Self::Hashtag { .. } => "Hashtag Timelines",
 		}
 	}
-
-	/// Key used to resolve per-timeline filter settings (Filters tab). Unlike `template_key`,
-	/// this does not split Mentions out from Notifications or Sent out from User Timelines,
-	/// since the Filters tab has no dropdown entries for them — they keep sharing the filter
-	/// settings of the timeline they're most similar to.
-	pub const fn filter_key(&self) -> &str {
-		match self {
-			Self::Home => "Home",
-			Self::List { .. } => "List Timelines",
-			Self::Notifications | Self::Mentions => "Notifications",
-			Self::Direct => "Direct Messages",
-			Self::Local | Self::InstanceLocal { .. } => "Local",
-			Self::Federated => "Federated",
-			Self::Bookmarks => "Bookmarks",
-			Self::Favorites => "Favorites",
-			Self::User { .. } => "User Timelines",
-			Self::Thread { .. } => "Threads",
-			Self::Search { .. } => "Search Results",
-			Self::Hashtag { .. } => "Hashtag Timelines",
-		}
-	}
 }
 
 #[derive(Debug, Clone)]

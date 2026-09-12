@@ -491,8 +491,17 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let filters_panel = Panel::builder(&notebook).with_style(PanelStyle::TabTraversal).build();
 	let filters_sizer = BoxSizer::builder(Orientation::Vertical).build();
 
-	let filter_timeline_keys: Vec<&str> =
-		vec!["Home", "Notifications", "Local", "Federated", "List Timelines", "User Timelines", "Hashtag Timelines"];
+	let filter_timeline_keys: Vec<&str> = vec![
+		"Home",
+		"Notifications",
+		"Mentions",
+		"Local",
+		"Federated",
+		"List Timelines",
+		"User Timelines",
+		"Sent",
+		"Hashtag Timelines",
+	];
 	let filter_timeline_key_strings: Vec<String> = filter_timeline_keys.iter().map(|s| (*s).to_string()).collect();
 	let filter_timeline_label = StaticText::builder(&filters_panel).with_label("&Timeline:").build();
 	let filter_timeline_choice = ComboBox::builder(&filters_panel)

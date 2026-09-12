@@ -48,8 +48,8 @@ pub(super) fn loaded(
 				sync_timeline_selection_from_list(timeline, timeline_list, effective_sort_order);
 			}
 			let filter_context = timeline_type.filter_context();
-			let filter_key = timeline_type.filter_key();
-			let timeline_filter = state.config.filters.resolve(filter_key);
+			let template_key = timeline_type.template_key();
+			let timeline_filter = state.config.filters.resolve(template_key);
 			let current_user_id_string = state
 				.config
 				.active_account_id
