@@ -34,8 +34,8 @@ pub fn process_stream_events(
 		let events = handle.drain();
 		let is_active = active_type.as_ref() == Some(&timeline.timeline_type);
 		let filter_context = timeline.timeline_type.filter_context();
-		let template_key = timeline.timeline_type.template_key();
-		let timeline_filter = state.config.filters.resolve(template_key);
+		let filter_key = timeline.timeline_type.filter_key();
+		let timeline_filter = state.config.filters.resolve(filter_key);
 		let current_user_id_string = state
 			.config
 			.active_account_id
@@ -173,7 +173,7 @@ pub fn process_stream_events(
 					continue;
 				}
 				let filter_context = timeline.timeline_type.filter_context();
-				let timeline_filter = state.config.filters.resolve(timeline.timeline_type.template_key());
+				let timeline_filter = state.config.filters.resolve(timeline.timeline_type.filter_key());
 				let mut changed = false;
 				if !own_delete_forwards.is_empty() {
 					let before = timeline.entries.len();
