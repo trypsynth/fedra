@@ -272,6 +272,8 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 		RelationshipAction::Unmute => format!("Unmuted {target_name}"),
 		RelationshipAction::ShowBoosts => format!("Showing boosts from {target_name}"),
 		RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
+		RelationshipAction::EnableNotifications => format!("Turned on notifications for {target_name}"),
+		RelationshipAction::DisableNotifications => format!("Turned off notifications for {target_name}"),
 	}
 }
 

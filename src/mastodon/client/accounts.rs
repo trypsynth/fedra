@@ -121,7 +121,7 @@ impl MastodonClient {
 
 	#[allow(dead_code)]
 	pub fn follow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		self.follow_account_with_options(access_token, account_id, true)
+		self.follow_account_with_options(access_token, account_id, true, false)
 	}
 
 	pub fn follow_account_with_options(
@@ -129,9 +129,13 @@ impl MastodonClient {
 		access_token: &str,
 		account_id: &str,
 		reblogs: bool,
+		notify: bool,
 	) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/follow"))?;
-		let form = [("reblogs", if reblogs { "true" } else { "false" })];
+		// The API resets whichever of these is omitted to its default, so both must always be
+		// sent explicitly to avoid clobbering the setting the caller isn't trying to change.
+		let form =
+			[("reblogs", if reblogs { "true" } else { "false" }), ("notify", if notify { "true" } else { "false" })];
 		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&form), "follow account")
 	}
 

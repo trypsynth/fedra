@@ -116,6 +116,21 @@ impl FollowListDialog {
 					} else {
 						menu.append(user_actions::ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
 					}
+					if r.notifying {
+						menu.append(
+							user_actions::ID_ACTION_DISABLE_NOTIFICATIONS,
+							"Turn Off Notifications",
+							"",
+							ItemKind::Normal,
+						);
+					} else {
+						menu.append(
+							user_actions::ID_ACTION_ENABLE_NOTIFICATIONS,
+							"Turn On Notifications",
+							"",
+							ItemKind::Normal,
+						);
+					}
 				} else if r.requested {
 					menu.append(user_actions::ID_ACTION_UNFOLLOW, "Cancel Follow Request", "", ItemKind::Normal);
 				} else {
@@ -147,6 +162,7 @@ impl FollowListDialog {
 				}
 				menu.append_separator();
 			}
+			menu.append(user_actions::ID_ACTION_SEND_DIRECT_MESSAGE, "Send Direct Message...", "", ItemKind::Normal);
 			menu.append(user_actions::ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
 			menu.append_separator();
 			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
@@ -195,12 +211,19 @@ impl FollowListDialog {
 				let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
 				return;
 			}
+			if id == user_actions::ID_ACTION_SEND_DIRECT_MESSAGE {
+				let _ = ui_tx.send(crate::ui::commands::UiCommand::SendDirectMessage(Box::new(account.clone())));
+				return;
+			}
 			let rel = relationships_handler.borrow().get(&account_id).cloned();
+			let current_reblogs = rel.as_ref().is_none_or(|r| r.showing_reblogs);
+			let current_notifying = rel.as_ref().is_some_and(|r| r.notifying);
 			let cmd = match id {
 				user_actions::ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
 					account_id,
 					target_name,
 					reblogs: true,
+					notify: false,
 					action: crate::network::RelationshipAction::Follow,
 				},
 				user_actions::ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
@@ -216,13 +239,29 @@ impl FollowListDialog {
 					account_id,
 					target_name,
 					reblogs: true,
+					notify: current_notifying,
 					action: crate::network::RelationshipAction::ShowBoosts,
 				},
 				user_actions::ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
 					account_id,
 					target_name,
 					reblogs: false,
+					notify: current_notifying,
 					action: crate::network::RelationshipAction::HideBoosts,
+				},
+				user_actions::ID_ACTION_ENABLE_NOTIFICATIONS => NetworkCommand::FollowAccount {
+					account_id,
+					target_name,
+					reblogs: current_reblogs,
+					notify: true,
+					action: crate::network::RelationshipAction::EnableNotifications,
+				},
+				user_actions::ID_ACTION_DISABLE_NOTIFICATIONS => NetworkCommand::FollowAccount {
+					account_id,
+					target_name,
+					reblogs: current_reblogs,
+					notify: false,
+					action: crate::network::RelationshipAction::DisableNotifications,
 				},
 				user_actions::ID_ACTION_BLOCK => {
 					let confirm =

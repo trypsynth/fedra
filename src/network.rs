@@ -31,6 +31,8 @@ pub enum RelationshipAction {
 	Unmute,
 	ShowBoosts,
 	HideBoosts,
+	EnableNotifications,
+	DisableNotifications,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +145,7 @@ pub enum NetworkCommand {
 		account_id: String,
 		target_name: String,
 		reblogs: bool,
+		notify: bool,
 		action: RelationshipAction,
 	},
 	ToggleFollow {
@@ -1098,8 +1101,8 @@ fn network_loop(
 				let result = client.get_following_page(access_token, &account_id, Some(&max_id));
 				send_response(responses, ui_waker, NetworkResponse::FollowingNextPageLoaded { result });
 			}
-			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, action }) => {
-				let result = client.follow_account_with_options(access_token, &account_id, reblogs);
+			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, notify, action }) => {
+				let result = client.follow_account_with_options(access_token, &account_id, reblogs, notify);
 				send_response(
 					responses,
 					ui_waker,
@@ -1125,7 +1128,7 @@ fn network_loop(
 							} else {
 								(
 									RelationshipAction::Follow,
-									client.follow_account_with_options(access_token, &id, true),
+									client.follow_account_with_options(access_token, &id, true, false),
 								)
 							};
 							send_response(

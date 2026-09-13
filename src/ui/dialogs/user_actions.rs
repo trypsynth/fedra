@@ -21,6 +21,9 @@ pub(crate) const ID_ACTION_VIEW_FOLLOWING: i32 = 6011;
 pub(crate) const ID_ACTION_ACCEPT_FOLLOW_REQUEST: i32 = 6012;
 pub(crate) const ID_ACTION_REJECT_FOLLOW_REQUEST: i32 = 6013;
 pub(crate) const ID_ACTION_ADD_TO_LIST: i32 = 6014;
+pub(crate) const ID_ACTION_ENABLE_NOTIFICATIONS: i32 = 6015;
+pub(crate) const ID_ACTION_DISABLE_NOTIFICATIONS: i32 = 6016;
+pub(crate) const ID_ACTION_SEND_DIRECT_MESSAGE: i32 = 6017;
 
 pub(crate) fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	text.push_str("\r\n\r\nRelationship:\r\n");
@@ -78,6 +81,11 @@ pub(crate) fn setup_actions_button(
 					} else {
 						menu.append(ID_ACTION_SHOW_BOOSTS, "Show Boosts", "", ItemKind::Normal);
 					}
+					if r.notifying {
+						menu.append(ID_ACTION_DISABLE_NOTIFICATIONS, "Turn Off Notifications", "", ItemKind::Normal);
+					} else {
+						menu.append(ID_ACTION_ENABLE_NOTIFICATIONS, "Turn On Notifications", "", ItemKind::Normal);
+					}
 				} else if r.requested {
 					menu.append(ID_ACTION_UNFOLLOW, "Cancel Follow Request", "", ItemKind::Normal);
 				} else {
@@ -100,6 +108,7 @@ pub(crate) fn setup_actions_button(
 				menu.append_separator();
 			}
 		}
+		menu.append(ID_ACTION_SEND_DIRECT_MESSAGE, "Send Direct Message...", "", ItemKind::Normal);
 		menu.append(ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
 		menu.append_separator();
 		menu.append(ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
@@ -134,11 +143,18 @@ pub(crate) fn setup_actions_button(
 			let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
 			return;
 		}
+		if id == ID_ACTION_SEND_DIRECT_MESSAGE {
+			let _ = ui_tx.send(crate::ui::commands::UiCommand::SendDirectMessage(Box::new(account.clone())));
+			return;
+		}
+		let current_reblogs = relationship.borrow().as_ref().is_none_or(|r| r.showing_reblogs);
+		let current_notifying = relationship.borrow().as_ref().is_some_and(|r| r.notifying);
 		let cmd = match id {
 			ID_ACTION_FOLLOW => NetworkCommand::FollowAccount {
 				account_id,
 				target_name,
 				reblogs: true,
+				notify: false,
 				action: crate::network::RelationshipAction::Follow,
 			},
 			ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
@@ -154,13 +170,29 @@ pub(crate) fn setup_actions_button(
 				account_id,
 				target_name,
 				reblogs: true,
+				notify: current_notifying,
 				action: crate::network::RelationshipAction::ShowBoosts,
 			},
 			ID_ACTION_HIDE_BOOSTS => NetworkCommand::FollowAccount {
 				account_id,
 				target_name,
 				reblogs: false,
+				notify: current_notifying,
 				action: crate::network::RelationshipAction::HideBoosts,
+			},
+			ID_ACTION_ENABLE_NOTIFICATIONS => NetworkCommand::FollowAccount {
+				account_id,
+				target_name,
+				reblogs: current_reblogs,
+				notify: true,
+				action: crate::network::RelationshipAction::EnableNotifications,
+			},
+			ID_ACTION_DISABLE_NOTIFICATIONS => NetworkCommand::FollowAccount {
+				account_id,
+				target_name,
+				reblogs: current_reblogs,
+				notify: false,
+				action: crate::network::RelationshipAction::DisableNotifications,
 			},
 			ID_ACTION_BLOCK => {
 				let confirm = MessageDialog::builder(&panel, "Are you sure you want to block this user?", "Block User")

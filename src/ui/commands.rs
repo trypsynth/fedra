@@ -29,7 +29,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, auth,
 	config::{AutoloadMode, SortOrder},
-	mastodon::Status,
+	mastodon::{Account, Status},
 	timeline::TimelineType,
 	ui_wake::UiCommandSender,
 };
@@ -106,6 +106,7 @@ pub enum UiCommand {
 	ManageListMembersDialogClosed,
 	OpenList,
 	AddUserToList(String),
+	SendDirectMessage(Box<Account>),
 	ContinueThread(Box<Status>),
 	Find(String),
 	FindNext,
@@ -206,6 +207,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ManageFilters => settings::manage_filters(ctx),
 		UiCommand::ManageLists => settings::manage_lists(ctx),
 		UiCommand::AddUserToList(account_id) => user::add_user_to_list(ctx, account_id),
+		UiCommand::SendDirectMessage(account) => user::send_direct_message(ctx, *account),
 		UiCommand::Find(query) => find::find(ctx, query),
 		UiCommand::FindNext => find::find_next(ctx),
 		UiCommand::FindPrev => find::find_prev(ctx),

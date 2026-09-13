@@ -1174,6 +1174,38 @@ pub fn prompt_for_post(
 	)
 }
 
+pub fn prompt_for_direct_message(
+	frame: &Frame,
+	recipient: &crate::mastodon::Account,
+	max_chars: Option<usize>,
+	poll_limits: &PollLimits,
+	enter_to_send: bool,
+) -> Option<(PostResult, ComposeDialogConfig)> {
+	let author = recipient.display_name_or_username();
+	prompt_for_compose(
+		frame,
+		max_chars,
+		poll_limits,
+		enter_to_send,
+		ComposeDialogConfig {
+			title_prefix: format!("Direct Message to {author}"),
+			ok_label: "Post".to_string(),
+			initial_content: format!("@{} ", recipient.full_acct()),
+			initial_cw: None,
+			initial_sensitive: false,
+			initial_language: None,
+			default_visibility: PostVisibility::Direct,
+			can_change_visibility: true,
+			show_schedule_controls: true,
+			show_thread_checkbox: true,
+			initial_thread_mode: false,
+			quoted_text: None,
+		},
+		Vec::new(),
+		None,
+	)
+}
+
 pub fn prompt_for_reply(
 	frame: &Frame,
 	replying_to: &Status,

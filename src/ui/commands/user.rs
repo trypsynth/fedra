@@ -2,12 +2,13 @@
 
 use super::{
 	UiCommand, UiCommandContext, handle_ui_command,
+	post::post_result_to_data,
 	selection::{acct_from_mention_link, foreign_url, get_selected_entry, get_selected_status},
 	timeline::open_timeline,
 };
 use crate::{
 	html,
-	mastodon::Status,
+	mastodon::{Account, Status},
 	network::NetworkCommand,
 	timeline::{TimelineEntry, TimelineType},
 	ui::dialogs,
@@ -598,6 +599,31 @@ pub(super) fn add_user_to_list(ctx: &mut UiCommandContext<'_>, account_id: Strin
 	state.pending_add_to_list_user = Some(account_id);
 	if let Some(handle) = &state.network_handle {
 		handle.send(NetworkCommand::FetchLists);
+	} else {
+		live_region.announce("Network not available");
+	}
+}
+
+pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Account) {
+	let state = &mut *ctx.state;
+	let frame = ctx.frame;
+	let live_region = ctx.live_region;
+	let (has_account, max_post_chars, poll_limits, enter_to_send) =
+		(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone(), state.config.enter_to_send);
+	if !has_account {
+		live_region.announce("No account configured");
+		return;
+	}
+	let Some((post, config)) =
+		dialogs::prompt_for_direct_message(frame, &account, max_post_chars, &poll_limits, enter_to_send)
+	else {
+		return;
+	};
+	if let Some(handle) = &state.network_handle {
+		state.pending_thread_continuation = post.continue_thread;
+		state.pending_post =
+			Some(crate::PendingPost { config, operation: crate::PostOperation::NewPost, last_result: post.clone() });
+		handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
 	} else {
 		live_region.announce("Network not available");
 	}
