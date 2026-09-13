@@ -27,6 +27,7 @@ wx-utils = { version = "0.3.0", features = ["shortcuts"] }
 wxdragon = { version = "0.9.21", features = ["webview"] }
 accesskit = "0.25.0"
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp4", "mp3", "vorbis", "wav", "flac"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 
 [target.'cfg(windows)'.dependencies]
 accesskit_windows = "0.35.0"

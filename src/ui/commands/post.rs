@@ -728,7 +728,7 @@ pub(super) fn play_media(ctx: &mut UiCommandContext<'_>) {
 		}
 	};
 
-	crate::ui::dialogs::show_media_player(frame, media.url.clone(), state.access_token.clone());
+	crate::ui::dialogs::show_media_player(frame, media.url.clone(), &media.kind, state.access_token.clone());
 }
 
 pub(super) fn view_in_browser(ctx: &mut UiCommandContext<'_>) {

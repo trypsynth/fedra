@@ -30,6 +30,7 @@ thread_local! {
 	static ACTIVE_PROGRESS: RefCell<Option<ProgressDialog>> = const { RefCell::new(None) };
 	static ACTIVE_DOWNLOAD_DONE: RefCell<HashMap<usize, Box<dyn FnOnce(DownloadOutcome)>>> = RefCell::new(HashMap::new());
 	static ACTIVE_LOAD_DONE: RefCell<HashMap<usize, Box<dyn FnOnce(Result<DecodedSource, String>)>>> = RefCell::new(HashMap::new());
+	static ACTIVE_IMAGE_DONE: RefCell<HashMap<usize, Box<dyn FnOnce(Result<DecodedImage, String>)>>> = RefCell::new(HashMap::new());
 	static ACTIVE_TICKS: RefCell<HashMap<usize, Box<dyn Fn(TickerUpdate)>>> = RefCell::new(HashMap::new());
 }
 
@@ -163,6 +164,17 @@ impl Drop for DownloadProgress {
 		// its own clone until it exits), so it's always safe to delete here.
 		let _ = std::fs::remove_file(&self.dest);
 	}
+}
+
+/// A temp file path that won't collide with another attachment being
+/// downloaded at the same time (e.g. an image viewer and a media player open
+/// together).
+fn unique_temp_path() -> PathBuf {
+	std::env::temp_dir().join(format!(
+		"fedra-media-{}-{}.tmp",
+		std::process::id(),
+		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default(),
+	))
 }
 
 /// Downloads `url` to `progress.dest` on a background thread, updating
@@ -370,6 +382,63 @@ fn spawn_progress_download(
 	});
 }
 
+/// Prompts for a save location and downloads `url` there, showing progress
+/// and a completion dialog parented on `frame`. Used by the "Download this
+/// media file" command in both the player and the image viewer.
+fn download_to_user_file(frame: &Frame, url: &str) {
+	let default_file = if let Ok(u) = Url::parse(url) {
+		u.path_segments().and_then(|segments| segments.last()).filter(|s| !s.is_empty()).unwrap_or("media").to_string()
+	} else {
+		"media".to_string()
+	};
+	let dialog = FileDialog::builder(frame)
+		.with_message("Save Media As")
+		.with_default_file(&default_file)
+		.with_style(FileDialogStyle::Save | FileDialogStyle::OverwritePrompt)
+		.build();
+	if dialog.show_modal() == ID_OK {
+		if let Some(path) = dialog.get_path() {
+			let path = PathBuf::from(path);
+			let target = *frame;
+			let cleanup_path = path.clone();
+			spawn_progress_download(
+				frame,
+				url.to_string(),
+				path,
+				"Downloading Media",
+				"Downloading media...",
+				move |outcome| match outcome {
+					DownloadOutcome::Success => {
+						if target.is_valid() {
+							let dlg = MessageDialog::builder(&target, "Download complete.", "Fedra")
+								.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconInformation)
+								.build();
+							dlg.show_modal();
+							dlg.destroy();
+							target.set_focus();
+						}
+					}
+					DownloadOutcome::Cancelled => {
+						let _ = std::fs::remove_file(&cleanup_path);
+					}
+					DownloadOutcome::Failed(e) => {
+						if target.is_valid() {
+							let msg = format!("Failed to download media: {e}");
+							let dlg = MessageDialog::builder(&target, &msg, "Fedra")
+								.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
+								.build();
+							dlg.show_modal();
+							dlg.destroy();
+							target.set_focus();
+						}
+					}
+				},
+			);
+		}
+	}
+	dialog.destroy();
+}
+
 /// Starts a background ticker that periodically reports `progress`'s
 /// download counters (until `still_loading` is cleared or the download
 /// ends) to whatever callback is registered under `id` in [`ACTIVE_TICKS`].
@@ -406,7 +475,7 @@ fn spawn_loading_ticker(id: usize, progress: Arc<DownloadProgress>, still_loadin
 	});
 }
 
-pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Option<String>) {
+pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _access_token: Option<String>) {
 	const ID_PLAY_PAUSE: i32 = 10001;
 	const ID_SEEK_BACK: i32 = 10002;
 	const ID_SEEK_FWD: i32 = 10003;
@@ -417,6 +486,11 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	const ID_ELAPSED: i32 = 10008;
 	const ID_REMAINING: i32 = 10009;
 	const ID_TOTAL: i32 = 10010;
+
+	if kind.eq_ignore_ascii_case("image") {
+		show_image_viewer(url);
+		return;
+	}
 
 	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(480, 200)).build();
 	let lr = MediaLiveRegion::new(&frame);
@@ -447,11 +521,7 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 	let menu_bar = MenuBar::builder().append(menu, "&Playback").build();
 	frame.set_menu_bar(menu_bar);
 
-	let temp_path = std::env::temp_dir().join(format!(
-		"fedra-media-{}-{}.tmp",
-		std::process::id(),
-		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default(),
-	));
+	let temp_path = unique_temp_path();
 	let progress = Arc::new(DownloadProgress {
 		downloaded: AtomicU64::new(0),
 		total: AtomicU64::new(0),
@@ -535,61 +605,7 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 				});
 			}
 			ID_DOWNLOAD => {
-				let default_file = if let Ok(u) = Url::parse(&url) {
-					u.path_segments()
-						.and_then(|segments| segments.last())
-						.filter(|s| !s.is_empty())
-						.unwrap_or("media")
-						.to_string()
-				} else {
-					"media".to_string()
-				};
-				let dialog = FileDialog::builder(&frm)
-					.with_message("Save Media As")
-					.with_default_file(&default_file)
-					.with_style(FileDialogStyle::Save | FileDialogStyle::OverwritePrompt)
-					.build();
-				if dialog.show_modal() == ID_OK {
-					if let Some(path) = dialog.get_path() {
-						let path = PathBuf::from(path);
-						let target = frm.clone();
-						let cleanup_path = path.clone();
-						spawn_progress_download(
-							&frm,
-							url.clone(),
-							path,
-							"Downloading Media",
-							"Downloading media...",
-							move |outcome| match outcome {
-								DownloadOutcome::Success => {
-									if target.is_valid() {
-										let dlg = MessageDialog::builder(&target, "Download complete.", "Fedra")
-											.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconInformation)
-											.build();
-										dlg.show_modal();
-										dlg.destroy();
-										target.set_focus();
-									}
-								}
-								DownloadOutcome::Cancelled => {
-									let _ = std::fs::remove_file(&cleanup_path);
-								}
-								DownloadOutcome::Failed(e) => {
-									if target.is_valid() {
-										let msg = format!("Failed to download media: {e}");
-										let dlg = MessageDialog::builder(&target, &msg, "Fedra")
-											.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-											.build();
-										dlg.show_modal();
-										dlg.destroy();
-										target.set_focus();
-									}
-								}
-							},
-						);
-					}
-				}
-				dialog.destroy();
+				download_to_user_file(&frm, &url);
 			}
 			ID_ELAPSED => {
 				with_session(&state, &lr, |s| {
@@ -677,6 +693,162 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, _access_token: Opt
 		let result = build_decoded_source(progress);
 		ui_call_after(move || {
 			let done = ACTIVE_LOAD_DONE.with(|d| d.borrow_mut().remove(&load_id));
+			if let Some(done) = done {
+				done(result);
+			}
+		});
+	});
+}
+
+/// The result of successfully decoding a fully-downloaded image attachment
+/// on a background thread. Plain pixel data, so it's `Send` and can cross
+/// back to the UI thread via `call_after`; the `wxdragon::Bitmap` is only
+/// ever created on the UI thread afterward (`Bitmap` isn't `Send`).
+struct DecodedImage {
+	rgba: Vec<u8>,
+	width: u32,
+	height: u32,
+}
+
+/// Decodes `progress`'s destination file as an image. Only call this once
+/// `progress.done` is set, same as [`build_decoded_source`].
+fn decode_image(progress: &DownloadProgress) -> Result<DecodedImage, String> {
+	let error = progress.error.lock().unwrap().clone();
+	if let Some(err) = error {
+		return Err(err);
+	}
+	let bytes = std::fs::read(&progress.dest).map_err(|e| e.to_string())?;
+	let rgba = image::load_from_memory(&bytes).map_err(|e| format!("Could not decode image: {e}"))?.to_rgba8();
+	let (width, height) = rgba.dimensions();
+	Ok(DecodedImage { rgba: rgba.into_raw(), width, height })
+}
+
+/// Downloads and displays a static image attachment. There's nothing to
+/// play, so this is a much smaller cousin of [`show_media_player`]: just a
+/// download, a decode, and a picture, plus the same "save a copy" command.
+fn show_image_viewer(url: String) {
+	const ID_DOWNLOAD: i32 = 10006;
+	const ID_CLOSE: i32 = 10007;
+
+	let frame = Frame::builder().with_title("Media Viewer").with_size(Size::new(480, 200)).build();
+	let panel = Panel::builder(&frame).build();
+	let status_label = StaticText::builder(&panel).with_label("Loading image...").build();
+	let panel_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	panel_sizer.add(&status_label, 1, SizerFlag::Expand | SizerFlag::All, 10);
+	panel.set_sizer(panel_sizer, true);
+	let frame_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	frame_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	frame.set_sizer(frame_sizer, true);
+
+	let menu = Menu::builder()
+		.append_item(ID_DOWNLOAD, "Download\tD", "Download this image file")
+		.append_separator()
+		.append_item(ID_CLOSE, "Close\tEscape", "Close media viewer")
+		.build();
+	let menu_bar = MenuBar::builder().append(menu, "&Image").build();
+	frame.set_menu_bar(menu_bar);
+
+	frame.on_menu_selected({
+		let frm = frame.clone();
+		let url = url.clone();
+		move |event| match event.get_id() {
+			ID_DOWNLOAD => {
+				download_to_user_file(&frm, &url);
+			}
+			ID_CLOSE => {
+				frm.close(true);
+			}
+			_ => {}
+		}
+	});
+
+	frame.show(true);
+	// See show_media_player: focusing the frame, not the label, avoids the
+	// screen reader re-speaking every status text change on its own.
+	frame.set_focus();
+
+	let temp_path = unique_temp_path();
+	let progress = Arc::new(DownloadProgress {
+		downloaded: AtomicU64::new(0),
+		total: AtomicU64::new(0),
+		done: AtomicBool::new(false),
+		cancel: AtomicBool::new(false),
+		error: Mutex::new(None),
+		dest: temp_path,
+	});
+	start_background_download(url, progress.clone());
+
+	let still_loading = Arc::new(AtomicBool::new(true));
+	let ticker_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+	ACTIVE_TICKS.with(|t| {
+		t.borrow_mut().insert(ticker_id, {
+			let frame = frame.clone();
+			Box::new(move |update: TickerUpdate| {
+				if !frame.is_valid() {
+					return;
+				}
+				let text = match update {
+					TickerUpdate::Downloading { downloaded, total } if total > 0 => {
+						let percent = (downloaded.saturating_mul(100) / total).min(100);
+						format!("Loading image... {percent}%")
+					}
+					TickerUpdate::Downloading { .. } => "Loading image...".to_string(),
+					TickerUpdate::Finishing => "Loading image... almost ready".to_string(),
+				};
+				status_label.set_label(&text);
+			})
+		});
+	});
+	spawn_loading_ticker(ticker_id, progress.clone(), still_loading.clone());
+
+	let load_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+	ACTIVE_IMAGE_DONE.with(|d| {
+		d.borrow_mut().insert(load_id, {
+			let frm = frame.clone();
+			Box::new(move |result: Result<DecodedImage, String>| {
+				still_loading.store(false, Ordering::Release);
+				if !frm.is_valid() {
+					return;
+				}
+				match result {
+					Ok(decoded) => {
+						if let Some(bitmap) = Bitmap::from_rgba(&decoded.rgba, decoded.width, decoded.height) {
+							// Cap the window to something reasonable; AspectFit
+							// keeps larger images from being stretched or cropped.
+							const MAX_DIM: i32 = 1000;
+							let w = i32::try_from(decoded.width).unwrap_or(MAX_DIM).min(MAX_DIM);
+							let h = i32::try_from(decoded.height).unwrap_or(MAX_DIM).min(MAX_DIM);
+							status_label.destroy();
+							let bitmap_view = StaticBitmap::builder(&panel)
+								.with_bitmap(Some(bitmap))
+								.with_scale_mode(Some(ScaleMode::AspectFit))
+								.with_size(Size::new(w, h))
+								.build();
+							panel_sizer.add(&bitmap_view, 1, SizerFlag::Expand | SizerFlag::All, 0);
+							panel.layout();
+							frm.set_client_size(Size::new(w, h));
+							frm.centre();
+						} else {
+							show_media_load_error(&frm, "Could not display this image.");
+							frm.close(true);
+						}
+					}
+					Err(e) => {
+						show_media_load_error(&frm, &e);
+						frm.close(true);
+					}
+				}
+			})
+		});
+	});
+
+	thread::spawn(move || {
+		while !progress.done.load(Ordering::Acquire) {
+			thread::sleep(Duration::from_millis(20));
+		}
+		let result = decode_image(&progress);
+		ui_call_after(move || {
+			let done = ACTIVE_IMAGE_DONE.with(|d| d.borrow_mut().remove(&load_id));
 			if let Some(done) = done {
 				done(result);
 			}
