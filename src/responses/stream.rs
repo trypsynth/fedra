@@ -95,9 +95,8 @@ pub fn process_stream_events(
 									}
 								}
 								crate::config::NotificationPreference::SoundOnly => {
-									if let Some(mc) = &state.media_ctrl {
-										mc.stop();
-										mc.play();
+									if let Some((output, sound_path)) = &state.notification_sound {
+										crate::audio::play_once(output, sound_path);
 									}
 								}
 								crate::config::NotificationPreference::Disabled => {}

@@ -24,12 +24,13 @@ serde_json = "1.0.151"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
 wx-utils = { version = "0.3.0", features = ["shortcuts"] }
-wxdragon = { version = "0.9.21", features = ["media-ctrl", "webview"] }
+wxdragon = { version = "0.9.21", features = ["webview"] }
 accesskit = "0.25.0"
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp4", "mp3", "vorbis", "wav", "flac"] }
 
 [target.'cfg(windows)'.dependencies]
 accesskit_windows = "0.35.0"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 embed-manifest = "1.5.0"
