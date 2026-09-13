@@ -447,9 +447,9 @@ impl Status {
 			.media_attachments
 			.iter()
 			.enumerate()
-			.map(|(index, media)| match media.description.as_deref().map(str::trim) {
-				Some(text) if !text.is_empty() => format!("alt {}: {}", index + 1, text),
-				_ => format!("alt {}: (missing)", index + 1),
+			.filter_map(|(index, media)| {
+				let text = media.description.as_deref().map(str::trim).filter(|text| !text.is_empty())?;
+				Some(format!("alt {}: {text}", index + 1))
 			})
 			.collect::<Vec<_>>()
 			.join("; ");
