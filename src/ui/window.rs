@@ -533,6 +533,24 @@ pub fn bind_input_handlers(
 			ActionId::ViewHashtags,
 			"View hashtags in selected post",
 		);
+		if cms.has_boosts {
+			append_item(
+				&mut menu,
+				ID_VIEW_BOOSTS,
+				"View Boo&sts",
+				ActionId::ViewBoosts,
+				"View users who boosted this post",
+			);
+		}
+		if cms.has_favorites {
+			append_item(
+				&mut menu,
+				ID_VIEW_FAVORITES,
+				"View Fa&vorites",
+				ActionId::ViewFavorites,
+				"View users who favorited this post",
+			);
+		}
 
 		if cms.is_own {
 			menu.append_separator();

@@ -437,6 +437,8 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 		pinned: target.is_some_and(|t| t.pinned),
 		is_direct: target.is_some_and(|t| t.visibility == "direct"),
 		is_own,
+		has_boosts: target.is_some_and(|t| t.reblogs_count > 0),
+		has_favorites: target.is_some_and(|t| t.favourites_count > 0),
 		quick_action_keys: state.config.quick_action_keys,
 	});
 

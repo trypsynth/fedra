@@ -68,6 +68,8 @@ pub struct ContextMenuState {
 	pub pinned: bool,
 	pub is_direct: bool,
 	pub is_own: bool,
+	pub has_boosts: bool,
+	pub has_favorites: bool,
 	pub quick_action_keys: bool,
 }
 
