@@ -47,6 +47,8 @@ pub struct Config {
 	pub default_timelines: Vec<DefaultTimeline>,
 	#[serde(default)]
 	pub notification_preference: NotificationPreference,
+	#[serde(default)]
+	pub disabled_notification_types: Vec<NotificationKind>,
 	#[serde(default = "default_check_for_updates")]
 	pub check_for_updates_on_startup: bool,
 	#[serde(default)]
@@ -73,6 +75,14 @@ pub struct Config {
 	pub saved_active_timeline: Option<crate::timeline::TimelineType>,
 	#[serde(default)]
 	pub saved_selected_post_id: Option<String>,
+}
+
+impl Config {
+	/// Returns whether notifications of the given Mastodon API `type` should be surfaced
+	/// (sound/toast and the notification timeline). Unrecognized kinds are always enabled.
+	pub fn notification_kind_enabled(&self, kind: &str) -> bool {
+		NotificationKind::from_api_kind(kind).is_none_or(|k| !self.disabled_notification_types.contains(&k))
+	}
 }
 
 const fn default_restore_open_timelines() -> bool {
@@ -103,6 +113,66 @@ pub enum NotificationPreference {
 	Classic,
 	SoundOnly,
 	Disabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NotificationKind {
+	Mention,
+	Boost,
+	Favorite,
+	Follow,
+	FollowRequest,
+	Poll,
+	Update,
+	Status,
+	Admin,
+}
+
+impl NotificationKind {
+	pub const fn all() -> &'static [Self] {
+		&[
+			Self::Mention,
+			Self::Boost,
+			Self::Favorite,
+			Self::Follow,
+			Self::FollowRequest,
+			Self::Poll,
+			Self::Update,
+			Self::Status,
+			Self::Admin,
+		]
+	}
+
+	pub const fn display_name(self) -> &'static str {
+		match self {
+			Self::Mention => "Mentions",
+			Self::Boost => "Boosts",
+			Self::Favorite => "Favorites",
+			Self::Follow => "New followers",
+			Self::FollowRequest => "Follow requests",
+			Self::Poll => "Poll results",
+			Self::Update => "Edited posts",
+			Self::Status => "New posts",
+			Self::Admin => "Moderation and admin",
+		}
+	}
+
+	/// Maps a Mastodon notification `type` string to the coarser kind used for filtering.
+	/// Unrecognized kinds return `None` so they are never accidentally hidden.
+	pub fn from_api_kind(kind: &str) -> Option<Self> {
+		match kind {
+			"mention" => Some(Self::Mention),
+			"reblog" => Some(Self::Boost),
+			"favourite" => Some(Self::Favorite),
+			"follow" => Some(Self::Follow),
+			"follow_request" => Some(Self::FollowRequest),
+			"poll" => Some(Self::Poll),
+			"update" => Some(Self::Update),
+			"status" => Some(Self::Status),
+			"admin.sign_up" | "admin.report" | "severed_relationships" | "moderation_warning" => Some(Self::Admin),
+			_ => None,
+		}
+	}
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -763,6 +833,7 @@ impl Default for Config {
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),
 			notification_preference: NotificationPreference::default(),
+			disabled_notification_types: Vec::new(),
 			check_for_updates_on_startup: true,
 			update_channel: UpdateChannel::default(),
 			hotkey: HotkeyConfig::default(),

@@ -86,24 +86,28 @@ pub fn process_stream_events(
 						status_snapshots.push(status.clone());
 					}
 					if timeline.timeline_type == timeline_type {
+						let type_enabled = state.config.notification_kind_enabled(&notification.kind);
 						if !processed_notification_ids.contains(&notification.id) {
-							let pref = state.config.notification_preference;
-							match pref {
-								crate::config::NotificationPreference::Classic => {
-									if let Some(app_shell) = &state.app_shell {
-										crate::notifications::show_notification(app_shell, &notification);
+							if type_enabled {
+								let pref = state.config.notification_preference;
+								match pref {
+									crate::config::NotificationPreference::Classic => {
+										if let Some(app_shell) = &state.app_shell {
+											crate::notifications::show_notification(app_shell, &notification);
+										}
 									}
-								}
-								crate::config::NotificationPreference::SoundOnly => {
-									if let Some((output, sound_path)) = &state.notification_sound {
-										crate::audio::play_once(output, sound_path);
+									crate::config::NotificationPreference::SoundOnly => {
+										if let Some((output, sound_path)) = &state.notification_sound {
+											crate::audio::play_once(output, sound_path);
+										}
 									}
+									crate::config::NotificationPreference::Disabled => {}
 								}
-								crate::config::NotificationPreference::Disabled => {}
 							}
 							processed_notification_ids.insert(notification.id.clone());
 						}
-						if notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
+						if type_enabled
+							&& notification.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
 							&& notification.matches_filter(&timeline_filter, current_user_id)
 						{
 							if notification.kind == "mention" {

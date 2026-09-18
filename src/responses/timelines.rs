@@ -72,7 +72,8 @@ pub(super) fn loaded(
 					notifications
 						.into_iter()
 						.filter(|n| {
-							n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
+							state.config.notification_kind_enabled(&n.kind)
+								&& n.status.as_ref().is_none_or(|s| !s.should_hide(&filter_context))
 								&& n.matches_filter(&timeline_filter, current_user_id)
 						})
 						.map(|n| TimelineEntry::Notification(Box::new(n)))

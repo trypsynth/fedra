@@ -38,6 +38,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			default_timelines: state.config.default_timelines.clone(),
 			restore_open_timelines: state.config.restore_open_timelines,
 			notification_preference: state.config.notification_preference,
+			disabled_notification_types: state.config.disabled_notification_types.clone(),
 			hotkey: state.config.hotkey.clone(),
 			shortcuts: state.config.shortcuts.clone(),
 			templates: state.config.templates.clone(),
@@ -63,6 +64,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			default_timelines,
 			restore_open_timelines,
 			notification_preference,
+			disabled_notification_types,
 			hotkey,
 			shortcuts,
 			templates,
@@ -95,6 +97,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		state.config.default_timelines = default_timelines;
 		state.config.restore_open_timelines = restore_open_timelines;
 		state.config.notification_preference = notification_preference;
+		state.config.disabled_notification_types = disabled_notification_types;
 		state.config.hotkey = hotkey;
 		state.config.shortcuts = shortcuts;
 		*shortcuts_cell.borrow_mut() = state.config.shortcuts.clone();

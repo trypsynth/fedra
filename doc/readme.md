@@ -118,6 +118,16 @@ Open options with `Ctrl+,`.
   - Classic Windows Notifications
   - Sound only
   - Disabled
+- `Notification Types...`: choose which notification types to receive (sound, popup, and timeline). All are checked by default; unchecking one hides it from the notification sound/popup and from the Notifications timeline entirely.
+  - Mentions
+  - Boosts
+  - Favorites
+  - New followers
+  - Follow requests
+  - Poll results
+  - Edited posts
+  - New posts
+  - Moderation and admin
 - `Customize Keyboard Shortcuts...`
 - `Customize Window Hotkey...` (Ctrl/Alt/Shift/Win modifiers + custom key)
 
