@@ -31,6 +31,31 @@ thread_local! {
 	static ACTIVE_LOAD_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedSource, String>)> = RefCell::new(HashMap::new());
 	static ACTIVE_IMAGE_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedImage, String>)> = RefCell::new(HashMap::new());
 	static ACTIVE_TICKS: TaskCallbacks<dyn Fn(TickerUpdate)> = RefCell::new(HashMap::new());
+	// Media Player and Media Viewer windows are plain top-level `Frame`s with
+	// no parent, so wx won't tear them down along with the main window. Track
+	// them here so shutdown can close whichever ones the user left open.
+	static ACTIVE_MEDIA_FRAMES: RefCell<HashMap<usize, Frame>> = RefCell::new(HashMap::new());
+}
+
+/// Registers `frame` so [`close_all_media_windows`] can close it if it's
+/// still open at shutdown, and stops tracking it once it's destroyed on its
+/// own (the user closed it, or a load error closed it).
+fn track_media_frame(frame: Frame) {
+	let id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+	ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().insert(id, frame));
+	frame.on_destroy(move |_| {
+		ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().remove(&id));
+	});
+}
+
+/// Closes any Media Player / Media Viewer windows still open. Called during
+/// app shutdown so a forgotten video or image window doesn't keep the
+/// process alive after the main window closes.
+pub fn close_all_media_windows() {
+	let frames = ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().drain().collect::<Vec<_>>());
+	for (_, frame) in frames {
+		frame.destroy();
+	}
 }
 
 /// A progress report sent to whatever's registered in [`ACTIVE_TICKS`].
@@ -519,6 +544,7 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _acces
 		return;
 	}
 	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(480, 200)).build();
+	track_media_frame(frame);
 	let lr = MediaLiveRegion::new(&frame);
 	let panel = Panel::builder(&frame).build();
 	let status_label = StaticText::builder(&panel).with_label("Loading media...").build();
@@ -765,6 +791,7 @@ fn show_image_viewer(url: String) {
 	const ID_DOWNLOAD: i32 = 10006;
 	const ID_CLOSE: i32 = 10007;
 	let frame = Frame::builder().with_title("Media Viewer").with_size(Size::new(480, 200)).build();
+	track_media_frame(frame);
 	let panel = Panel::builder(&frame).build();
 	let status_label = StaticText::builder(&panel).with_label("Loading image...").build();
 	let panel_sizer = BoxSizer::builder(Orientation::Vertical).build();

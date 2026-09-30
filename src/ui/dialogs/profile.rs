@@ -97,6 +97,10 @@ impl ProfileDialog {
 		self.dialog
 	}
 
+	pub fn destroy(&self) {
+		self.dialog.destroy();
+	}
+
 	pub fn update_account(&self, account: &MastodonAccount) {
 		self.account.replace(account.clone());
 		self.dialog.set_label(&format!("Profile for {}", account.display_name_or_username()));
@@ -460,6 +464,10 @@ impl HashtagDialog {
 
 	pub fn show(&self) {
 		self.dialog.show(true);
+	}
+
+	pub fn destroy(&self) {
+		self.dialog.destroy();
 	}
 
 	pub fn update_tag(&self, name: &str, following: bool) {

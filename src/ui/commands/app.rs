@@ -68,6 +68,26 @@ pub(super) fn check_for_updates(ctx: &mut UiCommandContext<'_>) {
 pub(super) fn app_closing(ctx: &mut UiCommandContext<'_>) {
 	let _ = ctx.state.save_config();
 	crate::read_position::sync_before_exit(ctx.state);
+	let state = &mut *ctx.state;
+	dialogs::close_all_media_windows();
+	if let Some(dialog) = state.hashtag_dialog.take() {
+		dialog.destroy();
+	}
+	if let Some(dialog) = state.profile_dialog.take() {
+		dialog.destroy();
+	}
+	if let Some(dialog) = state.followers_dialog.take() {
+		dialog.destroy();
+	}
+	if let Some(dialog) = state.following_dialog.take() {
+		dialog.destroy();
+	}
+	if let Some(dialog) = state.manage_lists_dialog.take() {
+		dialog.destroy();
+	}
+	if let Some(dialog) = state.manage_list_members_dialog.take() {
+		dialog.destroy();
+	}
 	ctx.frame.destroy();
 }
 

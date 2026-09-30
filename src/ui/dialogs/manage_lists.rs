@@ -136,6 +136,10 @@ impl ManageListsDialog {
 		self.dialog.show(true);
 	}
 
+	pub fn destroy(&self) {
+		self.dialog.destroy();
+	}
+
 	pub fn update_lists(&self, new_lists: Vec<crate::mastodon::List>) {
 		*self.lists.borrow_mut() = new_lists;
 		self.update_list_display();
