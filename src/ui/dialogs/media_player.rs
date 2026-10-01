@@ -31,31 +31,6 @@ thread_local! {
 	static ACTIVE_LOAD_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedSource, String>)> = RefCell::new(HashMap::new());
 	static ACTIVE_IMAGE_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedImage, String>)> = RefCell::new(HashMap::new());
 	static ACTIVE_TICKS: TaskCallbacks<dyn Fn(TickerUpdate)> = RefCell::new(HashMap::new());
-	// Media Player and Media Viewer windows are plain top-level `Frame`s with
-	// no parent, so wx won't tear them down along with the main window. Track
-	// them here so shutdown can close whichever ones the user left open.
-	static ACTIVE_MEDIA_FRAMES: RefCell<HashMap<usize, Frame>> = RefCell::new(HashMap::new());
-}
-
-/// Registers `frame` so [`close_all_media_windows`] can close it if it's
-/// still open at shutdown, and stops tracking it once it's destroyed on its
-/// own (the user closed it, or a load error closed it).
-fn track_media_frame(frame: Frame) {
-	let id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().insert(id, frame));
-	frame.on_destroy(move |_| {
-		ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().remove(&id));
-	});
-}
-
-/// Closes any Media Player / Media Viewer windows still open. Called during
-/// app shutdown so a forgotten video or image window doesn't keep the
-/// process alive after the main window closes.
-pub fn close_all_media_windows() {
-	let frames = ACTIVE_MEDIA_FRAMES.with(|frames| frames.borrow_mut().drain().collect::<Vec<_>>());
-	for (_, frame) in frames {
-		frame.destroy();
-	}
 }
 
 /// A progress report sent to whatever's registered in [`ACTIVE_TICKS`].
@@ -528,7 +503,7 @@ fn spawn_loading_ticker(id: usize, progress: Arc<DownloadProgress>, still_loadin
 	});
 }
 
-pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _access_token: Option<String>) {
+pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _access_token: Option<String>) {
 	const ID_PLAY_PAUSE: i32 = 10001;
 	const ID_SEEK_BACK: i32 = 10002;
 	const ID_SEEK_FWD: i32 = 10003;
@@ -540,11 +515,10 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _acces
 	const ID_REMAINING: i32 = 10009;
 	const ID_TOTAL: i32 = 10010;
 	if kind.eq_ignore_ascii_case("image") {
-		show_image_viewer(url);
+		show_image_viewer(parent, url);
 		return;
 	}
-	let frame = Frame::builder().with_title("Media Player").with_size(Size::new(480, 200)).build();
-	track_media_frame(frame);
+	let frame = Frame::builder().with_parent(parent).with_title("Media Player").with_size(Size::new(480, 200)).build();
 	let lr = MediaLiveRegion::new(&frame);
 	let panel = Panel::builder(&frame).build();
 	let status_label = StaticText::builder(&panel).with_label("Loading media...").build();
@@ -787,11 +761,10 @@ fn decode_image(progress: &DownloadProgress) -> Result<DecodedImage, String> {
 /// Downloads and displays a static image attachment. There's nothing to
 /// play, so this is a much smaller cousin of [`show_media_player`]: just a
 /// download, a decode, and a picture, plus the same "save a copy" command.
-fn show_image_viewer(url: String) {
+fn show_image_viewer(parent: &impl WxWidget, url: String) {
 	const ID_DOWNLOAD: i32 = 10006;
 	const ID_CLOSE: i32 = 10007;
-	let frame = Frame::builder().with_title("Media Viewer").with_size(Size::new(480, 200)).build();
-	track_media_frame(frame);
+	let frame = Frame::builder().with_parent(parent).with_title("Media Viewer").with_size(Size::new(480, 200)).build();
 	let panel = Panel::builder(&frame).build();
 	let status_label = StaticText::builder(&panel).with_label("Loading image...").build();
 	let panel_sizer = BoxSizer::builder(Orientation::Vertical).build();
