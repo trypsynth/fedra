@@ -315,6 +315,10 @@ impl FollowListDialog {
 		self.dialog.show(true);
 	}
 
+	pub fn destroy(&self) {
+		self.dialog.destroy();
+	}
+
 	pub fn update_relationships(&self, relationships: &[Relationship]) {
 		{
 			let mut map = self.relationships.borrow_mut();

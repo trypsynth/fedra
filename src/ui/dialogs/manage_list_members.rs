@@ -101,6 +101,10 @@ impl ManageListMembersDialog {
 		self.dialog.show(true);
 	}
 
+	pub fn destroy(&self) {
+		self.dialog.destroy();
+	}
+
 	#[allow(dead_code)]
 	pub fn update_members(&self, new_members: Vec<crate::mastodon::Account>) {
 		*self.members.borrow_mut() = new_members;

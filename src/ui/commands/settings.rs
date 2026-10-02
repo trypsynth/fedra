@@ -173,12 +173,16 @@ pub fn register_hotkeys(state: &AppState, ui_tx: &UiCommandSender, live_region: 
 
 pub(super) fn manage_lists_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.manage_lists_dialog = None;
+	if let Some(dialog) = state.manage_lists_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn manage_list_members_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.manage_list_members_dialog = None;
+	if let Some(dialog) = state.manage_list_members_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn manage_filters(ctx: &mut UiCommandContext<'_>) {
