@@ -264,6 +264,10 @@ fn main() {
 	#[cfg(target_os = "macos")]
 	promote_unbundled_to_regular_app();
 	let _ = wxdragon::main(|app| {
+		// macOS reopens the running app through on_reopen_app instead of starting another instance.
+		#[cfg(target_os = "macos")]
+		let instance_checker: Option<SingleInstanceChecker> = None;
+		#[cfg(not(target_os = "macos"))]
 		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
 		if let Some(checker) = instance_checker.as_ref()
 			&& checker.is_another_running()
