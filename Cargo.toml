@@ -44,6 +44,7 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_
 live-region = "0.3.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block = "0.1.6"
 objc = "0.2.7"
 
 [build-dependencies]
