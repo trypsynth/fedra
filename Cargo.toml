@@ -37,7 +37,7 @@ wxdragon = { version = "0.9.22", default-features = false, features = ["webview"
 
 [target.'cfg(windows)'.dependencies]
 accesskit_windows = "0.35.1"
-prismer = { version = "0.1.3", features = ["static"] }
+prismer = { version = "0.1.4", features = ["static"] }
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(not(windows))'.dependencies]

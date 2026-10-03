@@ -205,9 +205,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.5.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f360145194ee8e21db5ee7f3fcd4fe52210864c75c985dae33218202c8bbe040"
+checksum = "f74872d07caf508b30a21f6836e7d7016a2eaf7d9ff4f48deaa58cd8a0407630"
 dependencies = [
  "find-msvc-tools",
  "shlex 2.0.1",
@@ -1391,15 +1391,15 @@ checksum = "6f0b9fc9ea91fa687a6702b248bae651b2781b173c5b9e41b2a719527c9283c0"
 
 [[package]]
 name = "lazy_static"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libloading"
@@ -1928,9 +1928,9 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patois"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d8a7a8ed1b780906a3ee4cfb797cf467c0a758176701c10fd783ca0f2d39938"
+checksum = "75b8d37756e8066067907b01d2cb1ffb7f2886707af4909280a523b2f98f59cc"
 dependencies = [
  "inventory",
  "patois-macros",
@@ -2075,18 +2075,18 @@ dependencies = [
 
 [[package]]
 name = "prism-sys"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "946dd92463d7d3fe17e537f8e94a604f02c3b9210ac752dd47c1f35028720573"
+checksum = "9056b582fac161198bd0ce7dd84424e5c287495ab3cbfb1dc106553bcd2ea4c9"
 dependencies = [
  "cmake",
 ]
 
 [[package]]
 name = "prismer"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa9a9bee1a717ac76e4b9c78fcc13f0a3dee438aab2375a84ccc62ee127c1af9"
+checksum = "0fab1f6ae95403371691d7ea661c98a4811613cdc3cbb45a35b774386a6ffa78"
 dependencies = [
  "prism-sys",
 ]
@@ -3094,9 +3094,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.1"
+version = "1.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
 dependencies = [
  "bytes",
  "libc",
@@ -3118,9 +3118,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c85f2c3ef0b1cd58b36682f4b17aaa995f0e5db534d85692b4903abce21f67"
+checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
  "tokio",
@@ -3833,7 +3833,7 @@ dependencies = [
 [[package]]
 name = "wxdragon"
 version = "0.9.22"
-source = "git+https://github.com/AllenDang/wxDragon#82356530e28062b0909de96b6831a585cae7256c"
+source = "git+https://github.com/AllenDang/wxDragon#4014818086bf392cb5ff098ef1bdfd48c072f5b3"
 dependencies = [
  "bitflags 2.13.2",
  "log",
@@ -3845,7 +3845,7 @@ dependencies = [
 [[package]]
 name = "wxdragon-macros"
 version = "0.9.22"
-source = "git+https://github.com/AllenDang/wxDragon#82356530e28062b0909de96b6831a585cae7256c"
+source = "git+https://github.com/AllenDang/wxDragon#4014818086bf392cb5ff098ef1bdfd48c072f5b3"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -3856,7 +3856,7 @@ dependencies = [
 [[package]]
 name = "wxdragon-sys"
 version = "0.9.22"
-source = "git+https://github.com/AllenDang/wxDragon#82356530e28062b0909de96b6831a585cae7256c"
+source = "git+https://github.com/AllenDang/wxDragon#4014818086bf392cb5ff098ef1bdfd48c072f5b3"
 dependencies = [
  "bindgen",
  "cmake",
@@ -3898,9 +3898,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
