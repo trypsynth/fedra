@@ -514,6 +514,8 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _acces
 	const ID_ELAPSED: i32 = 10008;
 	const ID_REMAINING: i32 = 10009;
 	const ID_TOTAL: i32 = 10010;
+	const ID_SEEK_START: i32 = 10011;
+	const ID_SEEK_END: i32 = 10012;
 	if kind.eq_ignore_ascii_case("image") {
 		show_image_viewer(url);
 		return;
@@ -622,6 +624,19 @@ pub fn show_media_player(_parent: &dyn WxWidget, url: String, kind: &str, _acces
 				with_session(&state, &lr, |s| {
 					let pos = s.player.get_pos() + Duration::from_secs(10);
 					let _ = s.player.try_seek(pos);
+				});
+			}
+			ID_SEEK_START => {
+				with_session(&state, &lr, |s| {
+					let _ = s.player.try_seek(Duration::ZERO);
+				});
+			}
+			ID_SEEK_END => {
+				with_session(&state, &lr, |s| match s.total_duration {
+					Some(total) => {
+						let _ = s.player.try_seek(total);
+					}
+					None => lr.announce("Total time is unknown"),
 				});
 			}
 			ID_VOL_UP => {

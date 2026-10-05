@@ -457,6 +457,8 @@ Press `Ctrl+I`, or `I` in Quick Action Keys mode, on a post with media to open t
 | `Space` | Play or pause |
 | `Left Arrow` | Go back 10 seconds |
 | `Right Arrow` | Go forward 10 seconds |
+| `Home` | Go to the start |
+| `End` | Go to the end |
 | `Up Arrow` | Increase the volume |
 | `Down Arrow` | Decrease the volume |
 | `E` | Announce the elapsed time |
