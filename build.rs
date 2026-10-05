@@ -1,6 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 
-use std::{env, path::Path};
+use std::path::Path;
 
 use shipfitter::{
 	build::{configure_file, embed_commit_info, target_profile_dir},
