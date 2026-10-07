@@ -138,7 +138,7 @@ jobs:
         PREV=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1 || echo "")
         echo "tag=$PREV" >> $GITHUB_OUTPUT
     - name: Create release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
