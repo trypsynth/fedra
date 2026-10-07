@@ -18,7 +18,7 @@ jobs:
     name: Format check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
@@ -29,7 +29,7 @@ jobs:
     name: Tests and clippy
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
