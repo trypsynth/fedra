@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::{
 	AppState,
@@ -36,10 +36,14 @@ pub fn show_notification(app_shell: Option<&AppShell>, notification: &Notificati
 	show(app_shell, notification.account.display_name_or_username(), &notification.simple_display());
 }
 
+const DEFAULT_SOUND: &[u8] = include_bytes!("../sounds/boop.mp3");
+
 /// Plays `custom`, or the default notification sound when there's none.
-pub fn play_sound(sound: Option<&(AudioOutput, PathBuf)>, custom: Option<&Path>) {
-	if let Some((output, default)) = sound {
-		crate::audio::play_once(output, custom.unwrap_or(default));
+pub fn play_sound(output: Option<&AudioOutput>, custom: Option<&Path>) {
+	let Some(output) = output else { return };
+	match custom {
+		Some(path) => crate::audio::play_once(output, path),
+		None => crate::audio::play_bytes_once(output, DEFAULT_SOUND),
 	}
 }
 
@@ -55,9 +59,7 @@ pub fn notify_message_requests(state: &AppState, count: u64) {
 			show(state.app_shell.as_deref(), "Message requests", &body);
 		}
 		NotificationPreference::SoundOnly => {
-			if let Some((output, sound_path)) = &state.notification_sound {
-				crate::audio::play_once(output, sound_path);
-			}
+			play_sound(state.notification_sound.as_ref(), None);
 		}
 		NotificationPreference::Disabled => {}
 	}

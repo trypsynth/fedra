@@ -6,7 +6,11 @@
 //! screen-reader-first client, so all playback (the favorite/notification
 //! sound and attachment playback) goes through rodio instead.
 
-use std::{fs::File, path::Path};
+use std::{
+	fs::File,
+	io::{Cursor, Read, Seek},
+	path::Path,
+};
 
 /// An open handle to the default audio output device.
 ///
@@ -38,6 +42,16 @@ impl AudioOutput {
 pub fn play_once(output: &AudioOutput, path: &Path) {
 	let Ok(file) = File::open(path) else { return };
 	let Ok(source) = rodio::Decoder::try_from(file) else { return };
+	play_source(output, source);
+}
+
+/// Like [`play_once`], for a sound built into the executable.
+pub fn play_bytes_once(output: &AudioOutput, bytes: &'static [u8]) {
+	let Ok(source) = rodio::Decoder::new(Cursor::new(bytes)) else { return };
+	play_source(output, source);
+}
+
+fn play_source<R: Read + Seek + Send + Sync + 'static>(output: &AudioOutput, source: rodio::Decoder<R>) {
 	let player = rodio::Player::connect_new(output.mixer());
 	player.append(source);
 	player.detach();

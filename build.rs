@@ -11,7 +11,6 @@ use shipfitter::{
 fn main() {
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-changed=Cargo.toml");
-	println!("cargo:rerun-if-changed=sounds");
 	println!("cargo:rerun-if-changed=doc");
 	embed_commit_info("FEDRA");
 	if let Some(target_dir) = target_profile_dir() {

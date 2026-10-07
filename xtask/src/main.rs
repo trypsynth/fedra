@@ -43,7 +43,7 @@ fn release() -> Result<(), Box<dyn Error>> {
 
 /// Builds the release files, returning the ones to publish.
 #[cfg(not(target_os = "macos"))]
-fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+fn package(_root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	use shipfitter::{
 		host_arch_suffix,
 		package::{Zip, inno_setup},
@@ -58,7 +58,6 @@ fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBu
 	} else {
 		println!("Warning: readme.html not found, skipping.");
 	}
-	zip.dir(&root.join("sounds"), "sounds")?;
 	zip.finish()?;
 	println!("Created zip: {}", zip_path.display());
 	let mut artifacts = vec![zip_path];
@@ -93,8 +92,7 @@ fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBu
 		..MacApp::default()
 	};
 	let readme_path = target_dir.join("readme.html");
-	let sounds_path = root.join("sounds");
-	let mut resources = vec![sounds_path.as_path()];
+	let mut resources = Vec::new();
 	if readme_path.exists() {
 		resources.push(&readme_path);
 	} else {

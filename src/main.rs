@@ -116,7 +116,7 @@ pub(crate) struct AppState {
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
 	pub(crate) context_menu_state: Rc<Cell<ContextMenuState>>,
-	pub(crate) notification_sound: Option<(audio::AudioOutput, std::path::PathBuf)>,
+	pub(crate) notification_sound: Option<audio::AudioOutput>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
@@ -211,16 +211,11 @@ impl AppState {
 	}
 }
 
-/// Where the sounds and readme ship: next to the executable, or in `Contents/Resources` when Fedra
+/// Where the readme ships: next to the executable, or in `Contents/Resources` when Fedra
 /// runs from a macOS app bundle.
 #[must_use]
 pub fn resource_dir() -> std::path::PathBuf {
 	config::home().resource_dir()
-}
-
-#[must_use]
-pub fn get_sound_path() -> std::path::PathBuf {
-	resource_dir().join("sounds").join("boop.mp3")
 }
 
 /// Makes an unbundled binary, such as one started by `cargo run`, a regular app with a menu bar
@@ -307,12 +302,9 @@ fn main() {
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let shortcuts_cell = Rc::new(std::cell::RefCell::new(config.shortcuts.clone()));
 		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
-		let sound_path = get_sound_path();
-		if sound_path.exists() {
-			match audio::AudioOutput::open() {
-				Ok(output) => state.notification_sound = Some((output, sound_path)),
-				Err(err) => eprintln!("Failed to open audio output for notification sound: {err}"),
-			}
+		match audio::AudioOutput::open() {
+			Ok(output) => state.notification_sound = Some(output),
+			Err(err) => eprintln!("Failed to open audio output for notification sound: {err}"),
 		}
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
