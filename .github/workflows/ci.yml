@@ -48,7 +48,7 @@ jobs:
         run: echo "sha=$(git ls-remote https://github.com/wxWidgets/wxWidgets.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache wxWidgets source
         id: wxwidgets-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: wxWidgets
           key: wxwidgets-src-${{ steps.wxwidgets.outputs.sha }}
@@ -65,7 +65,7 @@ jobs:
       # these get their own cache. It has to come after rust-cache: post steps
       # run in reverse, so this one saves before rust-cache's cleanup runs.
       - name: Cache wxWidgets build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             target/debug/wxwidgets_cmake_build

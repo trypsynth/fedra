@@ -52,7 +52,7 @@ jobs:
       run: echo "sha=$(git ls-remote https://github.com/wxWidgets/wxWidgets.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wxWidgets source
       id: wxwidgets-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: wxWidgets
         key: wxwidgets-src-${{ steps.wxwidgets.outputs.sha }}
@@ -101,7 +101,7 @@ jobs:
       run: echo "sha=$(git ls-remote https://github.com/wxWidgets/wxWidgets.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wxWidgets source
       id: wxwidgets-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: wxWidgets
         key: wxwidgets-src-${{ steps.wxwidgets.outputs.sha }}
