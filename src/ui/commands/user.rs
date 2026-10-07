@@ -10,73 +10,58 @@ use super::{
 };
 use crate::{
 	html,
-	mastodon::Account,
+	mastodon::{Account, Status},
 	network::NetworkCommand,
 	timeline::{TimelineEntry, TimelineType},
 	ui::dialogs,
 };
 
 pub(super) fn view_profile(ctx: &mut UiCommandContext<'_>) {
+	lookup_involved_account(ctx, dialogs::UserLookupAction::Profile);
+}
+
+pub(super) fn open_user_timeline(ctx: &mut UiCommandContext<'_>) {
+	lookup_involved_account(ctx, dialogs::UserLookupAction::Timeline);
+}
+
+/// Opens someone the selected item is about, asking which one when there's more than one.
+fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::UserLookupAction) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
-	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = &ctx.timeline_list;
-	let suppress_selection = ctx.suppress_selection;
 	let live_region = ctx.live_region;
 	let ui_tx = ctx.ui_tx;
 	let Some(entry) = get_selected_entry(state) else {
 		live_region.announce("No item selected");
 		return;
 	};
-	let (account, action) = match entry {
-		TimelineEntry::Status(status) => {
-			if let Some(reblog) = &status.reblog {
-				let booster = &status.account;
-				let author = &reblog.account;
-				if booster.id == author.id {
-					(author.clone(), dialogs::UserLookupAction::Profile)
-				} else {
-					let accounts = [booster, author];
-					let labels = [
-						format!("{} (booster)", booster.display_name_or_username()),
-						format!("{} (author)", author.display_name_or_username()),
-					];
-					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-					match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
-						Some((acc, act)) => (acc, act),
-						None => return,
-					}
-				}
-			} else if let Some(quote) = &status.quote {
-				if let Some(quoted_status) = &quote.quoted_status {
-					let quoter = &status.account;
-					let author = &quoted_status.account;
-					if quoter.id == author.id {
-						(author.clone(), dialogs::UserLookupAction::Profile)
-					} else {
-						let accounts = [quoter, author];
-						let labels = [
-							format!("{} (quoter)", quoter.display_name_or_username()),
-							format!("{} (author)", author.display_name_or_username()),
-						];
-						let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-						match dialogs::prompt_for_account_selection(frame, &accounts, &label_refs) {
-							Some((acc, act)) => (acc, act),
-							None => return,
-						}
-					}
-				} else {
-					(status.account.clone(), dialogs::UserLookupAction::Profile)
-				}
-			} else {
-				(status.account.clone(), dialogs::UserLookupAction::Profile)
-			}
-		}
-		TimelineEntry::Notification(notification) => (notification.account.clone(), dialogs::UserLookupAction::Profile),
-		TimelineEntry::Account(account) => ((**account).clone(), dialogs::UserLookupAction::Profile),
-		TimelineEntry::Hashtag(_) => {
-			live_region.announce("Cannot view profile for a hashtag");
+	let mut involved: Vec<(Account, String)> = involved_accounts(entry)
+		.into_iter()
+		.map(|(account, roles)| {
+			let label = format!("{} ({})", account.display_name_or_username(), roles.join(", "));
+			(account.clone(), label)
+		})
+		.collect();
+	// You're rarely who you're looking for, as when someone boosts or quotes your post.
+	if involved.len() > 1 {
+		involved.retain(|(account, _)| state.current_user_id.as_ref() != Some(&account.id));
+	}
+	let (account, action) = match involved.as_slice() {
+		[] => {
+			live_region.announce("No users for this item");
 			return;
+		}
+		[(account, _)] => (account.clone(), action),
+		_ => {
+			let accounts: Vec<&Account> = involved.iter().map(|(account, _)| account).collect();
+			let labels: Vec<&str> = involved.iter().map(|(_, label)| label.as_str()).collect();
+			let picked = match action {
+				dialogs::UserLookupAction::Profile => dialogs::prompt_for_account_selection(frame, &accounts, &labels),
+				dialogs::UserLookupAction::Timeline => {
+					dialogs::prompt_for_account_choice(frame, &accounts, &labels).map(|account| (account, action))
+				}
+			};
+			let Some(picked) = picked else { return };
+			picked
 		}
 	};
 	if let Some(url) = foreign_url(state, Some(&account.url)) {
@@ -86,44 +71,42 @@ pub(super) fn view_profile(ctx: &mut UiCommandContext<'_>) {
 		}
 		return;
 	}
+	let timeline_type =
+		TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 	match action {
 		dialogs::UserLookupAction::Profile => {
-			if let Some(net) = &state.network_handle {
-				net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-				net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
-				let net_tx = net.command_tx.clone();
-				let ui_tx_timeline = ui_tx.clone();
-				let timeline_type =
-					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				let ui_tx_close = ui_tx.clone();
-				let dlg = dialogs::ProfileDialog::new(
-					frame,
-					account,
-					state.current_user_id.as_deref(),
-					net_tx,
-					ui_tx.clone(),
-					move || {
-						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-					},
-					move || {
-						let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-					},
-				);
-				dlg.show();
-				state.profile_dialog = Some(dlg);
-			} else {
+			let Some(net) = &state.network_handle else {
 				live_region.announce("Network not available");
-			}
+				return;
+			};
+			net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
+			net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
+			let net_tx = net.command_tx.clone();
+			let ui_tx_timeline = ui_tx.clone();
+			let ui_tx_close = ui_tx.clone();
+			let dlg = dialogs::ProfileDialog::new(
+				frame,
+				account,
+				state.current_user_id.as_deref(),
+				net_tx,
+				ui_tx.clone(),
+				move || {
+					let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
+				},
+				move || {
+					let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
+				},
+			);
+			dlg.show();
+			state.profile_dialog = Some(dlg);
 		}
 		dialogs::UserLookupAction::Timeline => {
-			let timeline_type =
-				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 			open_timeline(
 				state,
-				timelines_selector,
-				timeline_list,
+				ctx.timelines_selector,
+				&ctx.timeline_list,
 				&timeline_type,
-				suppress_selection,
+				ctx.suppress_selection,
 				live_region,
 				frame,
 			);
@@ -131,120 +114,56 @@ pub(super) fn view_profile(ctx: &mut UiCommandContext<'_>) {
 	}
 }
 
-pub(super) fn open_user_timeline(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = &ctx.timeline_list;
-	let suppress_selection = ctx.suppress_selection;
-	let live_region = ctx.live_region;
-	let ui_tx = ctx.ui_tx;
-	let Some(entry) = get_selected_entry(state) else {
-		live_region.announce("No item selected");
-		return;
-	};
-	let (account, action) = match entry {
-		TimelineEntry::Status(status) => {
-			if let Some(reblog) = &status.reblog {
-				let booster = &status.account;
-				let author = &reblog.account;
-				if booster.id == author.id {
-					(author.clone(), dialogs::UserLookupAction::Timeline)
-				} else {
-					let accounts = [booster, author];
-					let labels = [
-						format!("{} (booster)", booster.display_name_or_username()),
-						format!("{} (author)", author.display_name_or_username()),
-					];
-					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-					match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
-						Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
-						None => return,
-					}
-				}
-			} else if let Some(quote) = &status.quote {
-				if let Some(quoted_status) = &quote.quoted_status {
-					let quoter = &status.account;
-					let author = &quoted_status.account;
-					if quoter.id == author.id {
-						(author.clone(), dialogs::UserLookupAction::Timeline)
-					} else {
-						let accounts = [quoter, author];
-						let labels = [
-							format!("{} (quoter)", quoter.display_name_or_username()),
-							format!("{} (author)", author.display_name_or_username()),
-						];
-						let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-						match dialogs::prompt_for_account_choice(frame, &accounts, &label_refs) {
-							Some(acc) => (acc, dialogs::UserLookupAction::Timeline),
-							None => return,
-						}
-					}
-				} else {
-					(status.account.clone(), dialogs::UserLookupAction::Timeline)
-				}
-			} else {
-				(status.account.clone(), dialogs::UserLookupAction::Timeline)
-			}
-		}
+/// Everyone an item is about, in reading order, with the parts they play in it. Someone in
+/// several parts, like a person quoting their own post, is listed once with all of them.
+fn involved_accounts(entry: &TimelineEntry) -> Vec<(&Account, Vec<&'static str>)> {
+	let mut involved = Vec::new();
+	match entry {
+		TimelineEntry::Status(status) => add_status_accounts(&mut involved, status),
 		TimelineEntry::Notification(notification) => {
-			(notification.account.clone(), dialogs::UserLookupAction::Timeline)
-		}
-		TimelineEntry::Account(account) => ((**account).clone(), dialogs::UserLookupAction::Timeline),
-		TimelineEntry::Hashtag(_) => {
-			live_region.announce("Cannot view user timeline for a hashtag");
-			return;
-		}
-	};
-	if let Some(url) = foreign_url(state, Some(&account.url)) {
-		state.pending_user_lookup_action = Some(action);
-		if let Some(net) = &state.network_handle {
-			net.send(NetworkCommand::ResolveAccount { url });
-		}
-		return;
-	}
-	match action {
-		dialogs::UserLookupAction::Profile => {
-			if let Some(net) = &state.network_handle {
-				net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-				net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
-				let net_tx = net.command_tx.clone();
-				let ui_tx_timeline = ui_tx.clone();
-				let timeline_type =
-					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				let ui_tx_close = ui_tx.clone();
-				let dlg = dialogs::ProfileDialog::new(
-					frame,
-					account,
-					state.current_user_id.as_deref(),
-					net_tx,
-					ui_tx.clone(),
-					move || {
-						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-					},
-					move || {
-						let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-					},
-				);
-				dlg.show();
-				state.profile_dialog = Some(dlg);
-			} else {
-				live_region.announce("Network not available");
+			let role = match notification.kind.as_str() {
+				"mention" | "status" | "quote" | "update" | "poll" => "author",
+				"reblog" => "booster",
+				"favourite" => "favoriter",
+				"follow" | "follow_request" => "follower",
+				"admin.sign_up" => "new user",
+				"admin.report" => "reporter",
+				_ => "notifier",
+			};
+			add_role(&mut involved, &notification.account, role);
+			if let Some(status) = &notification.status {
+				add_status_accounts(&mut involved, status);
+			}
+			if let Some(target) = notification.report.as_ref().and_then(|report| report.target_account.as_ref()) {
+				add_role(&mut involved, target, "reported");
 			}
 		}
-		dialogs::UserLookupAction::Timeline => {
-			let timeline_type =
-				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-			open_timeline(
-				state,
-				timelines_selector,
-				timeline_list,
-				&timeline_type,
-				suppress_selection,
-				live_region,
-				frame,
-			);
-		}
+		TimelineEntry::Account(account) => add_role(&mut involved, account, "account"),
+		TimelineEntry::Hashtag(_) => {}
+	}
+	involved
+}
+
+fn add_status_accounts<'a>(involved: &mut Vec<(&'a Account, Vec<&'static str>)>, status: &'a Status) {
+	if status.reblog.is_some() {
+		add_role(involved, &status.account, "booster");
+	}
+	let status = status.reblog.as_deref().unwrap_or(status);
+	add_role(involved, &status.account, "author");
+	let mut role = "quoted";
+	let mut quoted = status.quote.as_ref().and_then(|quote| quote.quoted_status.as_deref());
+	while let Some(quoted_status) = quoted {
+		add_role(involved, &quoted_status.account, role);
+		role = "quoted in the quote";
+		quoted = quoted_status.quote.as_ref().and_then(|quote| quote.quoted_status.as_deref());
+	}
+}
+
+fn add_role<'a>(involved: &mut Vec<(&'a Account, Vec<&'static str>)>, account: &'a Account, role: &'static str) {
+	match involved.iter_mut().find(|(existing, _)| existing.id == account.id) {
+		Some((_, roles)) if !roles.contains(&role) => roles.push(role),
+		Some(_) => {}
+		None => involved.push((account, vec![role])),
 	}
 }
 
