@@ -353,13 +353,17 @@ fn prompt_for_poll(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let mut options = options.borrow().clone();
+	let selected_preset = duration_choice.get_selection().and_then(|i| presets_secs.get(i as usize).copied());
+	let multiple = multiple_checkbox.get_value();
+	let hide_totals = hide_totals_checkbox.get_value();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
 	if result == ID_REMOVE_POLL {
 		return Some(PollDialogResult::Removed);
 	}
-	let mut options = options.borrow().clone();
 	options.retain(|option| !option.trim().is_empty());
 	if options.len() < 2 {
 		show_warning(parent, "Polls need at least two options.", "Poll");
@@ -369,17 +373,11 @@ fn prompt_for_poll(
 		show_warning(parent, "Too many poll options for this instance.", "Poll");
 		return None;
 	}
-	let selected_preset = duration_choice.get_selection().and_then(|i| presets_secs.get(i as usize).copied());
 	let Some(expires_in) = selected_preset else {
 		show_warning(parent, "Please select a poll duration.", "Poll");
 		return None;
 	};
-	Some(PollDialogResult::Updated(PostPoll {
-		options,
-		expires_in,
-		multiple: multiple_checkbox.get_value(),
-		hide_totals: hide_totals_checkbox.get_value(),
-	}))
+	Some(PollDialogResult::Updated(PostPoll { options, expires_in, multiple, hide_totals }))
 }
 
 fn prompt_for_media(
@@ -550,10 +548,9 @@ fn prompt_for_media(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
-	if result != ID_OK {
-		return None;
-	}
-	Some((items.borrow().clone(), sensitive_checkbox.get_value()))
+	let media = (items.borrow().clone(), sensitive_checkbox.get_value());
+	dialog.destroy();
+	(result == ID_OK).then_some(media)
 }
 
 pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &str) -> Option<Vec<usize>> {
@@ -631,9 +628,6 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
-	if result != ID_OK {
-		return None;
-	}
 	let mut selected_indices = Vec::new();
 	if poll.multiple {
 		for (i, cb) in checkboxes.iter().enumerate() {
@@ -648,7 +642,8 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 			}
 		}
 	}
-	if selected_indices.is_empty() {
+	dialog.destroy();
+	if result != ID_OK || selected_indices.is_empty() {
 		return None;
 	}
 	Some(selected_indices)
@@ -744,13 +739,16 @@ fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<O
 	dialog.centre();
 	date_input.set_focus();
 	let result = dialog.show_modal();
+	let date_value = date_input.get_value();
+	let time_value = time_input.get_value();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
 	if result == ID_CLEAR_SCHEDULE {
 		return Some(None);
 	}
-	let Some(scheduled_utc) = parse_schedule_inputs(&date_input.get_value(), &time_input.get_value()) else {
+	let Some(scheduled_utc) = parse_schedule_inputs(&date_value, &time_value) else {
 		show_warning(parent, "Enter date as YYYY-MM-DD and time as HH:MM.", "Invalid Schedule");
 		return None;
 	};
@@ -1108,6 +1106,7 @@ pub fn prompt_for_compose(
 	let result = dialog.show_modal();
 	mention_timer.stop();
 	if result != ID_OK {
+		dialog.destroy();
 		return None;
 	}
 	let content = content_text.get_value();
@@ -1126,6 +1125,10 @@ pub fn prompt_for_compose(
 	let language = normalize_language_code(&language_combo.get_value());
 	let media = media_items.borrow().clone();
 	let poll = poll_state.borrow().clone();
+	let sensitive = *sensitive_state.borrow();
+	let scheduled_at = scheduled_state.borrow().clone();
+	let continue_thread = thread_checkbox.get_value();
+	dialog.destroy();
 	if trimmed.is_empty() && media.is_empty() && poll.is_none() {
 		return None;
 	}
@@ -1133,14 +1136,14 @@ pub fn prompt_for_compose(
 		PostResult {
 			content: trimmed.to_string(),
 			visibility,
-			sensitive: *sensitive_state.borrow(),
+			sensitive,
 			spoiler_text,
 			content_type,
 			language,
 			media,
 			poll,
-			scheduled_at: scheduled_state.borrow().clone(),
-			continue_thread: thread_checkbox.get_value(),
+			scheduled_at,
+			continue_thread,
 		},
 		config,
 	))

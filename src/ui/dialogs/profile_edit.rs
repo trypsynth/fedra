@@ -162,6 +162,7 @@ pub fn show_profile_edit_dialog(
 		}
 	});
 	if dialog.show_modal() != ID_OK {
+		dialog.destroy();
 		return None;
 	}
 	let display_name = name_text.get_value();
@@ -196,6 +197,7 @@ pub fn show_profile_edit_dialog(
 	} else {
 		None
 	};
+	dialog.destroy();
 	Some(ProfileUpdate {
 		display_name: Some(display_name),
 		note: Some(note),

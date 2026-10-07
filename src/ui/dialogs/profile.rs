@@ -160,10 +160,12 @@ pub fn prompt_for_mentions(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let selection = mention_list.get_selection();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
-	let mention = mention_list.get_selection().and_then(|sel| mentions.get(sel as usize).cloned())?;
+	let mention = selection.and_then(|sel| mentions.get(sel as usize).cloned())?;
 	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
 	Some((mention, action))
 }
@@ -213,10 +215,12 @@ pub fn prompt_for_account_list(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let selection = account_list.get_selection();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
-	let account = account_list.get_selection().and_then(|sel| accounts.get(sel as usize).cloned())?;
+	let account = selection.and_then(|sel| accounts.get(sel as usize).cloned())?;
 	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
 	Some((account, action))
 }
@@ -258,10 +262,12 @@ pub fn prompt_for_account_selection(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let selection = combo.get_selection();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
-	let account = combo.get_selection().and_then(|sel| accounts.get(sel as usize).copied()).cloned()?;
+	let account = selection.and_then(|sel| accounts.get(sel as usize).copied()).cloned()?;
 	let action = if result == ID_VIEW_TIMELINE { UserLookupAction::Timeline } else { UserLookupAction::Profile };
 	Some((account, action))
 }
@@ -295,10 +301,13 @@ pub fn prompt_for_account_choice(
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
-	if dialog.show_modal() != ID_OK {
+	let result = dialog.show_modal();
+	let selection = combo.get_selection();
+	dialog.destroy();
+	if result != ID_OK {
 		return None;
 	}
-	combo.get_selection().and_then(|sel| accounts.get(sel as usize).copied()).cloned()
+	selection.and_then(|sel| accounts.get(sel as usize).copied()).cloned()
 }
 
 #[derive(Clone)]

@@ -51,13 +51,13 @@ pub fn prompt_for_notification_types(
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
-	if dialog.show_modal() != ID_OK {
-		return None;
-	}
+	let result = dialog.show_modal();
 	let unchecked = |checkboxes: Vec<(CheckBox, NotificationKind)>| {
 		checkboxes.into_iter().filter(|(cb, _)| !cb.get_value()).map(|(_, kind)| kind).collect()
 	};
-	Some((unchecked(shown), unchecked(alerting)))
+	let types = (unchecked(shown), unchecked(alerting));
+	dialog.destroy();
+	(result == ID_OK).then_some(types)
 }
 
 pub fn prompt_for_default_timelines(
@@ -92,17 +92,10 @@ pub fn prompt_for_default_timelines(
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
-	if dialog.show_modal() == ID_OK {
-		let mut selected = Vec::new();
-		for (cb, timeline) in checkboxes {
-			if cb.get_value() {
-				selected.push(timeline);
-			}
-		}
-		Some(selected)
-	} else {
-		None
-	}
+	let result = dialog.show_modal();
+	let selected = checkboxes.into_iter().filter(|(cb, _)| cb.get_value()).map(|(_, timeline)| timeline).collect();
+	dialog.destroy();
+	(result == ID_OK).then_some(selected)
 }
 
 #[allow(clippy::struct_excessive_bools, reason = "one field per checkbox in the options dialog")]
@@ -750,8 +743,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
-	let result = dialog.show_modal();
-	if result != ID_OK {
+	if dialog.show_modal() != ID_OK {
+		dialog.destroy();
 		return None;
 	}
 	let new_sort = if sort_checkbox.get_value() { SortOrder::OldestToNewest } else { SortOrder::NewestToOldest };
@@ -834,7 +827,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		}
 		PostTemplates { per_timeline }
 	};
-	Some(OptionsDialogResult {
+	let options = OptionsDialogResult {
 		enter_to_send: enter_checkbox.get_value(),
 		always_show_link_dialog: link_checkbox.get_value(),
 		show_link_previews: previews_checkbox.get_value(),
@@ -862,5 +855,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		filters: filters_state.borrow().clone(),
 		find_loading_mode: new_find_loading_mode,
 		window_title_template: window_title_template_text.get_value(),
-	})
+	};
+	dialog.destroy();
+	Some(options)
 }

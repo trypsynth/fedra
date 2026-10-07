@@ -32,11 +32,10 @@ pub fn show_list_selection_dialog(frame: &Frame, lists: &[List], title: &str, bu
 	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
-	if result == ID_OK {
-		let selection = list_box.get_selection().map(|s| s as usize);
-		if let Some(index) = selection {
-			return lists.get(index).cloned();
-		}
+	let selection = list_box.get_selection().map(|s| s as usize);
+	dialog.destroy();
+	if result != ID_OK {
+		return None;
 	}
-	None
+	selection.and_then(|index| lists.get(index).cloned())
 }

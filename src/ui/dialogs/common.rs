@@ -56,10 +56,11 @@ pub fn prompt_for_user_lookup(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let value = combo.get_value();
+	dialog.destroy();
 	if result == ID_CANCEL {
 		return None;
 	}
-	let value = combo.get_value();
 	let trimmed = value.trim();
 	if trimmed.is_empty() {
 		return None;
@@ -121,15 +122,17 @@ pub fn prompt_for_search(frame: &Frame) -> Option<(String, SearchType)> {
 	dialog.centre();
 	query_input.set_focus();
 	let result = dialog.show_modal();
+	let query = query_input.get_value();
+	let type_selection = type_choice.get_selection();
+	dialog.destroy();
 	if result != ID_OK {
 		return None;
 	}
-	let query = query_input.get_value();
 	let trimmed = query.trim();
 	if trimmed.is_empty() {
 		return None;
 	}
-	let search_type = match type_choice.get_selection() {
+	let search_type = match type_selection {
 		Some(1) => SearchType::Accounts,
 		Some(2) => SearchType::Hashtags,
 		Some(3) => SearchType::Statuses,
@@ -175,10 +178,11 @@ pub fn prompt_for_account_search(parent: &dyn WxWidget) -> Option<String> {
 	dialog.centre();
 	query_input.set_focus();
 	let result = dialog.show_modal();
+	let query = query_input.get_value();
+	dialog.destroy();
 	if result != ID_OK {
 		return None;
 	}
-	let query = query_input.get_value();
 	let trimmed = query.trim();
 	if trimmed.is_empty() {
 		return None;

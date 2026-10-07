@@ -62,14 +62,14 @@ pub fn show_list_edit_dialog(
 	});
 	dialog.centre();
 	title_input.set_focus();
-	if dialog.show_modal() != ID_OK {
-		return None;
-	}
+	let result = dialog.show_modal();
 	let title = title_input.get_value().trim().to_string();
-	if title.is_empty() {
+	let policy_sel = policy_choice.get_selection().unwrap_or(0) as usize;
+	let exclusive = exclusive_check.get_value();
+	dialog.destroy();
+	if result != ID_OK || title.is_empty() {
 		return None;
 	}
-	let policy_sel = policy_choice.get_selection().unwrap_or(0) as usize;
 	let policy = policy_values.get(policy_sel).unwrap_or(&"followed").to_string();
-	Some((title, policy, exclusive_check.get_value()))
+	Some((title, policy, exclusive))
 }

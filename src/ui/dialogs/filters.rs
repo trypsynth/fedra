@@ -101,6 +101,7 @@ pub fn prompt_manage_filters(frame: &Frame, filters: &[Filter]) -> ManageFilters
 	});
 	dialog.centre();
 	dialog.show_modal();
+	dialog.destroy();
 	(*result.borrow()).clone()
 }
 
@@ -169,15 +170,15 @@ fn prompt_keyword_edit(
 	});
 	dialog.centre();
 	keyword_input.set_focus();
-	if dialog.show_modal() != ID_OK {
-		return None;
-	}
+	let result = dialog.show_modal();
 	let text = keyword_input.get_value();
+	let whole_word = whole_word_check.get_value();
+	dialog.destroy();
 	let trimmed = text.trim();
-	if trimmed.is_empty() {
+	if result != ID_OK || trimmed.is_empty() {
 		return None;
 	}
-	Some((trimmed.to_string(), whole_word_check.get_value()))
+	Some((trimmed.to_string(), whole_word))
 }
 
 pub fn prompt_filter_edit(frame: &Frame, existing: Option<&Filter>) -> Option<FilterDialogResult> {
@@ -412,12 +413,10 @@ pub fn prompt_filter_edit(frame: &Frame, existing: Option<&Filter>) -> Option<Fi
 	dialog.centre();
 	title_text.set_focus();
 	if dialog.show_modal() != ID_OK {
+		dialog.destroy();
 		return None;
 	}
 	let title = title_text.get_value().trim().to_string();
-	if title.is_empty() {
-		return None;
-	}
 	let mut contexts = Vec::new();
 	for (cb, ctx) in context_checks {
 		if cb.get_value() {
@@ -444,5 +443,9 @@ pub fn prompt_filter_edit(frame: &Frame, existing: Option<&Filter>) -> Option<Fi
 	};
 	let final_keywords: Vec<(String, String, bool, bool)> =
 		keywords.borrow().iter().map(|k| (k.id.clone(), k.keyword.clone(), k.whole_word, k.destroyed)).collect();
+	dialog.destroy();
+	if title.is_empty() {
+		return None;
+	}
 	Some(FilterDialogResult { title, contexts, action, keywords: final_keywords, expires_in })
 }

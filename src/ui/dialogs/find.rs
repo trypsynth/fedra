@@ -38,11 +38,8 @@ pub fn show_find_dialog(parent: &dyn WxWidget) -> Option<String> {
 	});
 	dialog.centre();
 	input.set_focus();
-	if dialog.show_modal() == ID_OK {
-		let text = input.get_value();
-		if !text.is_empty() {
-			return Some(text);
-		}
-	}
-	None
+	let result = dialog.show_modal();
+	let text = input.get_value();
+	dialog.destroy();
+	(result == ID_OK && !text.is_empty()).then_some(text)
 }
