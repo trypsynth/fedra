@@ -94,7 +94,7 @@ fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBu
 	let readme_path = target_dir.join("readme.html");
 	let mut resources = Vec::new();
 	if readme_path.exists() {
-		resources.push(&readme_path);
+		resources.push(readme_path.as_path());
 	} else {
 		println!("Warning: readme.html not found, skipping.");
 	}
