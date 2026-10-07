@@ -18,7 +18,11 @@ use crate::{
 	ID_VIEW_HASHTAGS, ID_VIEW_HELP, ID_VIEW_IN_BROWSER, ID_VIEW_MENTIONS, ID_VIEW_POST, ID_VIEW_PROFILE,
 	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, UiCommand,
 	config::{ActionId, AutoloadMode, ShortcutsConfig, SortOrder},
-	ui::{commands::command_for, dialogs, keys, menu::build_menu_bar},
+	ui::{
+		dialogs, keys,
+		menu::build_menu_bar,
+		shortcuts::{dispatch_action, timeline_index_for_key},
+	},
 	ui_wake::UiCommandSender,
 };
 
@@ -70,6 +74,14 @@ pub fn bind_input_handlers(
 	context_menu_state: Rc<Cell<ContextMenuState>>,
 	shortcuts_cell: Rc<RefCell<ShortcutsConfig>>,
 ) {
+	#[cfg(target_os = "macos")]
+	super::mac_shortcuts::install(
+		parts,
+		ui_tx.clone(),
+		is_shutting_down.clone(),
+		quick_action_keys_enabled.clone(),
+		shortcuts_cell.clone(),
+	);
 	let ui_tx_selector = ui_tx.clone();
 	let shutdown_selector = is_shutting_down.clone();
 	let suppress_selector = suppress_selection.clone();
@@ -91,6 +103,7 @@ pub fn bind_input_handlers(
 	let shutdown_delete = is_shutting_down.clone();
 	let quick_action_keys_selector = quick_action_keys_enabled.clone();
 	let timelines_selector_delete = parts.timelines_selector;
+	let selector_frame = parts.frame;
 	let shortcuts_selector = shortcuts_cell.clone();
 	timelines_selector_delete.on_key_down(move |event| {
 		if shutdown_delete.get() {
@@ -102,79 +115,29 @@ pub fn bind_input_handlers(
 			let alt = key_event.alt_down();
 			if let Some(k) = key_event.get_key_code() {
 				let quick_mode = quick_action_keys_selector.get();
-				if ctrl && (49..=57).contains(&k) {
-					if let Ok(index) = usize::try_from(k - 49) {
-						let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
-					}
+				if let Some(index) = timeline_index_for_key(k, quick_mode, ctrl, alt, shift) {
+					let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
 					event.skip(false);
 					return;
 				}
-				if quick_mode && !ctrl && !shift && !alt && (49..=57).contains(&k) {
-					if let Ok(index) = usize::try_from(k - 49) {
-						let _ = ui_tx_delete.send(UiCommand::SwitchTimelineByIndex(index));
-					}
+				if let Some(action) = shortcuts_selector.borrow().find_action(quick_mode, k, ctrl, alt, shift)
+					&& matches!(
+						action,
+						ActionId::SwitchPrevAccount
+							| ActionId::SwitchNextAccount
+							| ActionId::MoveTimelineLeft
+							| ActionId::MoveTimelineRight
+							| ActionId::CloseTimeline
+							| ActionId::TogglePermanentTimeline
+							| ActionId::ToggleTimelineNotifications
+							| ActionId::ClearTimeline
+							| ActionId::ClearAllTimelines
+							| ActionId::SwitchPrevTimeline
+							| ActionId::SwitchNextTimeline
+					) {
+					dispatch_action(action, &selector_frame, &ui_tx_delete, &quick_action_keys_selector);
 					event.skip(false);
 					return;
-				}
-				if let Some(action) = shortcuts_selector.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
-					match action {
-						ActionId::SwitchPrevAccount => {
-							let _ = ui_tx_delete.send(UiCommand::SwitchPrevAccount);
-							event.skip(false);
-							return;
-						}
-						ActionId::SwitchNextAccount => {
-							let _ = ui_tx_delete.send(UiCommand::SwitchNextAccount);
-							event.skip(false);
-							return;
-						}
-						ActionId::MoveTimelineLeft => {
-							let _ = ui_tx_delete.send(UiCommand::MoveTimelineLeft);
-							event.skip(false);
-							return;
-						}
-						ActionId::MoveTimelineRight => {
-							let _ = ui_tx_delete.send(UiCommand::MoveTimelineRight);
-							event.skip(false);
-							return;
-						}
-						ActionId::CloseTimeline => {
-							let _ = ui_tx_delete.send(UiCommand::CloseTimeline);
-							event.skip(false);
-							return;
-						}
-						ActionId::TogglePermanentTimeline => {
-							let _ = ui_tx_delete.send(UiCommand::TogglePermanentTimeline);
-							event.skip(false);
-							return;
-						}
-						ActionId::ToggleTimelineNotifications => {
-							let _ = ui_tx_delete.send(UiCommand::ToggleTimelineNotifications);
-							event.skip(false);
-							return;
-						}
-						ActionId::ClearTimeline => {
-							let _ = ui_tx_delete.send(UiCommand::ClearTimeline);
-							event.skip(false);
-							return;
-						}
-						ActionId::ClearAllTimelines => {
-							let _ = ui_tx_delete.send(UiCommand::ClearAllTimelines);
-							event.skip(false);
-							return;
-						}
-						ActionId::SwitchPrevTimeline => {
-							let _ = ui_tx_delete.send(UiCommand::SwitchPrevTimeline);
-							event.skip(false);
-							return;
-						}
-						ActionId::SwitchNextTimeline => {
-							let _ = ui_tx_delete.send(UiCommand::SwitchNextTimeline);
-							event.skip(false);
-							return;
-						}
-						_ => {}
-					}
 				}
 			}
 		}
@@ -202,17 +165,8 @@ pub fn bind_input_handlers(
 				return;
 			};
 			let quick_mode = quick_action_keys_list.get();
-			if ctrl && (49..=57).contains(&k) {
-				if let Ok(index) = usize::try_from(k - 49) {
-					let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
-				}
-				event.skip(false);
-				return;
-			}
-			if quick_mode && !ctrl && !shift && !alt && (49..=57).contains(&k) {
-				if let Ok(index) = usize::try_from(k - 49) {
-					let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
-				}
+			if let Some(index) = timeline_index_for_key(k, quick_mode, ctrl, alt, shift) {
+				let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
 				event.skip(false);
 				return;
 			}
@@ -242,23 +196,7 @@ pub fn bind_input_handlers(
 				}
 			}
 			if let Some(action) = shortcuts_list_key.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
-				match action {
-					ActionId::Find => {
-						if let Some(query) = dialogs::show_find_dialog(&find_frame) {
-							let _ = ui_tx_list_key.send(UiCommand::Find(query));
-						}
-					}
-					ActionId::ToggleQuickActionKeys => {
-						let new_value = !quick_action_keys_list.get();
-						quick_action_keys_list.set(new_value);
-						let _ = ui_tx_list_key.send(UiCommand::SetQuickActionKeysEnabled(new_value));
-					}
-					action => {
-						if let Some(command) = command_for(action) {
-							let _ = ui_tx_list_key.send(command);
-						}
-					}
-				}
+				dispatch_action(action, &find_frame, &ui_tx_list_key, &quick_action_keys_list);
 				event.skip(false);
 				return;
 			}
