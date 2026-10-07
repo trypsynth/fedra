@@ -66,6 +66,7 @@ pub fn prompt_message_requests(
 	dialog.centre();
 	requests_list.set_focus();
 	dialog.show_modal();
+	dialog.destroy();
 	match action.get() {
 		Some((true, index)) => MessageRequestAction::Accept(index),
 		Some((false, index)) => MessageRequestAction::Dismiss(index),

@@ -139,5 +139,6 @@ pub fn show_manage_accounts_dialog(
 	});
 	dialog.centre();
 	dialog.show_modal();
+	dialog.destroy();
 	(*result.borrow()).clone()
 }

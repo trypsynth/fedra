@@ -440,22 +440,30 @@ pub(super) fn view_favorites(ctx: &mut UiCommandContext<'_>) {
 
 pub(super) fn hashtag_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.hashtag_dialog = None;
+	if let Some(dialog) = state.hashtag_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn profile_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.profile_dialog = None;
+	if let Some(dialog) = state.profile_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn followers_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.followers_dialog = None;
+	if let Some(dialog) = state.followers_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn following_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	state.following_dialog = None;
+	if let Some(dialog) = state.following_dialog.take() {
+		dialog.destroy();
+	}
 }
 
 pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {

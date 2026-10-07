@@ -232,6 +232,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		dialog_close.end_modal(ID_CANCEL);
 	});
 	let result = dialog.show_modal();
+	dialog.destroy();
 	match result {
 		ID_REPLY => Some(UiCommand::Reply { reply_all: true }),
 		ID_BOOST => Some(UiCommand::Boost),

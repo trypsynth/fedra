@@ -61,8 +61,10 @@ pub fn show_link_selection_dialog(frame: &Frame, links: &[Link]) -> Option<Strin
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	let selection = link_list.get_selection();
+	dialog.destroy();
 	if result != ID_OK {
 		return None;
 	}
-	link_list.get_selection().and_then(|sel| links.get(sel as usize).map(|l| l.url.clone()))
+	selection.and_then(|sel| links.get(sel as usize).map(|l| l.url.clone()))
 }
