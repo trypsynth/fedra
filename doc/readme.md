@@ -490,6 +490,18 @@ Press `Enter` on a post to open its links. If the post has more than one link, o
 
 ## Changelog
 
+### Version 0.7.1
+- Added `Home` and `End` to the media player, to go to the start or end of the media.
+- Added an option to start Fedra maximized.
+- Added options to turn off streaming, and to set how often Fedra checks for new posts when it isn't streaming.
+- Fixed closed dialogs and media windows staying in memory and leaving Fedra running.
+- Fixed Fedra crashing on startup on Windows when PC-Talker isn't installed.
+- Fixed Fedra creating a lock file in your home folder on macOS.
+- Fixed VoiceOver announcing menus when you press shortcuts on macOS.
+- Fixed filters and muted hashtags not working in remote instance timelines.
+- Open User Timeline and View Author Profile now let you pick anyone in a post, including the authors of quoted posts inside boosts.
+- Turning notifications on or off for a timeline now says the name of the timeline.
+
 ### Version 0.7.0
 - Added Clear Timeline and Clear All Timelines.
 - Added a macOS version: a native app on a drag-to-install disk image, signed and notarized by Apple.
