@@ -3,7 +3,7 @@
 use super::{UiCommand, UiCommandContext};
 use crate::{
 	AppState,
-	accounts::update_window_title,
+	accounts::{apply_refresh_interval, apply_streaming_setting, update_window_title},
 	config::ContentWarningDisplay,
 	network::NetworkCommand,
 	timeline::{TimelineTextOptions, TimelineType},
@@ -31,6 +31,8 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			update_channel: state.config.update_channel,
 			autoload: state.config.autoload,
 			fetch_limit: state.config.fetch_limit,
+			streaming: state.config.streaming,
+			refresh_minutes: state.config.refresh_minutes,
 			content_warning_display: state.config.content_warning_display,
 			display_name_emoji_mode: state.config.display_name_emoji_mode,
 			sort_order: state.config.sort_order,
@@ -61,6 +63,8 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			update_channel,
 			autoload,
 			fetch_limit,
+			streaming,
+			refresh_minutes,
 			content_warning_display,
 			display_name_emoji_mode,
 			sort_order,
@@ -88,6 +92,8 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			|| state.config.templates != templates
 			|| state.config.filters != filters
 			|| state.config.window_title_template != window_title_template;
+		let streaming_changed = state.config.streaming != streaming;
+		let refresh_changed = state.config.refresh_minutes != refresh_minutes;
 		let hotkeys_changed =
 			state.config.global_keys != global_keys || state.config.shortcuts.global != shortcuts.global;
 		state.config.enter_to_send = enter_to_send;
@@ -99,6 +105,14 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		state.config.update_channel = update_channel;
 		state.config.autoload = autoload;
 		state.config.fetch_limit = fetch_limit;
+		state.config.streaming = streaming;
+		state.config.refresh_minutes = refresh_minutes;
+		if streaming_changed {
+			apply_streaming_setting(state);
+		}
+		if refresh_changed {
+			apply_refresh_interval(state);
+		}
 		state.config.content_warning_display = content_warning_display;
 		state.config.display_name_emoji_mode = display_name_emoji_mode;
 		state.config.sort_order = sort_order;

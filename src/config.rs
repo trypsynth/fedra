@@ -39,6 +39,11 @@ pub struct Config {
 	pub autoload: AutoloadMode,
 	#[serde(default = "default_fetch_limit")]
 	pub fetch_limit: u8,
+	#[serde(default = "default_streaming")]
+	pub streaming: bool,
+	/// How often timelines that aren't streaming are checked for new posts.
+	#[serde(default = "default_refresh_minutes")]
+	pub refresh_minutes: u8,
 	#[serde(default)]
 	pub sort_order: SortOrder,
 	#[serde(default)]
@@ -1042,6 +1047,14 @@ const fn default_fetch_limit() -> u8 {
 	40
 }
 
+const fn default_streaming() -> bool {
+	true
+}
+
+const fn default_refresh_minutes() -> u8 {
+	1
+}
+
 impl Config {
 	/// Carries a customized show/hide hotkey over to the `ToggleWindow` global shortcut.
 	fn migrate_legacy_hotkey(mut self) -> Self {
@@ -1088,6 +1101,8 @@ impl Default for Config {
 			quick_action_keys: false,
 			autoload: AutoloadMode::default(),
 			fetch_limit: default_fetch_limit(),
+			streaming: default_streaming(),
+			refresh_minutes: default_refresh_minutes(),
 			sort_order: SortOrder::default(),
 			content_warning_display: ContentWarningDisplay::default(),
 			display_name_emoji_mode: DisplayNameEmojiMode::default(),

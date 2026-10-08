@@ -51,7 +51,7 @@ pub(crate) use crate::ui::ids::{
 	ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE,
 };
 use crate::{
-	accounts::{start_add_account_flow, switch_to_account},
+	accounts::{apply_refresh_interval, start_add_account_flow, switch_to_account},
 	config::Config,
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
@@ -117,6 +117,7 @@ pub(crate) struct AppState {
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
 	pub(crate) context_menu_state: Rc<Cell<ContextMenuState>>,
 	pub(crate) notification_sound: Option<audio::AudioOutput>,
+	pub(crate) refresh_timer: Option<Rc<Timer<Frame>>>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
@@ -154,6 +155,7 @@ impl AppState {
 			app_shell: None,
 			context_menu_state: Rc::new(Cell::new(ContextMenuState::default())),
 			notification_sound: None,
+			refresh_timer: None,
 			ui_waker,
 			_instance_checker: instance_checker,
 			pending_thread_continuation: false,
@@ -306,6 +308,14 @@ fn main() {
 			Ok(output) => state.notification_sound = Some(output),
 			Err(err) => eprintln!("Failed to open audio output for notification sound: {err}"),
 		}
+		let refresh_timer = Rc::new(Timer::new(&frame));
+		let ui_tx_timer_poll = ui_tx.clone();
+		refresh_timer.on_tick(move |_| {
+			let _ = ui_tx_timer_poll.send(UiCommand::PollStreamable);
+		});
+		let refresh_timer_keepalive = refresh_timer.clone();
+		state.refresh_timer = Some(refresh_timer);
+		apply_refresh_interval(&state);
 		if state.config.accounts.is_empty() && !start_add_account_flow(&frame, &ui_tx, &mut state) {
 			frame.close(true);
 			return;
@@ -409,13 +419,6 @@ fn main() {
 				ui_waker_handler.wake();
 			}
 		});
-		let refresh_timer = Rc::new(Timer::new(&frame));
-		let ui_tx_timer_poll = ui_tx.clone();
-		refresh_timer.on_tick(move |_| {
-			let _ = ui_tx_timer_poll.send(UiCommand::PollStreamable);
-		});
-		refresh_timer.start(60_000, false);
-		let refresh_timer_keepalive = refresh_timer;
 		let ui_alive_destroy = ui_alive;
 		frame.on_destroy(move |_| {
 			ui_alive_destroy.store(false, std::sync::atomic::Ordering::SeqCst);

@@ -165,6 +165,8 @@ This tab shows only on Windows.
   - When reaching the end
   - When navigating past the end
 - Posts to load at a time (`1` to `40`)
+- `Stream new posts in real time`: when this is off, Fedra checks for new posts on a timer instead.
+- Minutes between checks for new posts when not streaming (`1` to `60`): also used for any timeline whose stream is down.
 - Content warning display:
   - Show inline
   - Don't show

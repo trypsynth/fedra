@@ -277,11 +277,7 @@ pub fn switch_to_account(
 			}
 		}
 	}
-	let timeline_types: Vec<TimelineType> =
-		state.timeline_manager.iter_mut().map(|t| t.timeline_type.clone()).collect();
-	for tt in timeline_types {
-		start_streaming_for_timeline(state, &tt);
-	}
+	apply_streaming_setting(state);
 	if first_load && let Some(saved_type) = saved_active_timeline {
 		if let Some(index) = state.timeline_manager.index_of(&saved_type) {
 			state.timeline_manager.set_active(index);
@@ -333,8 +329,29 @@ pub fn start_streaming_for_timeline(state: &mut AppState, timeline_type: &Timeli
 		Some(t) => t.clone(),
 		None => return,
 	};
+	let streaming = state.config.streaming;
 	let Some(timeline) = state.timeline_manager.get_mut(timeline_type) else { return };
 	timeline.stream_connected = false;
-	timeline.stream_handle =
-		streaming::start_streaming(&base_url, &access_token, timeline_type.clone(), state.ui_waker.clone());
+	// With streaming off, the refresh timer polls every timeline that isn't connected.
+	timeline.stream_handle = if streaming {
+		streaming::start_streaming(&base_url, &access_token, timeline_type.clone(), state.ui_waker.clone())
+	} else {
+		None
+	};
+}
+
+/// Starts or stops the open timelines' streams to match the streaming setting.
+pub fn apply_streaming_setting(state: &mut AppState) {
+	let timeline_types: Vec<TimelineType> =
+		state.timeline_manager.iter_mut().map(|t| t.timeline_type.clone()).collect();
+	for timeline_type in timeline_types {
+		start_streaming_for_timeline(state, &timeline_type);
+	}
+}
+
+/// Restarts the refresh timer at the configured interval.
+pub fn apply_refresh_interval(state: &AppState) {
+	if let Some(timer) = &state.refresh_timer {
+		timer.start(i32::from(state.config.refresh_minutes) * 60_000, false);
+	}
 }

@@ -109,6 +109,8 @@ pub struct OptionsDialogInput {
 	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
+	pub streaming: bool,
+	pub refresh_minutes: u8,
 	pub content_warning_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub sort_order: SortOrder,
@@ -140,6 +142,8 @@ pub struct OptionsDialogResult {
 	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
+	pub streaming: bool,
+	pub refresh_minutes: u8,
 	pub content_warning_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
 	pub sort_order: SortOrder,
@@ -173,6 +177,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		update_channel,
 		autoload,
 		fetch_limit,
+		streaming,
+		refresh_minutes,
 		content_warning_display,
 		display_name_emoji_mode,
 		sort_order,
@@ -314,6 +320,16 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let fetch_limit_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	fetch_limit_sizer.add(&fetch_limit_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	fetch_limit_sizer.add(&fetch_limit_spin, 0, SizerFlag::empty(), 0);
+	let streaming_checkbox = CheckBox::builder(&timeline_panel).with_label("Stream new posts in real &time").build();
+	streaming_checkbox.set_value(streaming);
+	let refresh_label = StaticText::builder(&timeline_panel)
+		.with_label("&Minutes between checks for new posts when not streaming:")
+		.build();
+	let refresh_spin =
+		SpinCtrl::builder(&timeline_panel).with_range(1, 60).with_initial_value(i32::from(refresh_minutes)).build();
+	let refresh_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	refresh_sizer.add(&refresh_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	refresh_sizer.add(&refresh_spin, 0, SizerFlag::empty(), 0);
 	let cw_label = StaticText::builder(&timeline_panel).with_label("Content warning display:").build();
 	let cw_choices = vec!["Show inline".to_string(), "Don't show".to_string(), "CW only".to_string()];
 	let cw_choice = Choice::builder(&timeline_panel).with_choices(cw_choices).build();
@@ -348,6 +364,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	find_load_checkbox.set_value(find_loading_mode == crate::config::FindLoadingMode::LoadOnNext);
 	timeline_sizer.add_sizer(&autoload_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&fetch_limit_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add(&streaming_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	timeline_sizer.add_sizer(&refresh_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&cw_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add_sizer(&emoji_mode_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	timeline_sizer.add(&sort_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -768,6 +786,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		_ => autoload,
 	};
 	let new_fetch_limit = u8::try_from(fetch_limit_spin.value()).unwrap_or(1).clamp(1, 40);
+	let new_refresh_minutes = u8::try_from(refresh_spin.value()).unwrap_or(1).clamp(1, 60);
 	let new_notification_preference = match notification_choice.get_selection() {
 		Some(0) => crate::config::NotificationPreference::Classic,
 		Some(1) => crate::config::NotificationPreference::SoundOnly,
@@ -840,6 +859,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		update_channel: new_update_channel,
 		autoload: new_autoload,
 		fetch_limit: new_fetch_limit,
+		streaming: streaming_checkbox.get_value(),
+		refresh_minutes: new_refresh_minutes,
 		content_warning_display: new_cw_display,
 		display_name_emoji_mode: new_display_name_emoji_mode,
 		sort_order: new_sort,
