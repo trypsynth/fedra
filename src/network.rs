@@ -690,7 +690,7 @@ fn network_loop(
 	loop {
 		match commands.recv() {
 			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
-				let result = match timeline_type {
+				let mut result = match timeline_type {
 					TimelineType::Notifications | TimelineType::Mentions => client
 						.get_notifications(access_token, &timeline_type, limit, max_id.as_deref())
 						.map(|(n, next)| TimelineData::Notifications(n, next)),
@@ -740,6 +740,15 @@ fn network_loop(
 						}
 					}
 				};
+				// Remote instances fetch anonymously, so their statuses never carry our filter matches.
+				if let TimelineType::InstanceLocal { .. } = timeline_type
+					&& let Ok(TimelineData::Statuses(statuses, _)) = &mut result
+					&& let Ok(filters) = client.get_filters(access_token)
+				{
+					for status in statuses {
+						status.apply_filters(&filters);
+					}
+				}
 				send_response(responses, ui_waker, NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
 			}
 			Ok(NetworkCommand::FetchThread { timeline_type, focus }) => {

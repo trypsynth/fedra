@@ -8,7 +8,7 @@ use crate::{
 	config::{ContentWarningDisplay, TimestampFormat},
 	html::strip_html,
 	mastodon::{
-		Account, FilterAction, FilterContext, FilterResult, Poll, Tag,
+		Account, Filter, FilterAction, FilterContext, FilterResult, Poll, Tag,
 		serde_util::{deserialize_string_or_none, deserialize_u64_or_zero},
 		time::friendly_time,
 	},
@@ -200,6 +200,29 @@ impl Status {
 			out.push_str(&poll_text);
 		}
 		out
+	}
+
+	/// Fills in `filtered` locally, for statuses from servers that can't apply the user's filters.
+	pub fn apply_filters(&mut self, filters: &[Filter]) {
+		let text = self.filterable_text().to_lowercase();
+		self.filtered =
+			filters.iter().filter(|f| f.matches(&text)).map(|f| FilterResult { filter: f.clone() }).collect();
+	}
+
+	fn filterable_text(&self) -> String {
+		let mut parts = vec![self.spoiler_text.clone(), self.display_text()];
+		if let Some(poll) = &self.poll {
+			parts.extend(poll.options.iter().map(|o| o.title.clone()));
+		}
+		parts.extend(self.media_attachments.iter().filter_map(|m| m.description.clone()));
+		if let Some(reblog) = &self.reblog {
+			parts.push(reblog.filterable_text());
+		}
+		parts.join(
+			"
+
+",
+		)
 	}
 
 	pub fn should_hide(&self, filter_ctx: &FilterContext) -> bool {
