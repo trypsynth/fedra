@@ -131,6 +131,7 @@ To open the options, press `Ctrl+,`.
 - `Strip tracking parameters from URLs`
 - `Use quick action keys in timelines`
 - `Check for updates on startup`
+- `Start maximized`
 - Updates:
   - `Stable releases`
   - `Test builds`

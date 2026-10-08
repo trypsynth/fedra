@@ -67,6 +67,8 @@ pub struct Config {
 	#[serde(default = "default_check_for_updates")]
 	pub check_for_updates_on_startup: bool,
 	#[serde(default)]
+	pub start_maximized: bool,
+	#[serde(default)]
 	pub update_channel: UpdateChannel,
 	/// The old single show/hide hotkey, from before it became the `ToggleWindow` global
 	/// shortcut. Only read so `ConfigStore::load` can carry a customized one over.
@@ -1113,6 +1115,7 @@ impl Default for Config {
 			disabled_notification_types: Vec::new(),
 			silent_notification_types: Vec::new(),
 			check_for_updates_on_startup: true,
+			start_maximized: false,
 			update_channel: UpdateChannel::default(),
 			legacy_hotkey: None,
 			global_keys: false,

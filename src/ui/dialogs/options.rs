@@ -106,6 +106,7 @@ pub struct OptionsDialogInput {
 	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
+	pub start_maximized: bool,
 	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
@@ -139,6 +140,7 @@ pub struct OptionsDialogResult {
 	pub strip_tracking: bool,
 	pub quick_action_keys: bool,
 	pub check_for_updates: bool,
+	pub start_maximized: bool,
 	pub update_channel: crate::config::UpdateChannel,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
@@ -174,6 +176,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		strip_tracking,
 		quick_action_keys,
 		check_for_updates,
+		start_maximized,
 		update_channel,
 		autoload,
 		fetch_limit,
@@ -218,6 +221,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	quick_action_checkbox.set_value(quick_action_keys);
 	let update_checkbox = CheckBox::builder(&general_panel).with_label("Check for &updates on startup").build();
 	update_checkbox.set_value(check_for_updates);
+	let maximized_checkbox = CheckBox::builder(&general_panel).with_label("Start &maximized").build();
+	maximized_checkbox.set_value(start_maximized);
 	let channel_label = StaticText::builder(&general_panel).with_label("Updates:").build();
 	let channel_choices = vec!["Stable releases".to_string(), "Test builds".to_string()];
 	let channel_choice = Choice::builder(&general_panel).with_choices(channel_choices).build();
@@ -257,6 +262,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&strip_tracking_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&quick_action_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&maximized_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&notification_types_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
@@ -853,6 +859,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		strip_tracking: strip_tracking_checkbox.get_value(),
 		quick_action_keys: quick_action_checkbox.get_value(),
 		check_for_updates: update_checkbox.get_value(),
+		start_maximized: maximized_checkbox.get_value(),
 		restore_open_timelines: restore_timelines_checkbox.get_value(),
 		sync_read_position: sync_position_checkbox.get_value(),
 		load_older_to_restore: load_older_checkbox.get_value(),

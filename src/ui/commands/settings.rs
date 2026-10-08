@@ -28,6 +28,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			strip_tracking: state.config.strip_tracking,
 			quick_action_keys: state.config.quick_action_keys,
 			check_for_updates: state.config.check_for_updates_on_startup,
+			start_maximized: state.config.start_maximized,
 			update_channel: state.config.update_channel,
 			autoload: state.config.autoload,
 			fetch_limit: state.config.fetch_limit,
@@ -60,6 +61,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			strip_tracking,
 			quick_action_keys,
 			check_for_updates,
+			start_maximized,
 			update_channel,
 			autoload,
 			fetch_limit,
@@ -102,6 +104,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		state.config.strip_tracking = strip_tracking;
 		state.config.quick_action_keys = quick_action_keys;
 		state.config.check_for_updates_on_startup = check_for_updates;
+		state.config.start_maximized = start_maximized;
 		state.config.update_channel = update_channel;
 		state.config.autoload = autoload;
 		state.config.fetch_limit = fetch_limit;

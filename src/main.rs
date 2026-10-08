@@ -338,6 +338,7 @@ fn main() {
 		let frame_wake = frame;
 		let timelines_selector_wake = timelines_selector;
 		let timeline_list_wake = timeline_list;
+		let start_maximized = state.config.start_maximized;
 		let mut state = state;
 		let context_menu_state_for_handlers = state.context_menu_state.clone();
 		let ui_waker_handler = ui_waker.clone();
@@ -454,6 +455,9 @@ fn main() {
 			}
 		});
 		frame.centre();
+		if start_maximized {
+			frame.maximize(true);
+		}
 		if !start_hidden {
 			frame.show(true);
 			// macOS otherwise leaves keyboard focus nowhere Tab can move on from.
