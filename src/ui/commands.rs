@@ -40,7 +40,9 @@ use crate::{
 /// Commands that can be triggered by UI events.
 pub enum UiCommand {
 	NewPost,
-	Reply { reply_all: bool },
+	Reply {
+		reply_all: bool,
+	},
 	Quote,
 	DeletePost,
 	EditPost,
@@ -98,12 +100,17 @@ pub enum UiCommand {
 
 	ToggleContentWarning,
 	ToggleFollow,
+	// Sent by the tray icon, which isn't installed on macOS.
+	#[cfg_attr(target_os = "macos", allow(dead_code))]
 	ToggleWindowVisibility,
 	ShowWindow,
 	Global(crate::config::GlobalAction),
 	SetQuickActionKeysEnabled(bool),
 	SwitchTimelineByIndex(usize),
-	OAuthResult { result: Result<auth::OAuthResult, String>, instance_url: Url },
+	OAuthResult {
+		result: Result<auth::OAuthResult, String>,
+		instance_url: Url,
+	},
 	CancelAuth,
 	EditProfile,
 	ViewHelp,
