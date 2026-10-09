@@ -3,14 +3,18 @@ use std::cell::{Cell, RefCell};
 use wx_utils::global_hotkeys::GlobalHotkeys;
 use wxdragon::prelude::*;
 
+#[cfg(not(target_os = "macos"))]
+use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE};
 use crate::{
-	ID_TRAY_EXIT, ID_TRAY_TOGGLE, UiCommand,
+	UiCommand,
 	config::{GlobalAction, GlobalShortcuts, KeyChord},
 	ui_wake::UiCommandSender,
 };
 
 pub struct AppShell {
+	#[cfg(not(target_os = "macos"))]
 	pub(crate) tray_menu: RefCell<Option<Menu>>,
+	#[cfg(not(target_os = "macos"))]
 	pub(crate) taskbar: TaskBarIcon,
 	hotkeys: RefCell<Option<GlobalHotkeys>>,
 }
@@ -51,10 +55,13 @@ impl AppShell {
 	/// so that destroying the tray icon doesn't cause a focus shift back to the
 	/// still-alive window, which screen readers would announce.
 	pub fn cleanup(&self) {
-		if let Some(mut menu) = self.tray_menu.borrow_mut().take() {
-			menu.destroy_menu();
+		#[cfg(not(target_os = "macos"))]
+		{
+			if let Some(mut menu) = self.tray_menu.borrow_mut().take() {
+				menu.destroy_menu();
+			}
+			self.taskbar.destroy();
 		}
-		self.taskbar.destroy();
 		// Leaked rather than dropped: dropping waits for the hotkey thread, and blocking here
 		// during close can hang the UI thread. The process is exiting, and Windows releases its
 		// hotkeys when it does.
@@ -65,6 +72,13 @@ impl AppShell {
 	}
 }
 
+#[cfg(target_os = "macos")]
+pub fn install_app_shell(_frame: &Frame, _ui_tx: UiCommandSender) -> AppShell {
+	// macOS uses the Dock to reopen the window, without a menu bar status item.
+	AppShell { hotkeys: RefCell::new(None) }
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn install_app_shell(_frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
 	let mut tray_menu = Menu::builder()
 		.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
