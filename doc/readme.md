@@ -92,7 +92,8 @@ Clear Timeline (`Ctrl+Delete`) removes all entries from the current timeline. Cl
 Timelines that update live refresh automatically. Press `F5` to refresh the current timeline. Press `.` (Load More) to get older entries. If a live timeline loses its connection, Fedra gets it again about once a minute until the connection comes back.
 
 ## Window Visibility and Tray
-- The tray icon has a menu with two items:
+- On macOS, Fedra has no menu bar status icon. Click Fedra in the Dock to bring its window back.
+- On other platforms, the tray icon has a menu with two items:
   - `Show/Hide`
   - `Exit`
 - A global shortcut shows and hides the main window. The default is `Ctrl+Alt+F`. To change it, use the Global tab of `Options -> Customize Keyboard Shortcuts...`.
