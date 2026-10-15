@@ -162,6 +162,7 @@ impl FollowListDialog {
 			menu.append(user_actions::ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
 			menu.append_separator();
 			menu.append(user_actions::ID_ACTION_ADD_TO_LIST, "Add to List...", "", ItemKind::Normal);
+			menu.append(user_actions::ID_ACTION_REMOVE_FROM_LIST, "Remove from List...", "", ItemKind::Normal);
 			panel_clone.popup_menu(&mut menu, None);
 		});
 		let show_menu_btn = show_menu.clone();
@@ -199,6 +200,10 @@ impl FollowListDialog {
 			}
 			if id == user_actions::ID_ACTION_ADD_TO_LIST {
 				let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
+				return;
+			}
+			if id == user_actions::ID_ACTION_REMOVE_FROM_LIST {
+				let _ = ui_tx.send(crate::ui::commands::UiCommand::RemoveUserFromList(account_id));
 				return;
 			}
 			if id == user_actions::ID_ACTION_SET_ALIAS {

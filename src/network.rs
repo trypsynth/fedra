@@ -263,6 +263,9 @@ pub enum NetworkCommand {
 	FetchListAccounts {
 		list_id: String,
 	},
+	FetchAccountLists {
+		account_id: String,
+	},
 	AddListAccount {
 		list_id: String,
 		account_id: String,
@@ -475,6 +478,10 @@ pub enum NetworkResponse {
 	ListAccountsFetched {
 		list_id: String,
 		result: Result<Vec<Account>>,
+	},
+	AccountListsFetched {
+		account_id: String,
+		result: Result<Vec<crate::mastodon::List>>,
 	},
 	ListAccountAdded {
 		#[allow(dead_code)]
@@ -1301,6 +1308,10 @@ fn network_loop(
 			Ok(NetworkCommand::FetchListAccounts { list_id }) => {
 				let result = client.get_list_accounts(access_token, &list_id);
 				send_response(responses, ui_waker, NetworkResponse::ListAccountsFetched { list_id, result });
+			}
+			Ok(NetworkCommand::FetchAccountLists { account_id }) => {
+				let result = client.get_account_lists(access_token, &account_id);
+				send_response(responses, ui_waker, NetworkResponse::AccountListsFetched { account_id, result });
 			}
 			Ok(NetworkCommand::AddListAccount { list_id, account_id }) => {
 				let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));

@@ -34,6 +34,11 @@ impl MastodonClient {
 		self.delete_empty(access_token, url, "delete list")
 	}
 
+	pub fn get_account_lists(&self, access_token: &str, account_id: &str) -> Result<Vec<List>> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/lists"))?;
+		self.get_json(access_token, url, "fetch lists containing account")
+	}
+
 	pub fn get_list_accounts(&self, access_token: &str, list_id: &str) -> Result<Vec<Account>> {
 		let mut url = self.base_url.join(&format!("api/v1/lists/{list_id}/accounts"))?;
 		url.query_pairs_mut().append_pair("limit", "0");

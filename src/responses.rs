@@ -261,12 +261,16 @@ fn handle_response(
 		NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
 			lists::accounts_fetched(ctx, list_id, members);
 		}
+		NetworkResponse::AccountListsFetched { account_id, result: Ok(lists) } => {
+			lists::account_lists_fetched(ctx, account_id, &lists);
+		}
 		NetworkResponse::ListAccountAdded { result: Ok(()), .. } => lists::membership_changed(ctx, "Member added"),
 		NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => lists::membership_changed(ctx, "Member removed"),
 		NetworkResponse::ListCreated { result: Err(err) }
 		| NetworkResponse::ListUpdated { result: Err(err) }
 		| NetworkResponse::ListDeleted { result: Err(err), .. }
 		| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
+		| NetworkResponse::AccountListsFetched { result: Err(err), .. }
 		| NetworkResponse::ListAccountAdded { result: Err(err), .. }
 		| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => lists::operation_failed(ctx, &err),
 	}
