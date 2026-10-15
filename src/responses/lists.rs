@@ -41,6 +41,16 @@ pub(super) fn changed(ctx: &NetworkResponseContext<'_>, message: &str) {
 	}
 }
 
+pub(super) fn account_lists_fetched(ctx: &NetworkResponseContext<'_>, account_id: String, lists: &[List]) {
+	if lists.is_empty() {
+		ctx.announce("User is not in any lists");
+	} else if let Some(list) = dialogs::show_list_selection_dialog(ctx.frame, lists, "Remove from List", "Remove")
+		&& let Some(handle) = &ctx.state.network_handle
+	{
+		handle.send(NetworkCommand::RemoveListAccount { list_id: list.id, account_id });
+	}
+}
+
 pub(super) fn membership_changed(ctx: &NetworkResponseContext<'_>, message: &str) {
 	ctx.announce(message);
 	if let Some(dlg) = &ctx.state.manage_list_members_dialog

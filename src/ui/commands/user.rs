@@ -460,6 +460,14 @@ pub(super) fn add_user_to_list(ctx: &mut UiCommandContext<'_>, account_id: Strin
 	}
 }
 
+pub(super) fn remove_user_from_list(ctx: &mut UiCommandContext<'_>, account_id: String) {
+	if let Some(handle) = &ctx.state.network_handle {
+		handle.send(NetworkCommand::FetchAccountLists { account_id });
+	} else {
+		ctx.live_region.announce("Network not available");
+	}
+}
+
 pub(super) fn set_alias(ctx: &mut UiCommandContext<'_>, account: &Account) {
 	let state = &mut *ctx.state;
 	let key = account.alias_key();

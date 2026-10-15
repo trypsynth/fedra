@@ -25,6 +25,7 @@ pub const ID_ACTION_ENABLE_NOTIFICATIONS: i32 = 6015;
 pub const ID_ACTION_DISABLE_NOTIFICATIONS: i32 = 6016;
 pub const ID_ACTION_SEND_DIRECT_MESSAGE: i32 = 6017;
 pub const ID_ACTION_SET_ALIAS: i32 = 6018;
+pub const ID_ACTION_REMOVE_FROM_LIST: i32 = 6019;
 
 pub fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	let mut body = String::new();
@@ -126,6 +127,7 @@ pub fn setup_actions_button(
 		menu.append(ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
 		menu.append_separator();
 		menu.append(ID_ACTION_ADD_TO_LIST, "Add to List...", "", ItemKind::Normal);
+		menu.append(ID_ACTION_REMOVE_FROM_LIST, "Remove from List...", "", ItemKind::Normal);
 		panel.popup_menu(&mut menu, None);
 	});
 	panel.on_menu_selected(move |event| {
@@ -151,6 +153,10 @@ pub fn setup_actions_button(
 		}
 		if id == ID_ACTION_ADD_TO_LIST {
 			let _ = ui_tx.send(crate::ui::commands::UiCommand::AddUserToList(account_id));
+			return;
+		}
+		if id == ID_ACTION_REMOVE_FROM_LIST {
+			let _ = ui_tx.send(crate::ui::commands::UiCommand::RemoveUserFromList(account_id));
 			return;
 		}
 		if id == ID_ACTION_SET_ALIAS {
