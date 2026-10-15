@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::{cell::RefCell, fmt::Write};
 
 use wxdragon::{
 	event::{WebViewEventData, WebViewEvents},
@@ -99,9 +99,22 @@ fn strip_quote_html(html: &str) -> String {
 	html.to_string()
 }
 
-pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiCommand> {
-	let title = format!("Post by {}", status.account.display_name_or_username());
-	let dialog = Dialog::builder(parent, &title).with_size(600, 500).build();
+/// The dialog and its `WebView` are built once and reused: spinning up a fresh
+/// `WebView2` on every view is slow and loses the first-load layout state.
+#[derive(Clone, Copy)]
+struct CachedDialog {
+	dialog: Dialog,
+	web_view: WebView,
+	boost_btn: Button,
+	fav_btn: Button,
+}
+
+thread_local! {
+	static CACHE: RefCell<Option<CachedDialog>> = const { RefCell::new(None) };
+}
+
+fn build_dialog(parent: &Frame) -> CachedDialog {
+	let dialog = Dialog::builder(parent, "Post").with_size(600, 500).build();
 	let panel = Panel::builder(&dialog).build();
 	let sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let web_view = WebView::builder(&panel).build();
@@ -116,6 +129,78 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 			}
 		}
 	});
+	let web_view_for_load = web_view;
+	web_view.on_loaded(move |_| {
+		web_view_for_load.run_script(
+			"function addEvent(elem, event, handler) { \
+				if (elem.addEventListener) { \
+					elem.addEventListener(event, handler, false); \
+				} else if (elem.attachEvent) { \
+					elem.attachEvent('on' + event, handler); \
+				} \
+			} \
+			addEvent(document, 'keydown', function(event) { \
+				if (event.key === 'Escape' || event.keyCode === 27) { \
+					window.wx.postMessage('close_dialog'); \
+				} \
+			}); \
+			addEvent(document, 'click', function(event) { \
+				event = event || window.event; \
+				var target = event.target || event.srcElement; \
+				while (target && target.tagName !== 'A') { target = target.parentNode; } \
+				if (target && target.tagName === 'A' && target.href) { \
+					if (event.preventDefault) event.preventDefault(); \
+					else event.returnValue = false; \
+					window.wx.postMessage('open_link:' + target.href); \
+				} \
+			});",
+		);
+	});
+	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	let reply_btn = Button::builder(&panel).with_id(ID_REPLY).with_label("Reply").build();
+	let boost_btn = Button::builder(&panel).with_id(ID_BOOST).with_label("Boost").build();
+	let fav_btn = Button::builder(&panel).with_id(ID_FAVORITE).with_label("Favorite").build();
+	let close_btn = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+	close_btn.set_default();
+	button_sizer.add(&reply_btn, 0, SizerFlag::All, 5);
+	button_sizer.add(&boost_btn, 0, SizerFlag::All, 5);
+	button_sizer.add(&fav_btn, 0, SizerFlag::All, 5);
+	button_sizer.add_stretch_spacer(1);
+	button_sizer.add(&close_btn, 0, SizerFlag::All, 5);
+	sizer.add(&web_view, 1, SizerFlag::Expand | SizerFlag::All, 5);
+	sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
+	panel.set_sizer(sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.set_escape_id(ID_CANCEL);
+	dialog.centre();
+	let dialog_reply = dialog;
+	reply_btn.on_click(move |_| {
+		dialog_reply.end_modal(ID_REPLY);
+	});
+	let dialog_boost = dialog;
+	boost_btn.on_click(move |_| {
+		dialog_boost.end_modal(ID_BOOST);
+	});
+	let dialog_fav = dialog;
+	fav_btn.on_click(move |_| {
+		dialog_fav.end_modal(ID_FAVORITE);
+	});
+	let dialog_close = dialog;
+	close_btn.on_click(move |_| {
+		dialog_close.end_modal(ID_CANCEL);
+	});
+	CachedDialog { dialog, web_view, boost_btn, fav_btn }
+}
+
+pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiCommand> {
+	let title = format!("Post by {}", status.account.display_name_or_username());
+	let cached = CACHE.with(|c| *c.borrow_mut().get_or_insert_with(|| build_dialog(parent)));
+	let CachedDialog { dialog, web_view, boost_btn, fav_btn } = cached;
+	dialog.set_label(&title);
+	boost_btn.set_label(if status.reblogged { "Unboost" } else { "Boost" });
+	fav_btn.set_label(if status.favourited { "Unfavorite" } else { "Favorite" });
 	let mut content = if status.spoiler_text.is_empty() {
 		status.content.clone()
 	} else {
@@ -163,76 +248,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		content
 	);
 	web_view.set_page(&html, "");
-	let web_view_for_load = web_view;
-	web_view.on_loaded(move |_| {
-		web_view_for_load.run_script(
-			"function addEvent(elem, event, handler) { \
-				if (elem.addEventListener) { \
-					elem.addEventListener(event, handler, false); \
-				} else if (elem.attachEvent) { \
-					elem.attachEvent('on' + event, handler); \
-				} \
-			} \
-			addEvent(document, 'keydown', function(event) { \
-				if (event.key === 'Escape' || event.keyCode === 27) { \
-					window.wx.postMessage('close_dialog'); \
-				} \
-			}); \
-			addEvent(document, 'click', function(event) { \
-				event = event || window.event; \
-				var target = event.target || event.srcElement; \
-				while (target && target.tagName !== 'A') { target = target.parentNode; } \
-				if (target && target.tagName === 'A' && target.href) { \
-					if (event.preventDefault) event.preventDefault(); \
-					else event.returnValue = false; \
-					window.wx.postMessage('open_link:' + target.href); \
-				} \
-			});",
-		);
-	});
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let reply_btn = Button::builder(&panel).with_id(ID_REPLY).with_label("Reply").build();
-	let boost_btn = Button::builder(&panel)
-		.with_id(ID_BOOST)
-		.with_label(if status.reblogged { "Unboost" } else { "Boost" })
-		.build();
-	let fav_btn = Button::builder(&panel)
-		.with_id(ID_FAVORITE)
-		.with_label(if status.favourited { "Unfavorite" } else { "Favorite" })
-		.build();
-	let close_btn = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
-	close_btn.set_default();
-	button_sizer.add(&reply_btn, 0, SizerFlag::All, 5);
-	button_sizer.add(&boost_btn, 0, SizerFlag::All, 5);
-	button_sizer.add(&fav_btn, 0, SizerFlag::All, 5);
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&close_btn, 0, SizerFlag::All, 5);
-	sizer.add(&web_view, 1, SizerFlag::Expand | SizerFlag::All, 5);
-	sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
-	panel.set_sizer(sizer, true);
-	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
-	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
-	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_escape_id(ID_CANCEL);
-	dialog.centre();
-	let dialog_reply = dialog;
-	reply_btn.on_click(move |_| {
-		dialog_reply.end_modal(ID_REPLY);
-	});
-	let dialog_boost = dialog;
-	boost_btn.on_click(move |_| {
-		dialog_boost.end_modal(ID_BOOST);
-	});
-	let dialog_fav = dialog;
-	fav_btn.on_click(move |_| {
-		dialog_fav.end_modal(ID_FAVORITE);
-	});
-	let dialog_close = dialog;
-	close_btn.on_click(move |_| {
-		dialog_close.end_modal(ID_CANCEL);
-	});
 	let result = dialog.show_modal();
-	dialog.destroy();
 	match result {
 		ID_REPLY => Some(UiCommand::Reply { reply_all: true }),
 		ID_BOOST => Some(UiCommand::Boost),
