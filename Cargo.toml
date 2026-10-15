@@ -22,7 +22,7 @@ ego-tree = "0.11.0"
 homeport = "0.1.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 key-chord = "0.2.2"
-minijinja = { version = "2.24.0", default-features = false, features = ["macros", "serde"] }
+minijinja = { version = "3.0.0", default-features = false, features = ["macros", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "stream", "json", "multipart", "form", "rustls-no-provider"] }
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp4", "mp3", "vorbis", "wav", "flac"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
