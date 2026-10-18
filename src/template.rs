@@ -15,9 +15,9 @@ pub struct WindowTitleTemplateVars {
 pub fn render_window_title(template: &str, vars: &WindowTitleTemplateVars) -> String {
 	let env = Environment::new();
 	let ctx = context! {
-		app => vars.app,
-		account => vars.account,
-		timeline => vars.timeline,
+		app => &vars.app,
+		account => &vars.account,
+		timeline => &vars.timeline,
 	};
 	env.render_str(template, ctx).unwrap_or_else(|_| format!("{} - {}", vars.app, vars.account))
 }
@@ -50,28 +50,28 @@ pub struct PostTemplateVars {
 pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
 	let env = Environment::new();
 	let ctx = context! {
-		author => vars.author,
-		username => vars.username,
-		content => vars.content,
-		content_warning => vars.content_warning,
-		relative_time => vars.relative_time,
-		absolute_time => vars.absolute_time,
-		visibility => vars.visibility,
-		reply_count => vars.reply_count,
-		boost_count => vars.boost_count,
-		favorite_count => vars.favorite_count,
-		client => vars.client,
-		media => vars.media,
-		poll => vars.poll,
-		booster => vars.booster,
-		booster_username => vars.booster_username,
-		favoriter => vars.favoriter,
-		favoriter_username => vars.favoriter_username,
-		quote_author => vars.quote_author,
-		quote_username => vars.quote_username,
-		quote_content => vars.quote_content,
-		quote_media => vars.quote_media,
-		quote_poll => vars.quote_poll,
+		author => &vars.author,
+		username => &vars.username,
+		content => &vars.content,
+		content_warning => &vars.content_warning,
+		relative_time => &vars.relative_time,
+		absolute_time => &vars.absolute_time,
+		visibility => &vars.visibility,
+		reply_count => &vars.reply_count,
+		boost_count => &vars.boost_count,
+		favorite_count => &vars.favorite_count,
+		client => &vars.client,
+		media => &vars.media,
+		poll => &vars.poll,
+		booster => &vars.booster,
+		booster_username => &vars.booster_username,
+		favoriter => &vars.favoriter,
+		favoriter_username => &vars.favoriter_username,
+		quote_author => &vars.quote_author,
+		quote_username => &vars.quote_username,
+		quote_content => &vars.quote_content,
+		quote_media => &vars.quote_media,
+		quote_poll => &vars.quote_poll,
 	};
 	env.render_str(template, ctx).unwrap_or_else(|_| format!("{}: {}", vars.author, vars.content))
 }

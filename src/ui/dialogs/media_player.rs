@@ -282,7 +282,7 @@ impl Drop for PlaybackSession {
 /// decoding it, or fully set up and ready to play.
 enum PlayerState {
 	Loading(Arc<DownloadProgress>),
-	Ready(PlaybackSession),
+	Ready(Box<PlaybackSession>),
 }
 
 impl Drop for PlayerState {
@@ -743,7 +743,7 @@ pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _acces
 						// to do something (e.g. presses Space) and needs to know
 						// whether that worked.
 						status_label.set_label("Ready. Press Space to play or pause.");
-						*state.borrow_mut() = Some(PlayerState::Ready(session));
+						*state.borrow_mut() = Some(PlayerState::Ready(Box::new(session)));
 					}
 					Err(e) => {
 						show_media_load_error(&frm, &e);
