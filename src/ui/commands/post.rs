@@ -529,6 +529,8 @@ pub(super) fn copy_post(ctx: &mut UiCommandContext<'_>) {
 	}
 	let clipboard = Clipboard::get();
 	let _ = clipboard.set_text(&text);
+	// Persist the data after the app exits (otherwise Windows clears it)
+	let _ = clipboard.flush();
 	live_region.announce("Post copied");
 }
 
@@ -544,6 +546,7 @@ pub(super) fn copy_post_link(ctx: &mut UiCommandContext<'_>) {
 		if let Some(url) = &target.url {
 			let clipboard = Clipboard::get();
 			let _ = clipboard.set_text(url);
+			let _ = clipboard.flush();
 			live_region.announce("Post link copied");
 		} else {
 			live_region.announce("Post has no link");

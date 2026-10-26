@@ -40,6 +40,7 @@ pub fn show_link_selection_dialog(frame: &Frame, links: &[Link]) -> Option<Strin
 		{
 			let clipboard = Clipboard::get();
 			let _ = clipboard.set_text(&link.url);
+			let _ = clipboard.flush();
 		}
 	};
 	let copy_action_btn = copy_action.clone();
