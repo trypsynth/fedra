@@ -152,74 +152,59 @@ pub fn bind_input_handlers(
 	let find_frame = parts.frame;
 	let shortcuts_list_key = shortcuts_cell.clone();
 	parts.timeline_list.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(key_event) = event {
-			if shutdown_list_key.get() {
-				event.skip(true);
-				return;
-			}
-			let ctrl = key_event.control_down();
-			let shift = key_event.shift_down();
-			let alt = key_event.alt_down();
-			let Some(k) = key_event.get_key_code() else {
-				event.skip(true);
-				return;
-			};
-			let quick_mode = quick_action_keys_list.get();
-			if let Some(index) = timeline_index_for_key(k, quick_mode, ctrl, alt, shift) {
-				let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
-				event.skip(false);
-				return;
-			}
-			if !ctrl && !shift && !alt {
-				let mode = autoload_mode_list.get();
-				if mode == AutoloadMode::AtBoundary || mode == AutoloadMode::AtEnd {
-					let sort_order = sort_order_list.get();
-					let selection = timeline_list_key.get_selection();
-					let count = timeline_list_key.get_count();
-					if let Some(index) = selection {
-						if k == keys::UP {
-							if sort_order == SortOrder::OldestToNewest && index == 0 {
-								let _ = ui_tx_list_key.send(UiCommand::LoadMore);
-								event.skip(false);
-								return;
-							}
-						} else if k == keys::DOWN
-							&& mode == AutoloadMode::AtBoundary
-							&& sort_order == SortOrder::NewestToOldest
-							&& index + 1 == count
-						{
+		let WindowEventData::Keyboard(key_event) = event else {
+			return false;
+		};
+		if shutdown_list_key.get() {
+			return false;
+		}
+		let ctrl = key_event.control_down();
+		let shift = key_event.shift_down();
+		let alt = key_event.alt_down();
+		let Some(k) = key_event.get_key_code() else {
+			return false;
+		};
+		let quick_mode = quick_action_keys_list.get();
+		if let Some(index) = timeline_index_for_key(k, quick_mode, ctrl, alt, shift) {
+			let _ = ui_tx_list_key.send(UiCommand::SwitchTimelineByIndex(index));
+			return true;
+		}
+		if !ctrl && !shift && !alt {
+			let mode = autoload_mode_list.get();
+			if mode == AutoloadMode::AtBoundary || mode == AutoloadMode::AtEnd {
+				let sort_order = sort_order_list.get();
+				let selection = timeline_list_key.get_selection();
+				let count = timeline_list_key.get_count();
+				if let Some(index) = selection {
+					if k == keys::UP {
+						if sort_order == SortOrder::OldestToNewest && index == 0 {
 							let _ = ui_tx_list_key.send(UiCommand::LoadMore);
-							event.skip(false);
-							return;
+							return true;
 						}
+					} else if k == keys::DOWN
+						&& mode == AutoloadMode::AtBoundary
+						&& sort_order == SortOrder::NewestToOldest
+						&& index + 1 == count
+					{
+						let _ = ui_tx_list_key.send(UiCommand::LoadMore);
+						return true;
 					}
 				}
 			}
-			if let Some(action) = shortcuts_list_key.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
-				dispatch_action(action, &find_frame, &ui_tx_list_key, &quick_action_keys_list);
-				event.skip(false);
-				return;
-			}
-			if !quick_mode
-				&& !ctrl
-				&& !shift
-				&& !alt
-				&& (32..=126).contains(&k)
-				&& let Some(ch) = u32::try_from(k).ok().and_then(char::from_u32)
-				&& ch.is_alphanumeric()
-			{
-				timeline_list_key.type_ahead(ch);
-				event.skip(false);
-				return;
-			}
 		}
-		event.skip(true);
+		if let Some(action) = shortcuts_list_key.borrow().find_action(quick_mode, k, ctrl, alt, shift) {
+			dispatch_action(action, &find_frame, &ui_tx_list_key, &quick_action_keys_list);
+			return true;
+		}
+		// Letters are commands in quick action mode, so the list doesn't find posts by them. It does
+		// otherwise.
+		quick_mode && !ctrl && !alt && (32..=126).contains(&k)
 	});
 	let shutdown_ctx = is_shutting_down.clone();
 	let context_menu_state_ctx = context_menu_state;
 	let timeline_list_ctx = parts.timeline_list.clone();
 	let shortcuts_ctx = shortcuts_cell;
-	parts.timeline_list.bind_internal(EventType::CONTEXT_MENU, move |_event| {
+	parts.timeline_list.on_context_menu(move || {
 		if shutdown_ctx.get() {
 			return;
 		}
@@ -325,7 +310,7 @@ pub fn bind_input_handlers(
 			let pin_base = if cms.pinned { "&Unpin Post" } else { "&Pin Post" };
 			append_item(&mut menu, ID_PIN_POST, pin_base, ActionId::PinPost, "Pin or unpin this post on your profile");
 		}
-		timeline_list_ctx.popup_menu(&mut menu, None);
+		timeline_list_ctx.popup_menu(&mut menu);
 	});
 	let ui_tx_list = ui_tx.clone();
 	let shutdown_list = is_shutting_down.clone();

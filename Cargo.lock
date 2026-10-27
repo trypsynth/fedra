@@ -698,6 +698,7 @@ dependencies = [
  "minijinja",
  "objc",
  "prismer",
+ "quiet-list",
  "reqwest",
  "rodio",
  "rustls",
@@ -2055,6 +2056,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quiet-list"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2b63a97552b411bacc36193af2a4a0b056a0608c20b97dc8147fb540b20fcbf"
+dependencies = [
+ "accesskit",
+ "accesskit_windows",
+ "windows-sys 0.61.2",
+ "wxdragon",
 ]
 
 [[package]]
@@ -3655,9 +3668,9 @@ dependencies = [
 
 [[package]]
 name = "wxdragon"
-version = "0.9.23"
+version = "0.9.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6339e80fd8352fa1ec65339ee031128a105119cf01628a690ec4345982b32d6b"
+checksum = "e10bc93e4c8366136a9d1468c7bde5363be8386af52f77f133d7805e09031163"
 dependencies = [
  "bitflags 2.13.2",
  "log",
@@ -3668,9 +3681,9 @@ dependencies = [
 
 [[package]]
 name = "wxdragon-macros"
-version = "0.9.23"
+version = "0.9.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5771ae4ea7284834c95c81908626ff07b6e320e41b4b0849660fc849f3d6eea5"
+checksum = "07d53c29add134e7f383ebc1a3ca4bbff5f3840fd2f2d5843168691c5d3648e9"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -3680,9 +3693,9 @@ dependencies = [
 
 [[package]]
 name = "wxdragon-sys"
-version = "0.9.23"
+version = "0.9.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e5d2154e8de44be273b47b95fb2cf15a6eeecc8c37202754c95b4de48d73a7"
+checksum = "1f46998e50d71680abec6360432fca9dd2953066a1f7b64b22b69261e3ce7bf9"
 dependencies = [
  "bindgen",
  "cmake",

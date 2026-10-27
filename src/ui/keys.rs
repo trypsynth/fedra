@@ -16,5 +16,7 @@ pub const RIGHT: i32 = 316;
 pub const DOWN: i32 = 317;
 #[cfg(target_os = "macos")]
 pub const F1: i32 = 340;
+#[cfg(target_os = "macos")]
 pub const PAGE_UP: i32 = 366;
+#[cfg(target_os = "macos")]
 pub const PAGE_DOWN: i32 = 367;
