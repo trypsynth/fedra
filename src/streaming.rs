@@ -1,7 +1,11 @@
 use std::{
 	net::{TcpStream, ToSocketAddrs},
-	sync::mpsc::{self, Receiver, Sender},
-	thread::{self, JoinHandle},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+		mpsc::{self, Receiver, Sender},
+	},
+	thread,
 	time::{Duration, Instant},
 };
 
@@ -28,7 +32,14 @@ pub enum StreamEvent {
 
 pub struct StreamHandle {
 	receiver: Receiver<StreamEvent>,
-	_thread: JoinHandle<()>,
+	stop: Arc<AtomicBool>,
+}
+
+impl Drop for StreamHandle {
+	// A quiet stream never sends, so the thread can't rely on a dead receiver to notice it's unwanted.
+	fn drop(&mut self) {
+		self.stop.store(true, Ordering::Relaxed);
+	}
 }
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -69,10 +80,12 @@ pub fn start_streaming(
 	}
 	drop(query);
 	let (sender, receiver) = mpsc::channel();
-	let thread = thread::spawn(move || {
-		streaming_loop(&streaming_url, &timeline_type, &sender, &ui_waker);
+	let stop = Arc::new(AtomicBool::new(false));
+	let thread_stop = Arc::clone(&stop);
+	thread::spawn(move || {
+		streaming_loop(&streaming_url, &timeline_type, &sender, &ui_waker, &thread_stop);
 	});
-	Some(StreamHandle { receiver, _thread: thread })
+	Some(StreamHandle { receiver, stop })
 }
 
 fn send_event(sender: &Sender<StreamEvent>, ui_waker: &UiWaker, event: StreamEvent) -> bool {
@@ -83,12 +96,18 @@ fn send_event(sender: &Sender<StreamEvent>, ui_waker: &UiWaker, event: StreamEve
 	true
 }
 
-fn streaming_loop(url: &Url, timeline_type: &TimelineType, sender: &Sender<StreamEvent>, ui_waker: &UiWaker) {
+fn streaming_loop(
+	url: &Url,
+	timeline_type: &TimelineType,
+	sender: &Sender<StreamEvent>,
+	ui_waker: &UiWaker,
+	stop: &AtomicBool,
+) {
 	let mut retry_count: u32 = 0;
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
 	loop {
-		if connect_and_stream(url, timeline_type, sender, ui_waker, &mut retry_count) == Ok(()) {
+		if connect_and_stream(url, timeline_type, sender, ui_waker, &mut retry_count, stop) == Ok(()) {
 			// Receiver dropped or intentional shutdown.
 			break;
 		}
@@ -99,6 +118,9 @@ fn streaming_loop(url: &Url, timeline_type: &TimelineType, sender: &Sender<Strea
 		let exp = retry_count.saturating_sub(1).min(6);
 		let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
 		thread::sleep(delay);
+		if stop.load(Ordering::Relaxed) {
+			break;
+		}
 	}
 }
 
@@ -108,6 +130,7 @@ fn connect_and_stream(
 	sender: &Sender<StreamEvent>,
 	ui_waker: &UiWaker,
 	retry_count: &mut u32,
+	stop: &AtomicBool,
 ) -> Result<(), String> {
 	let request = url.as_str().into_client_request().map_err(|e| format!("WebSocket request failed: {e}"))?;
 	let uri = request.uri().clone();
@@ -121,6 +144,9 @@ fn connect_and_stream(
 	}
 	*retry_count = 0;
 	loop {
+		if stop.load(Ordering::Relaxed) {
+			return Ok(());
+		}
 		if last_ping_at.elapsed() >= HEARTBEAT_INTERVAL {
 			socket.send(Message::Ping(Vec::new().into())).map_err(|e| format!("WebSocket ping failed: {e}"))?;
 			last_ping_at = Instant::now();
