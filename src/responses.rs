@@ -17,7 +17,6 @@ use crate::{
 	AppState, UiCommand,
 	config::{AutoloadMode, ShortcutsConfig, SortOrder},
 	network::NetworkResponse,
-	timeline::TimelineType,
 	ui::{
 		commands::{UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
@@ -100,21 +99,15 @@ impl NetworkResponseContext<'_> {
 /// Processes network responses from the background network thread.
 pub fn process_network_responses(ctx: &mut NetworkResponseContext<'_>) {
 	let Some(handle) = &ctx.state.network_handle else { return };
-	let responses = handle.drain();
-	let active_type = ctx.state.timeline_manager.active().map(|t| t.timeline_type.clone());
-	for response in responses {
-		handle_response(ctx, response, active_type.as_ref());
+	for response in handle.drain() {
+		handle_response(ctx, response);
 	}
 }
 
-fn handle_response(
-	ctx: &mut NetworkResponseContext<'_>,
-	response: NetworkResponse,
-	active_type: Option<&TimelineType>,
-) {
+fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkResponse) {
 	match response {
 		NetworkResponse::TimelineLoaded { timeline_type, result: Ok(data), max_id } => {
-			timelines::loaded(ctx, &timeline_type, data, max_id.as_deref(), active_type);
+			timelines::loaded(ctx, &timeline_type, data, max_id.as_deref());
 		}
 		NetworkResponse::TimelineLoaded { timeline_type, result: Err(err), max_id } => {
 			timelines::load_failed(ctx, &timeline_type, &err, max_id.is_some());
@@ -227,7 +220,7 @@ fn handle_response(
 			ctx.announce_failure("Failed to update profile", &err);
 		}
 		NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
-			timelines::search_loaded(ctx, query, search_type, results, offset, active_type);
+			timelines::search_loaded(ctx, query, search_type, results, offset);
 		}
 		NetworkResponse::SearchLoaded { query, search_type, result: Err(err), .. } => {
 			timelines::search_failed(ctx, &query, search_type, &err);

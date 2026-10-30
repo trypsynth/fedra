@@ -16,7 +16,6 @@ pub(super) fn loaded(
 	timeline_type: &TimelineType,
 	data: TimelineData,
 	max_id: Option<&str>,
-	active_type: Option<&TimelineType>,
 ) {
 	let mut should_find_next = false;
 	let mut should_find_prev = false;
@@ -25,7 +24,7 @@ pub(super) fn loaded(
 		let timeline_list = &ctx.timeline_list;
 		let live_region = ctx.live_region;
 		let suppress_selection = ctx.suppress_selection;
-		let is_active = active_type == Some(timeline_type);
+		let is_active = state.timeline_manager.active().is_some_and(|t| &t.timeline_type == timeline_type);
 		let mut status_snapshots: Vec<Status> = Vec::new();
 		let view_options = state.timeline_view_options_for(timeline_type);
 		let timeline_index_opt = state.timeline_manager.index_of(timeline_type);
@@ -210,7 +209,6 @@ pub(super) fn search_loaded(
 	search_type: SearchType,
 	results: SearchResults,
 	offset: Option<u32>,
-	active_type: Option<&TimelineType>,
 ) {
 	let status_snapshots = {
 		let state = &mut *ctx.state;
@@ -235,7 +233,7 @@ pub(super) fn search_loaded(
 			return;
 		}
 		let timeline_type = TimelineType::Search { query, search_type };
-		let is_active = active_type == Some(&timeline_type);
+		let is_active = state.timeline_manager.active().is_some_and(|t| t.timeline_type == timeline_type);
 		let mut status_snapshots: Vec<Status> = Vec::new();
 		let view_options = state.timeline_view_options_for(&timeline_type);
 		let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
