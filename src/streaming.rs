@@ -23,7 +23,7 @@ use crate::{
 pub enum StreamEvent {
 	Update { timeline_type: TimelineType, status: Box<Status> },
 	StatusUpdate { status: Box<Status> },
-	Delete { timeline_type: TimelineType, id: String },
+	Delete { id: String },
 	Notification { timeline_type: TimelineType, notification: Box<Notification> },
 	Conversation { timeline_type: TimelineType, conversation: Box<Conversation> },
 	Connected(TimelineType),
@@ -274,7 +274,7 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 				return None;
 			}
 			let status_id = msg.payload?;
-			Some(StreamEvent::Delete { timeline_type: timeline_type.clone(), id: status_id })
+			Some(StreamEvent::Delete { id: status_id })
 		}
 		"notification" => {
 			if *timeline_type != TimelineType::Notifications {

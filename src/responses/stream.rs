@@ -24,7 +24,7 @@ pub fn process_stream_events(
 	let mut status_snapshots: Vec<Status> = Vec::new();
 	let mut mention_forwards: Vec<Box<crate::mastodon::Notification>> = Vec::new();
 	let mut own_post_forwards: Vec<Box<Status>> = Vec::new();
-	let mut own_delete_forwards: Vec<String> = Vec::new();
+	let mut deleted_ids: Vec<String> = Vec::new();
 	let mut new_post_alerts: Vec<(TimelineType, Status)> = Vec::new();
 	let timeline_sounds = state.active_account().map(|a| a.timeline_sounds.clone()).unwrap_or_default();
 	let notifying_timelines = state.active_account().map(|a| a.notifying_timelines.clone()).unwrap_or_default();
@@ -68,17 +68,8 @@ pub fn process_stream_events(
 				streaming::StreamEvent::StatusUpdate { status, .. } => {
 					status_snapshots.push((*status).clone());
 				}
-				streaming::StreamEvent::Delete { timeline_type, id } => {
-					if timeline_type == TimelineType::Home {
-						own_delete_forwards.push(id.clone());
-					}
-					if timeline.timeline_type == timeline_type {
-						timeline.entries.retain(|entry| entry.as_status().is_none_or(|s| s.id != id));
-						if is_active {
-							active_needs_update = true;
-						}
-					}
-				}
+				// Removed from every timeline below, not just this one, since copies may be open anywhere.
+				streaming::StreamEvent::Delete { id } => deleted_ids.push(id),
 				streaming::StreamEvent::Notification { timeline_type, notification } => {
 					if let Some(status) = notification.status.as_deref() {
 						status_snapshots.push(status.clone());
@@ -178,7 +169,19 @@ pub fn process_stream_events(
 			active_needs_update = true;
 		}
 	}
-	if !own_post_forwards.is_empty() || !own_delete_forwards.is_empty() {
+	if !deleted_ids.is_empty() {
+		let active = state.timeline_manager.active_index();
+		for (index, timeline) in state.timeline_manager.iter_mut().enumerate() {
+			let before = timeline.entries.len();
+			timeline.entries.retain(|entry| {
+				entry.as_status().is_none_or(|s| {
+					!deleted_ids.contains(&s.id) && s.reblog.as_ref().is_none_or(|r| !deleted_ids.contains(&r.id))
+				})
+			});
+			active_needs_update |= index == active && timeline.entries.len() != before;
+		}
+	}
+	if !own_post_forwards.is_empty() {
 		let current_user_id = state.current_user_id.clone();
 		if let Some(current_user_id) = current_user_id {
 			for timeline in state.timeline_manager.iter_mut() {
@@ -189,13 +192,6 @@ pub fn process_stream_events(
 				let filter_context = timeline.timeline_type.filter_context();
 				let timeline_filter = state.config.filters.resolve(timeline.timeline_type.template_key());
 				let mut changed = false;
-				if !own_delete_forwards.is_empty() {
-					let before = timeline.entries.len();
-					timeline
-						.entries
-						.retain(|entry| entry.as_status().is_none_or(|s| !own_delete_forwards.contains(&s.id)));
-					changed |= timeline.entries.len() != before;
-				}
 				// New posts go below any pinned posts, which the timeline fetch keeps at the front.
 				// Inserting each one at that same index leaves the newest first, as on Home.
 				let insert_at = timeline.entries.iter().take_while(|e| e.as_status().is_some_and(|s| s.pinned)).count();
