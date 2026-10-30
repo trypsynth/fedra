@@ -696,7 +696,7 @@ pub(super) fn vote(ctx: &mut UiCommandContext<'_>) {
 		return;
 	};
 	let post_text = target.display_text();
-	if let Some(choices) = dialogs::prompt_for_vote(frame, poll, &post_text) {
+	if let Some(choices) = dialogs::prompt_for_vote(frame, poll, post_text) {
 		if let Some(handle) = &state.network_handle {
 			let is_foreign = matches!(
 				state.timeline_manager.active().map(|t| &t.timeline_type),

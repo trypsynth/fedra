@@ -1,6 +1,6 @@
 //! Statuses and the values embedded in them.
 
-use std::fmt::Write;
+use std::{cell::OnceCell, fmt::Write};
 
 use serde::Deserialize;
 
@@ -114,7 +114,23 @@ pub struct Status {
 	pub card: Option<Card>,
 	#[serde(default)]
 	pub filtered: Vec<FilterResult>,
+	#[serde(skip)]
+	plain_text: PlainText,
 }
+
+/// A post's text without its HTML, worked out on first use: parsing every row's HTML on every
+/// redraw was most of what a redraw cost.
+#[derive(Debug, Clone, Default)]
+struct PlainText(OnceCell<String>);
+
+// A cache, so never part of whether two copies of a post differ.
+impl PartialEq for PlainText {
+	fn eq(&self, _: &Self) -> bool {
+		true
+	}
+}
+
+impl Eq for PlainText {}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct StatusSource {
@@ -191,8 +207,8 @@ pub struct StatusContext {
 }
 
 impl Status {
-	pub fn display_text(&self) -> String {
-		strip_html(&self.content)
+	pub fn display_text(&self) -> &str {
+		self.plain_text.0.get_or_init(|| strip_html(&self.content))
 	}
 
 	pub fn simple_display(&self) -> String {
@@ -224,7 +240,7 @@ impl Status {
 	}
 
 	fn filterable_text(&self) -> String {
-		let mut parts = vec![self.spoiler_text.clone(), self.display_text()];
+		let mut parts = vec![self.spoiler_text.clone(), self.display_text().to_owned()];
 		if let Some(poll) = &self.poll {
 			parts.extend(poll.options.iter().map(|o| o.title.clone()));
 		}
@@ -433,7 +449,7 @@ impl Status {
 	}
 
 	fn content_with_spoiler(&self, cw_display: ContentWarningDisplay, cw_expanded: bool, spoiler: &str) -> String {
-		let content = self.display_text();
+		let content = self.display_text().to_owned();
 		if spoiler.is_empty() {
 			return content;
 		}

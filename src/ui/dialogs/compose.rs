@@ -1423,7 +1423,7 @@ pub fn prompt_for_edit(
 		ComposeDialogConfig {
 			title_prefix: "Edit Post".to_string(),
 			ok_label: "Save".to_string(),
-			initial_content: source_text.map_or_else(|| status.display_text(), ToOwned::to_owned),
+			initial_content: source_text.unwrap_or_else(|| status.display_text()).to_owned(),
 			initial_cw,
 			initial_sensitive: status.sensitive,
 			initial_language: status.language.clone(),
