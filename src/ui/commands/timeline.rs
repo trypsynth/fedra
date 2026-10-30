@@ -671,13 +671,6 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				live_region,
 				frame,
 			);
-			if let Some(handle) = &state.network_handle {
-				handle.send(NetworkCommand::FetchTimeline {
-					timeline_type,
-					limit: Some(u32::from(state.config.fetch_limit)),
-					max_id: None,
-				});
-			}
 		}
 		TimelineEntry::Notification(notification) if notification.kind == "follow_request" => {
 			let Some(handle) = &state.network_handle else {
