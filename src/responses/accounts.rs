@@ -1,10 +1,11 @@
 use anyhow::Result;
+use url::Url;
 use wxdragon::prelude::*;
 
 use super::NetworkResponseContext;
 use crate::{
 	AppState, UiCommand,
-	mastodon::{Account, Relationship},
+	mastodon::{Account, InstanceInfo, Relationship},
 	network::{NetworkCommand, RelationshipAction},
 	timeline::TimelineType,
 	ui::dialogs::{self, UserLookupAction},
@@ -84,6 +85,18 @@ impl FollowList {
 			Self::Followers => &mut state.followers_dialog,
 			Self::Following => &mut state.following_dialog,
 		}
+	}
+}
+
+pub(super) fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
+	state.max_post_chars = Some(info.max_post_chars);
+	state.max_media_description_chars = Some(info.max_media_description_chars);
+	state.poll_limits = info.poll_limits;
+	let streaming_url = info.streaming_url.and_then(|url| Url::parse(&url).ok());
+	if streaming_url.is_some() && streaming_url != state.streaming_url {
+		state.streaming_url = streaming_url;
+		// Streams opened before this arrived went to the instance's own host.
+		crate::accounts::apply_streaming_setting(state);
 	}
 }
 

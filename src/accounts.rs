@@ -6,7 +6,7 @@ use wxdragon::prelude::*;
 use crate::{
 	AppState, UiCommand, auth,
 	config::Account,
-	mastodon::MastodonClient,
+	mastodon::{MastodonClient, PollLimits},
 	network::{self, NetworkCommand},
 	streaming,
 	timeline::TimelineType,
@@ -142,19 +142,15 @@ pub fn switch_to_account(
 	};
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
-	state.network_handle = network::start_network(url.clone(), token.clone(), state.ui_waker.clone()).ok();
+	// The previous account's limits don't apply here; the instance's own arrive with its info.
+	state.max_post_chars = None;
+	state.max_media_description_chars = None;
+	state.poll_limits = PollLimits::default();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
-		if let Ok(info) = client.get_instance_info() {
-			state.max_post_chars = Some(info.max_post_chars);
-			state.max_media_description_chars = Some(info.max_media_description_chars);
-			state.poll_limits = info.poll_limits;
-			if let Some(ref streaming_url) = info.streaming_url
-				&& let Ok(parsed) = Url::parse(streaming_url)
-			{
-				state.streaming_url = Some(parsed);
-			}
-		}
+		let network = network::start_network(client.clone(), token.clone(), state.ui_waker.clone());
+		network.send(NetworkCommand::FetchInstanceInfo);
+		state.network_handle = Some(network);
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none()

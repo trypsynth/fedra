@@ -7,12 +7,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use chrono::DateTime;
-use url::Url;
 
 use crate::{
 	mastodon::{
-		Account, Conversation, Filter, FilterAction, FilterContext, MastodonClient, Notification, PostSubmission,
-		Relationship, SearchResults, SearchType, Status, StatusAction, StatusContext,
+		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification,
+		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusAction, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -255,6 +254,7 @@ pub enum NetworkCommand {
 	UnmuteTag {
 		name: String,
 	},
+	FetchInstanceInfo,
 	FetchMarkers,
 	FetchNotificationPolicy,
 	SaveMarker {
@@ -337,6 +337,7 @@ pub enum NetworkResponse {
 		name: String,
 		result: Result<crate::mastodon::Tag>,
 	},
+	InstanceInfoFetched(Result<InstanceInfo>),
 	MarkersLoaded(Result<crate::mastodon::Markers>),
 	NotificationPolicyLoaded(Result<crate::mastodon::NotificationPolicy>),
 	TagUnfollowed {
@@ -570,14 +571,14 @@ impl Drop for NetworkHandle {
 	}
 }
 
-pub fn start_network(base_url: Url, access_token: String, ui_waker: UiWaker) -> Result<NetworkHandle> {
-	let client = MastodonClient::new(base_url)?;
+/// `client` is shared with the UI thread's own uses so both reuse one connection pool.
+pub fn start_network(client: MastodonClient, access_token: String, ui_waker: UiWaker) -> NetworkHandle {
 	let (cmd_tx, cmd_rx) = mpsc::channel();
 	let (resp_tx, resp_rx) = mpsc::channel();
 	let thread = thread::spawn(move || {
 		network_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker);
 	});
-	Ok(NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread })
+	NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread }
 }
 
 fn send_response(responses: &Sender<NetworkResponse>, ui_waker: &UiWaker, response: NetworkResponse) {
@@ -1166,6 +1167,9 @@ fn network_loop(
 			Ok(NetworkCommand::FetchNotificationPolicy) => {
 				let result = client.get_notification_policy(access_token);
 				send_response(responses, ui_waker, NetworkResponse::NotificationPolicyLoaded(result));
+			}
+			Ok(NetworkCommand::FetchInstanceInfo) => {
+				send_response(responses, ui_waker, NetworkResponse::InstanceInfoFetched(client.get_instance_info()));
 			}
 			Ok(NetworkCommand::FetchMarkers) => {
 				let result = client.get_markers(access_token);

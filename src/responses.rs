@@ -141,9 +141,12 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::StatusEdited { result: Err(err), .. } => ctx.announce_failure("Failed to edit", &err),
 		NetworkResponse::PollVoted { result } => statuses::poll_voted(ctx, result),
 		NetworkResponse::TagFollowed { name, result } => tags::following_changed(ctx, &name, &result, true),
+		NetworkResponse::InstanceInfoFetched(Ok(info)) => accounts::instance_info_fetched(ctx.state, info),
 		NetworkResponse::MarkersLoaded(Ok(markers)) => crate::read_position::apply_markers(ctx.state, markers),
 		// Servers before Mastodon 4.3 have no notification policy, and so no requests.
-		NetworkResponse::MarkersLoaded(Err(_)) | NetworkResponse::NotificationPolicyLoaded(Err(_)) => {}
+		NetworkResponse::InstanceInfoFetched(Err(_))
+		| NetworkResponse::MarkersLoaded(Err(_))
+		| NetworkResponse::NotificationPolicyLoaded(Err(_)) => {}
 		NetworkResponse::NotificationPolicyLoaded(Ok(policy)) => {
 			let count = policy.summary.pending_requests_count;
 			// The first check after launch or an account switch only sets the baseline, which the
