@@ -22,7 +22,7 @@ use crate::{
 	ui::{
 		dialogs,
 		menu::update_menu_labels,
-		timeline_view::{list_index_to_entry_index, update_active_timeline_ui, with_suppressed_selection},
+		timeline_view::{list_index_to_entry_index, with_suppressed_selection},
 	},
 };
 
@@ -83,23 +83,7 @@ pub(super) fn open_timeline(
 			with_suppressed_selection(suppress_selection, || {
 				selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
-			{
-				let view_options =
-					state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-				let active_index = state.timeline_manager.active_index();
-				if let Some(view_options) = view_options
-					&& let Some(active) = state.timeline_manager.active_mut()
-				{
-					update_active_timeline_ui(
-						timeline_list,
-						active,
-						suppress_selection,
-						&view_options,
-						&state.cw_expanded,
-						active_index,
-					);
-				}
-			}
+			state.redraw_active_timeline(timeline_list, suppress_selection);
 		}
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
@@ -171,22 +155,7 @@ pub(super) fn close_timeline(
 	with_suppressed_selection(suppress_selection, || {
 		selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	});
-	{
-		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-		let active_index = state.timeline_manager.active_index();
-		if let Some(view_options) = view_options
-			&& let Some(active) = state.timeline_manager.active_mut()
-		{
-			update_active_timeline_ui(
-				timeline_list,
-				active,
-				suppress_selection,
-				&view_options,
-				&state.cw_expanded,
-				active_index,
-			);
-		}
-	}
+	state.redraw_active_timeline(timeline_list, suppress_selection);
 	update_window_title(state, frame);
 }
 
@@ -241,21 +210,7 @@ pub(super) fn close(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn refresh_active_timeline(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let active_index = state.timeline_manager.active_index();
-	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-	if let Some(view_options) = view_options
-		&& let Some(active) = state.timeline_manager.active_mut()
-	{
-		update_active_timeline_ui(
-			&ctx.timeline_list,
-			active,
-			ctx.suppress_selection,
-			&view_options,
-			&state.cw_expanded,
-			active_index,
-		);
-	}
+	ctx.state.redraw_active_timeline(&ctx.timeline_list, ctx.suppress_selection);
 }
 
 pub(super) fn toggle_permanent(ctx: &mut UiCommandContext<'_>) {
@@ -452,23 +407,7 @@ pub(super) fn timeline_selection_changed(ctx: &mut UiCommandContext<'_>, index: 
 				timelines_selector.set_selection(u32::try_from(index).unwrap(), true);
 			});
 		}
-		{
-			let view_options =
-				state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-			let active_index = state.timeline_manager.active_index();
-			if let Some(view_options) = view_options
-				&& let Some(active) = state.timeline_manager.active_mut()
-			{
-				update_active_timeline_ui(
-					timeline_list,
-					active,
-					suppress_selection,
-					&view_options,
-					&state.cw_expanded,
-					active_index,
-				);
-			}
-		}
+		state.redraw_active_timeline(timeline_list, suppress_selection);
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}

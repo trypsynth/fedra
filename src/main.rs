@@ -62,6 +62,7 @@ use crate::{
 	ui::{
 		commands::{UiCommand, UiCommandContext, handle_ui_command},
 		menu::{PostMenuState, relabel_menus},
+		timeline_list::TimelineList,
 		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
 		window::{bind_input_handlers, build_main_window},
 	},
@@ -200,6 +201,14 @@ impl AppState {
 
 	pub(crate) fn timeline_view_options_for(&self, timeline_type: &timeline::TimelineType) -> TimelineViewOptions {
 		TimelineViewOptions::from_config(&self.config, timeline_type)
+	}
+
+	pub(crate) fn redraw_active_timeline(&mut self, timeline_list: &TimelineList, suppress_selection: &Cell<bool>) {
+		let Some(active) = self.timeline_manager.active() else { return };
+		let options = self.timeline_view_options_for(&active.timeline_type);
+		if let Some(active) = self.timeline_manager.active_mut() {
+			update_active_timeline_ui(timeline_list, active, suppress_selection, &options, &self.cw_expanded);
+		}
 	}
 }
 
@@ -387,21 +396,7 @@ fn main() {
 				process_network_responses(&mut network_ctx);
 			}
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
-				let view_options =
-					state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-				let active_index = state.timeline_manager.active_index();
-				if let Some(view_options) = view_options
-					&& let Some(active) = state.timeline_manager.active_mut()
-				{
-					update_active_timeline_ui(
-						&timeline_list_wake,
-						active,
-						&suppress_wake,
-						&view_options,
-						&state.cw_expanded,
-						active_index,
-					);
-				}
+				state.redraw_active_timeline(&timeline_list_wake, &suppress_wake);
 				last_ui_refresh = Instant::now();
 			}
 			busy_wake.set(false);

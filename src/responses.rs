@@ -21,7 +21,6 @@ use crate::{
 		commands::{UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
 		timeline_list::TimelineList,
-		timeline_view::update_active_timeline_ui,
 	},
 	ui_wake::UiCommandSender,
 };
@@ -72,21 +71,7 @@ impl NetworkResponseContext<'_> {
 
 	/// Redraws the active timeline so entry changes reach the screen reader.
 	fn refresh_active_timeline(&mut self) {
-		let state = &mut *self.state;
-		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-		let active_index = state.timeline_manager.active_index();
-		if let Some(view_options) = view_options
-			&& let Some(active) = state.timeline_manager.active_mut()
-		{
-			update_active_timeline_ui(
-				&self.timeline_list,
-				active,
-				self.suppress_selection,
-				&view_options,
-				&state.cw_expanded,
-				active_index,
-			);
-		}
+		self.state.redraw_active_timeline(&self.timeline_list, self.suppress_selection);
 	}
 
 	fn refresh_menu_labels(&self) {

@@ -8,7 +8,7 @@ use crate::{
 	mastodon::Status,
 	streaming,
 	timeline::{TimelineEntry, TimelineType},
-	ui::{menu::update_menu_labels, timeline_view::update_active_timeline_ui},
+	ui::menu::update_menu_labels,
 };
 
 /// Processes streaming events from WebSocket connections.
@@ -223,21 +223,8 @@ pub fn process_stream_events(
 	if !active_needs_update {
 		return;
 	}
-	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-	let active_index = state.timeline_manager.active_index();
-	if let Some(view_options) = view_options
-		&& let Some(active) = state.timeline_manager.active_mut()
-	{
-		update_active_timeline_ui(
-			timeline_list,
-			active,
-			suppress_selection,
-			&view_options,
-			&state.cw_expanded,
-			active_index,
-		);
-		if let Some(mb) = frame.get_menu_bar() {
-			update_menu_labels(&mb, state);
-		}
+	state.redraw_active_timeline(timeline_list, suppress_selection);
+	if let Some(mb) = frame.get_menu_bar() {
+		update_menu_labels(&mb, state);
 	}
 }

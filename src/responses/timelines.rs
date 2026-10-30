@@ -27,7 +27,6 @@ pub(super) fn loaded(
 		let is_active = state.timeline_manager.active().is_some_and(|t| &t.timeline_type == timeline_type);
 		let mut status_snapshots: Vec<Status> = Vec::new();
 		let view_options = state.timeline_view_options_for(timeline_type);
-		let timeline_index_opt = state.timeline_manager.index_of(timeline_type);
 		let restore_id =
 			state.pending_restore_post_id.as_ref().and_then(|(rt, id)| (*rt == *timeline_type).then(|| id.clone()));
 		let may_load_older = state.config.load_older_to_restore && state.restore_pages < MAX_RESTORE_PAGES;
@@ -132,17 +131,13 @@ pub(super) fn loaded(
 			if finding_place && state.restore_pages == 0 {
 				live_region.announce("Finding your place");
 			}
-			if !finding_place
-				&& is_active
-				&& let Some(idx) = timeline_index_opt
-			{
+			if !finding_place && is_active {
 				update_active_timeline_ui(
 					timeline_list,
 					timeline,
 					suppress_selection,
 					&view_options,
 					&state.cw_expanded,
-					idx,
 				);
 			}
 			timeline.loading_more = finding_place;
@@ -236,7 +231,6 @@ pub(super) fn search_loaded(
 		let is_active = state.timeline_manager.active().is_some_and(|t| t.timeline_type == timeline_type);
 		let mut status_snapshots: Vec<Status> = Vec::new();
 		let view_options = state.timeline_view_options_for(&timeline_type);
-		let timeline_index_opt = state.timeline_manager.index_of(&timeline_type);
 		if let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) {
 			let mut new_entries: Vec<TimelineEntry> = Vec::new();
 			for account in results.accounts {
@@ -253,33 +247,22 @@ pub(super) fn search_loaded(
 					status_snapshots.push(status.clone());
 				}
 			}
-			let is_load_more = offset.is_some() && offset.unwrap_or(0) > 0;
-			if is_load_more {
-				if new_entries.is_empty() {
-					live_region.announce("No more results");
-				} else {
-					timeline.entries.extend(new_entries.clone());
-					if is_active && let Some(idx) = timeline_index_opt {
-						update_active_timeline_ui(
-							timeline_list,
-							timeline,
-							suppress_selection,
-							&view_options,
-							&state.cw_expanded,
-							idx,
-						);
-					}
-				}
+			let is_load_more = offset.is_some_and(|offset| offset > 0);
+			if is_load_more && new_entries.is_empty() {
+				live_region.announce("No more results");
 			} else {
-				timeline.entries = new_entries;
-				if is_active && let Some(idx) = timeline_index_opt {
+				if is_load_more {
+					timeline.entries.extend(new_entries);
+				} else {
+					timeline.entries = new_entries;
+				}
+				if is_active {
 					update_active_timeline_ui(
 						timeline_list,
 						timeline,
 						suppress_selection,
 						&view_options,
 						&state.cw_expanded,
-						idx,
 					);
 				}
 			}

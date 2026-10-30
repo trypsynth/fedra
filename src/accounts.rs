@@ -10,11 +10,7 @@ use crate::{
 	network::{self, NetworkCommand},
 	streaming,
 	timeline::TimelineType,
-	ui::{
-		dialogs,
-		menu::update_menu_labels,
-		timeline_view::{update_active_timeline_ui, with_suppressed_selection},
-	},
+	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
 	ui_wake::UiCommandSender,
 };
 
@@ -293,19 +289,7 @@ pub fn switch_to_account(
 	timelines_selector.set_selection(u32::try_from(active_index).unwrap(), true);
 	with_suppressed_selection(suppress_selection, || {
 		timeline_list.clear();
-		let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
-		if let Some(view_options) = view_options
-			&& let Some(active) = state.timeline_manager.active_mut()
-		{
-			update_active_timeline_ui(
-				timeline_list,
-				active,
-				suppress_selection,
-				&view_options,
-				&state.cw_expanded,
-				active_index,
-			);
-		}
+		state.redraw_active_timeline(timeline_list, suppress_selection);
 	});
 	if should_announce {
 		let handle = state.active_account().map_or_else(|| "Unknown".to_string(), Account::full_handle);

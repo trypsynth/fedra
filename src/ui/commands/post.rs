@@ -8,16 +8,13 @@ use super::{
 };
 use crate::{
 	AppState,
-	config::{ContentWarningDisplay, SortOrder},
+	config::ContentWarningDisplay,
 	html,
 	mastodon::{Status, StatusAction},
 	network,
 	network::{ForeignInteraction, NetworkCommand},
 	timeline::{TimelineTextOptions, TimelineType},
-	ui::{
-		dialogs,
-		timeline_view::{list_index_to_entry_index, update_active_timeline_ui},
-	},
+	ui::{dialogs, timeline_view::list_index_to_entry_index},
 };
 
 pub(super) fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: Option<String>) -> network::PostData {
@@ -515,25 +512,14 @@ pub(super) fn toggle_content_warning(ctx: &mut UiCommandContext<'_>) {
 	if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 		return;
 	}
-	let _text_options = state.timeline_manager.active().map_or_else(
-		|| TimelineTextOptions::from_config_default(&state.config),
-		|a| TimelineTextOptions::from_config(&state.config, &a.timeline_type),
-	);
-	let timeline_type = state.timeline_manager.active().map(|a| a.timeline_type.clone());
-	let view_options = timeline_type.map(|t| state.timeline_view_options_for(&t));
-	let active_index = state.timeline_manager.active_index();
-	let Some(active) = state.timeline_manager.active_mut() else { return };
+	let Some(active) = state.timeline_manager.active() else { return };
 	let Some(list_index) = active.selected_index else {
 		live_region.announce("No post selected");
 		return;
 	};
-	let effective_sort_order =
-		if state.config.preserve_thread_order && matches!(active.timeline_type, TimelineType::Thread { .. }) {
-			SortOrder::OldestToNewest
-		} else {
-			state.config.sort_order
-		};
-	let Some(entry_index) = list_index_to_entry_index(list_index, active.entries.len(), effective_sort_order) else {
+	let Some(entry_index) =
+		list_index_to_entry_index(list_index, active.entries.len(), active.effective_sort_order(&state.config))
+	else {
 		return;
 	};
 	let Some(entry) = active.entries.get(entry_index) else { return };
@@ -546,23 +532,11 @@ pub(super) fn toggle_content_warning(ctx: &mut UiCommandContext<'_>) {
 		live_region.announce("No content warning");
 		return;
 	}
-	let entry_id = entry.id();
-	let expanded = state.cw_expanded.contains(entry_id);
-	if expanded {
-		state.cw_expanded.remove(entry_id);
-	} else {
-		state.cw_expanded.insert(entry_id.to_string());
+	let entry_id = entry.id().to_string();
+	if !state.cw_expanded.remove(&entry_id) {
+		state.cw_expanded.insert(entry_id);
 	}
-	if let Some(view_options) = view_options {
-		update_active_timeline_ui(
-			timeline_list,
-			active,
-			suppress_selection,
-			&view_options,
-			&state.cw_expanded,
-			active_index,
-		);
-	}
+	state.redraw_active_timeline(timeline_list, suppress_selection);
 }
 
 pub(super) fn open_links(ctx: &mut UiCommandContext<'_>) {

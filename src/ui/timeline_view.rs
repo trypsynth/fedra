@@ -43,7 +43,6 @@ pub fn update_timeline_ui(
 	sort_order: SortOrder,
 	text_options: &TimelineTextOptions,
 	cw_expanded: &HashSet<String>,
-	_timeline_index: usize,
 	selected_id: Option<&str>,
 ) {
 	let iter: Box<dyn Iterator<Item = &TimelineEntry>> = match sort_order {
@@ -131,7 +130,6 @@ pub fn update_active_timeline_ui(
 	suppress_selection: &Cell<bool>,
 	options: &TimelineViewOptions,
 	cw_expanded: &HashSet<String>,
-	timeline_index: usize,
 ) {
 	let effective_sort_order =
 		if options.preserve_thread_order && matches!(timeline.timeline_type, TimelineType::Thread { .. }) {
@@ -148,7 +146,6 @@ pub fn update_active_timeline_ui(
 			effective_sort_order,
 			&options.text_options,
 			cw_expanded,
-			timeline_index,
 			timeline.selected_id.as_deref(),
 		);
 	});
