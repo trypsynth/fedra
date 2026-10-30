@@ -131,7 +131,6 @@ pub fn build_menu_bar() -> MenuBar {
 	post_menu
 		.append(ID_BOOST, "&Boost\tCtrl+Shift+B", "Boost or unboost selected post", ItemKind::Normal)
 		.expect("Failed to append boost menu item");
-	post_menu.append_separator();
 	let timelines_menu = Menu::builder()
 		.append_item(ID_VIEW_USER_TIMELINE, "&User Timeline\tCtrl+T", "Open timeline of selected post's author")
 		.append_item(ID_OPEN_USER_TIMELINE_BY_INPUT, "Open &User...\tCtrl+U", "Open a user by username")
@@ -351,6 +350,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				break;
 			}
 		}
+		// Edit and Delete sit after View Quoted Thread and the separator that follows it.
 		if let Some(pos) = anchor_pos {
 			let edit_exists = post_menu.find_item(ID_EDIT_POST).is_some();
 			let edit_shortcut = sc.get_menu_str(q, ActionId::EditPost);
@@ -360,7 +360,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				format!("&Edit Post...\t{edit_shortcut}")
 			};
 			if is_own && !edit_exists {
-				post_menu.insert(pos + 2, ID_EDIT_POST, &edit_label, "Edit selected post", ItemKind::Normal);
+				post_menu.insert(pos + 3, ID_EDIT_POST, &edit_label, "Edit selected post", ItemKind::Normal);
 			} else if !is_own && edit_exists {
 				post_menu.delete(ID_EDIT_POST);
 			} else if is_own
@@ -377,7 +377,7 @@ pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 				format!("&Delete Post\t{delete_shortcut}")
 			};
 			if is_own && !delete_exists {
-				post_menu.insert(pos + 3, ID_DELETE_POST, &delete_label, "Delete selected post", ItemKind::Normal);
+				post_menu.insert(pos + 4, ID_DELETE_POST, &delete_label, "Delete selected post", ItemKind::Normal);
 			} else if !is_own && delete_exists {
 				post_menu.delete(ID_DELETE_POST);
 			} else if is_own
