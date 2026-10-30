@@ -364,13 +364,12 @@ impl Timeline {
 pub struct TimelineManager {
 	timelines: Vec<Timeline>,
 	active_index: usize,
-	history: Vec<TimelineType>,
 	last_focused: Option<TimelineType>,
 }
 
 impl TimelineManager {
 	pub const fn new() -> Self {
-		Self { timelines: Vec::new(), active_index: 0, history: Vec::new(), last_focused: None }
+		Self { timelines: Vec::new(), active_index: 0, last_focused: None }
 	}
 
 	pub fn open(&mut self, timeline_type: TimelineType) -> bool {
@@ -381,31 +380,18 @@ impl TimelineManager {
 		true
 	}
 
-	pub fn close(&mut self, timeline_type: &TimelineType, use_history: bool) -> bool {
+	pub fn close(&mut self, timeline_type: &TimelineType) -> bool {
 		if self.timelines.len() <= 1 {
 			return false;
-		}
-		if use_history {
-			let can_go_back = self.history.iter().rev().any(|hist_type| {
-				hist_type != timeline_type && self.timelines.iter().any(|t| t.timeline_type == *hist_type)
-			});
-			if !can_go_back {
-				return false;
-			}
 		}
 		if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == *timeline_type) {
 			let closing_active = index == self.active_index;
 			self.timelines.remove(index);
-			self.history.retain(|t| t != timeline_type);
 			if self.last_focused.as_ref() == Some(timeline_type) {
 				self.last_focused = None;
 			}
 			if closing_active {
-				let mut handled = if use_history { self.go_back() } else { false };
-				if !handled {
-					handled = self.focus_last_focused();
-				}
-				if !handled {
+				if !self.focus_last_focused() {
 					if self.active_index >= self.timelines.len() && !self.timelines.is_empty() {
 						self.active_index = self.timelines.len() - 1;
 					} else if self.active_index > 0 {
@@ -434,12 +420,6 @@ impl TimelineManager {
 				self.last_focused = Some(current.timeline_type.clone());
 			}
 			self.active_index = index;
-		}
-	}
-
-	pub fn snapshot_active_to_history(&mut self) {
-		if let Some(current) = self.timelines.get(self.active_index) {
-			self.history.push(current.timeline_type.clone());
 		}
 	}
 
@@ -491,16 +471,6 @@ impl TimelineManager {
 
 	pub const fn len(&self) -> usize {
 		self.timelines.len()
-	}
-
-	pub fn go_back(&mut self) -> bool {
-		while let Some(last_type) = self.history.pop() {
-			if let Some(index) = self.timelines.iter().position(|t| t.timeline_type == last_type) {
-				self.active_index = index;
-				return true;
-			}
-		}
-		false
 	}
 
 	fn focus_last_focused(&mut self) -> bool {

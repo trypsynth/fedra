@@ -73,9 +73,6 @@ pub(super) fn open_timeline(
 	live_region: &crate::ui::timeline_list::TimelineList,
 	frame: &Frame,
 ) {
-	if matches!(timeline_type, TimelineType::User { .. } | TimelineType::Thread { .. }) {
-		state.timeline_manager.snapshot_active_to_history();
-	}
 	if !state.timeline_manager.open(timeline_type.clone()) {
 		if let Some(index) = state.timeline_manager.index_of(timeline_type) {
 			state.timeline_manager.set_active(index);
@@ -124,7 +121,6 @@ pub(super) fn close_timeline(
 	timeline_list: &crate::ui::timeline_list::TimelineList,
 	suppress_selection: &Cell<bool>,
 	live_region: &crate::ui::timeline_list::TimelineList,
-	use_history: bool,
 	frame: &Frame,
 ) {
 	let active_type = match state.timeline_manager.active() {
@@ -139,7 +135,7 @@ pub(super) fn close_timeline(
 		live_region.announce("This timeline is permanent");
 		return;
 	}
-	if !state.timeline_manager.close(&active_type, use_history) {
+	if !state.timeline_manager.close(&active_type) {
 		return;
 	}
 	let _ = state.save_config();
@@ -206,7 +202,7 @@ pub(super) fn close(ctx: &mut UiCommandContext<'_>) {
 	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let live_region = ctx.live_region;
-	close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, false, frame);
+	close_timeline(state, timelines_selector, timeline_list, suppress_selection, live_region, frame);
 }
 
 pub(super) fn refresh_active_timeline(ctx: &mut UiCommandContext<'_>) {
