@@ -1,4 +1,6 @@
-use minijinja::{Environment, context};
+use std::cell::RefCell;
+
+use minijinja::{AutoEscape, Environment, Error, Value, context};
 
 pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
@@ -12,14 +14,32 @@ pub struct WindowTitleTemplateVars {
 	pub timeline: String,
 }
 
+thread_local! {
+	// Compiling a template costs far more than rendering it, and the timeline renders every row on each redraw.
+	static COMPILED: RefCell<Environment<'static>> = RefCell::new({
+		let mut env = Environment::new();
+		// Templates are keyed by their source, which must not pick up escaping from a name ending in .html.
+		env.set_auto_escape_callback(|_| AutoEscape::None);
+		env
+	});
+}
+
+fn render(template: &str, ctx: Value) -> Result<String, Error> {
+	COMPILED.with_borrow_mut(|env| {
+		if env.get_template(template).is_err() {
+			env.add_template_owned(template.to_owned(), template.to_owned())?;
+		}
+		env.get_template(template)?.render(ctx)
+	})
+}
+
 pub fn render_window_title(template: &str, vars: &WindowTitleTemplateVars) -> String {
-	let env = Environment::new();
 	let ctx = context! {
 		app => &vars.app,
 		account => &vars.account,
 		timeline => &vars.timeline,
 	};
-	env.render_str(template, ctx).unwrap_or_else(|_| format!("{} - {}", vars.app, vars.account))
+	render(template, ctx).unwrap_or_else(|_| format!("{} - {}", vars.app, vars.account))
 }
 
 pub struct PostTemplateVars {
@@ -48,7 +68,6 @@ pub struct PostTemplateVars {
 }
 
 pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
-	let env = Environment::new();
 	let ctx = context! {
 		author => &vars.author,
 		username => &vars.username,
@@ -73,5 +92,18 @@ pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
 		quote_media => &vars.quote_media,
 		quote_poll => &vars.quote_poll,
 	};
-	env.render_str(template, ctx).unwrap_or_else(|_| format!("{}: {}", vars.author, vars.content))
+	render(template, ctx).unwrap_or_else(|_| format!("{}: {}", vars.author, vars.content))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn cached_templates_render_each_source_unescaped() {
+		let vars = WindowTitleTemplateVars { app: "Fedra".into(), account: "<me>".into(), timeline: "Home".into() };
+		assert_eq!(render_window_title("{{ account }} on {{ timeline }}.html", &vars), "<me> on Home.html");
+		assert_eq!(render_window_title("{{ account }} on {{ timeline }}.html", &vars), "<me> on Home.html");
+		assert_eq!(render_window_title("{{ app }}", &vars), "Fedra");
+	}
 }
