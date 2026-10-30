@@ -11,8 +11,8 @@ use url::Url;
 
 use crate::{
 	mastodon::{
-		Account, Conversation, FilterAction, FilterContext, MastodonClient, Notification, PostSubmission, Relationship,
-		SearchResults, SearchType, Status, StatusAction, StatusContext,
+		Account, Conversation, Filter, FilterAction, FilterContext, MastodonClient, Notification, PostSubmission,
+		Relationship, SearchResults, SearchType, Status, StatusAction, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -451,6 +451,13 @@ pub enum TimelineData {
 	Conversations(Vec<Conversation>, Option<String>),
 }
 
+/// Tag mutes live in a filter Fedra owns, so unmuting never touches filters the user made.
+const MUTED_TAGS_FILTER: &str = "Muted hashtags";
+
+fn is_muted_tags_filter(filter: &Filter) -> bool {
+	filter.title == MUTED_TAGS_FILTER && filter.action == FilterAction::Hide
+}
+
 fn post_with_media(
 	client: &MastodonClient,
 	access_token: &str,
@@ -876,16 +883,12 @@ fn network_loop(
 						tags.push(tag);
 					}
 				}
-				if let Ok(filters) = client.get_filters(access_token) {
+				if let Ok(filters) = client.get_filters(access_token)
+					&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
+				{
 					for tag in &mut tags {
-						let with_hash = format!("#{}", tag.name);
-						tag.muted = filters.iter().any(|f| {
-							f.action == FilterAction::Hide
-								&& f.keywords.iter().any(|kw| {
-									kw.keyword.eq_ignore_ascii_case(&with_hash)
-										|| kw.keyword.eq_ignore_ascii_case(&tag.name)
-								})
-						});
+						let keyword = format!("#{}", tag.name);
+						tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
 					}
 				}
 				let result = Ok(tags);
@@ -895,16 +898,14 @@ fn network_loop(
 				let result = (|| -> Result<()> {
 					let filters = client.get_filters(access_token)?;
 					let keyword = format!("#{name}");
-					if let Some(filter) =
-						filters.into_iter().find(|f| f.title == "Muted hashtags" && f.action == FilterAction::Hide)
-					{
+					if let Some(filter) = filters.into_iter().find(is_muted_tags_filter) {
 						if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
 							client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
 						}
 					} else {
 						client.create_filter(
 							access_token,
-							"Muted hashtags",
+							MUTED_TAGS_FILTER,
 							&[
 								FilterContext::Home,
 								FilterContext::Notifications,
@@ -925,12 +926,9 @@ fn network_loop(
 				let result = (|| -> Result<()> {
 					let filters = client.get_filters(access_token)?;
 					let keyword = format!("#{name}");
-					for filter in &filters {
-						for kw in &filter.keywords {
-							if kw.keyword.eq_ignore_ascii_case(&keyword) {
-								client.delete_filter_keyword(access_token, &kw.id)?;
-								return Ok(());
-							}
+					for filter in filters.iter().filter(|f| is_muted_tags_filter(f)) {
+						for kw in filter.keywords.iter().filter(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+							client.delete_filter_keyword(access_token, &kw.id)?;
 						}
 					}
 					Ok(())
