@@ -1,6 +1,6 @@
 use super::{
 	NetworkResponseContext,
-	helpers::{merge_status_snapshot, summarize_api_error},
+	helpers::{merge_status_snapshots, summarize_api_error},
 };
 use crate::{
 	UiCommand,
@@ -307,18 +307,9 @@ pub(super) fn search_failed(
 }
 
 /// Folds freshly fetched copies of a post into every timeline that already
-/// shows it, then redraws if anything changed.
+/// shows it, then redraws if the active one changed.
 fn merge_snapshots(ctx: &mut NetworkResponseContext<'_>, snapshots: &[Status]) {
-	if snapshots.is_empty() {
-		return;
-	}
-	let mut merged_any = false;
-	for snapshot in snapshots {
-		if merge_status_snapshot(ctx.state, snapshot) {
-			merged_any = true;
-		}
-	}
-	if merged_any {
+	if merge_status_snapshots(ctx.state, snapshots) {
 		ctx.refresh_active_timeline();
 	}
 }

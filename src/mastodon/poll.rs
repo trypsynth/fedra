@@ -7,7 +7,7 @@ use crate::mastodon::{
 	serde_util::{deserialize_option_u64_or_zero, deserialize_u64_or_zero},
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Poll {
 	pub id: String,
@@ -23,7 +23,7 @@ pub struct Poll {
 	pub own_votes: Option<Vec<u32>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct PollOption {
 	pub title: String,

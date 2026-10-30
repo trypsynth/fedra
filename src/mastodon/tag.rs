@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Tag {
 	pub name: String,
@@ -15,7 +15,7 @@ pub struct Tag {
 	pub history: Vec<TagHistory>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct TagHistory {
 	pub day: String,

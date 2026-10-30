@@ -16,13 +16,13 @@ use crate::{
 	timeline::TimelineTextOptions,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[allow(dead_code)]
 pub struct Quote {
 	pub quoted_status: Option<Box<Status>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct QuoteApproval {
 	#[serde(default, deserialize_with = "deserialize_string_or_none")]
@@ -71,7 +71,7 @@ pub enum PostSubmission {
 	Scheduled(ScheduledStatus),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools, reason = "mirrors the fields the Mastodon API sends")]
 pub struct Status {
@@ -131,7 +131,7 @@ pub struct StatusSource {
 	pub spoiler_text: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Card {
 	#[serde(default)]
@@ -148,7 +148,7 @@ pub struct Card {
 	pub kind: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Mention {
 	pub id: String,
@@ -178,14 +178,14 @@ pub struct Conversation {
 	pub unread: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Application {
 	pub name: String,
 	pub website: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct MediaAttachment {
 	pub id: String,

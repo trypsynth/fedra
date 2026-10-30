@@ -4,13 +4,13 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct FilterResult {
 	pub filter: Filter,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Filter {
 	pub id: String,
@@ -36,7 +36,7 @@ impl Filter {
 	}
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct FilterKeyword {
 	pub id: String,

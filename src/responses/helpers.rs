@@ -1,4 +1,6 @@
-use crate::{AppState, mastodon::Status, network::NetworkCommand};
+use std::collections::HashMap;
+
+use crate::{AppState, mastodon::Status, network::NetworkCommand, timeline::TimelineEntry};
 
 pub(super) fn summarize_api_error(err: &anyhow::Error) -> String {
 	for cause in err.chain().skip(1) {
@@ -39,31 +41,39 @@ pub(super) fn refresh_own_user_timelines(state: &AppState) {
 	}
 }
 
-fn merge_status_snapshot_by_id(state: &mut AppState, status_id: &str, snapshot: &Status) -> bool {
-	let mut updated = false;
-	for timeline in state.timeline_manager.iter_mut() {
-		for entry in &mut timeline.entries {
-			if let Some(status) = entry.as_status_mut() {
-				if status.id == status_id {
-					*status = snapshot.clone();
-					updated = true;
-				}
-				if let Some(ref mut reblog) = status.reblog
-					&& reblog.id == status_id
-				{
-					**reblog = snapshot.clone();
-					updated = true;
-				}
-			}
+/// Folds freshly fetched copies of posts into every timeline still showing an older copy.
+/// Returns whether the active timeline changed.
+pub(super) fn merge_status_snapshots(state: &mut AppState, snapshots: &[Status]) -> bool {
+	let mut fresh: HashMap<&str, &Status> = HashMap::with_capacity(snapshots.len());
+	for snapshot in snapshots {
+		fresh.insert(&snapshot.id, snapshot);
+		if let Some(reblog) = &snapshot.reblog {
+			fresh.insert(&reblog.id, reblog);
 		}
 	}
-	updated
+	if fresh.is_empty() {
+		return false;
+	}
+	let active = state.timeline_manager.active_index();
+	let mut active_changed = false;
+	for (index, timeline) in state.timeline_manager.iter_mut().enumerate() {
+		for status in timeline.entries.iter_mut().filter_map(TimelineEntry::as_status_mut) {
+			let mut changed = replace_if_stale(status, &fresh);
+			if let Some(reblog) = &mut status.reblog {
+				changed |= replace_if_stale(reblog, &fresh);
+			}
+			active_changed |= changed && index == active;
+		}
+	}
+	active_changed
 }
 
-pub(super) fn merge_status_snapshot(state: &mut AppState, snapshot: &Status) -> bool {
-	let mut updated = merge_status_snapshot_by_id(state, &snapshot.id, snapshot);
-	if let Some(reblog) = &snapshot.reblog {
-		updated |= merge_status_snapshot_by_id(state, &reblog.id, reblog);
+fn replace_if_stale(status: &mut Status, fresh: &HashMap<&str, &Status>) -> bool {
+	match fresh.get(status.id.as_str()) {
+		Some(&snapshot) if snapshot != status => {
+			*status = snapshot.clone();
+			true
+		}
+		_ => false,
 	}
-	updated
 }

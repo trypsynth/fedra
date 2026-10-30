@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use wxdragon::prelude::*;
 
-use super::helpers::merge_status_snapshot;
+use super::helpers::merge_status_snapshots;
 use crate::{
 	AppState,
 	mastodon::Status,
@@ -217,19 +217,15 @@ pub fn process_stream_events(
 			}
 		}
 	}
-	let mut merged_any = false;
-	for snapshot in &status_snapshots {
-		if merge_status_snapshot(state, snapshot) {
-			merged_any = true;
-		}
-	}
-	if merged_any {
+	if merge_status_snapshots(state, &status_snapshots) {
 		active_needs_update = true;
+	}
+	if !active_needs_update {
+		return;
 	}
 	let view_options = state.timeline_manager.active().map(|a| state.timeline_view_options_for(&a.timeline_type));
 	let active_index = state.timeline_manager.active_index();
-	if active_needs_update
-		&& let Some(view_options) = view_options
+	if let Some(view_options) = view_options
 		&& let Some(active) = state.timeline_manager.active_mut()
 	{
 		update_active_timeline_ui(

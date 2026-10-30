@@ -30,7 +30,7 @@ pub struct Relationship {
 	pub note: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[allow(dead_code)]
 pub struct Account {
 	pub id: String,
@@ -60,7 +60,7 @@ pub struct Account {
 	pub source: Option<Source>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Source {
 	pub privacy: Option<String>,
 	pub sensitive: Option<bool>,
@@ -71,7 +71,7 @@ pub struct Source {
 	pub fields: Vec<AccountField>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct AccountField {
 	pub name: String,
 	pub value: String,
