@@ -199,7 +199,7 @@ fn handle_response(
 				dlg.update_relationships(&results);
 			}
 		}
-		NetworkResponse::RelationshipUpdated { _account_id: _, target_name, action, result } => {
+		NetworkResponse::RelationshipUpdated { target_name, action, result } => {
 			accounts::relationship_updated(ctx, &target_name, action, result);
 		}
 		NetworkResponse::RelationshipLoaded { _account_id: _, result } => {

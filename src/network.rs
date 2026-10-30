@@ -33,6 +33,8 @@ pub enum RelationshipAction {
 	HideBoosts,
 	EnableNotifications,
 	DisableNotifications,
+	/// Only reported when the current follow state couldn't be looked up.
+	ToggleFollow,
 }
 
 #[derive(Debug, Clone)]
@@ -342,7 +344,6 @@ pub enum NetworkResponse {
 		result: Result<crate::mastodon::Tag>,
 	},
 	RelationshipUpdated {
-		_account_id: String,
 		target_name: String,
 		action: RelationshipAction,
 		result: Result<crate::mastodon::Relationship>,
@@ -981,36 +982,43 @@ fn network_loop(
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
+					NetworkResponse::RelationshipUpdated { target_name, action, result },
 				);
 			}
 			Ok(NetworkCommand::ToggleFollow { account_id, acct, target_name }) => {
-				let resolved_id =
-					account_id.or_else(|| client.lookup_account(access_token, &acct).ok().map(|account| account.id));
-				if let Some(id) = resolved_id
-					&& let Ok(mut rels) = client.get_relationships(access_token, slice::from_ref(&id))
-					&& let Some(rel) = rels.pop()
-				{
-					let (action, result) = if rel.following {
+				let current = account_id
+					.map_or_else(|| client.lookup_account(access_token, &acct).map(|account| account.id), Ok)
+					.and_then(|id| {
+						let rel = client
+							.get_relationships(access_token, slice::from_ref(&id))?
+							.pop()
+							.context("Server returned no relationship")?;
+						Ok((id, rel))
+					});
+				let (action, result) = match current {
+					Ok((id, rel)) if rel.following => {
 						(RelationshipAction::Unfollow, client.unfollow_account(access_token, &id))
-					} else if rel.requested {
+					}
+					Ok((id, rel)) if rel.requested => {
 						(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
-					} else {
+					}
+					Ok((id, _)) => {
 						(RelationshipAction::Follow, client.follow_account_with_options(access_token, &id, true, false))
-					};
-					send_response(
-						responses,
-						ui_waker,
-						NetworkResponse::RelationshipUpdated { _account_id: id, target_name, action, result },
-					);
-				}
+					}
+					Err(err) => (RelationshipAction::ToggleFollow, Err(err)),
+				};
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::RelationshipUpdated { target_name, action, result },
+				);
 			}
 			Ok(NetworkCommand::UnfollowAccount { account_id, target_name, action }) => {
 				let result = client.unfollow_account(access_token, &account_id);
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated { _account_id: account_id, target_name, action, result },
+					NetworkResponse::RelationshipUpdated { target_name, action, result },
 				);
 			}
 			Ok(NetworkCommand::AuthorizeFollowRequest { account_id, target_name }) => {
@@ -1019,7 +1027,6 @@ fn network_loop(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
 						target_name,
 						action: RelationshipAction::AcceptFollowRequest,
 						result,
@@ -1032,7 +1039,6 @@ fn network_loop(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
 						target_name,
 						action: RelationshipAction::RejectFollowRequest,
 						result,
@@ -1044,12 +1050,7 @@ fn network_loop(
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
-						target_name,
-						action: RelationshipAction::Block,
-						result,
-					},
+					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Block, result },
 				);
 			}
 			Ok(NetworkCommand::UnblockAccount { account_id, target_name }) => {
@@ -1057,12 +1058,7 @@ fn network_loop(
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
-						target_name,
-						action: RelationshipAction::Unblock,
-						result,
-					},
+					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unblock, result },
 				);
 			}
 			Ok(NetworkCommand::MuteAccount { account_id, target_name }) => {
@@ -1070,12 +1066,7 @@ fn network_loop(
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
-						target_name,
-						action: RelationshipAction::Mute,
-						result,
-					},
+					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Mute, result },
 				);
 			}
 			Ok(NetworkCommand::UnmuteAccount { account_id, target_name }) => {
@@ -1083,12 +1074,7 @@ fn network_loop(
 				send_response(
 					responses,
 					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						_account_id: account_id,
-						target_name,
-						action: RelationshipAction::Unmute,
-						result,
-					},
+					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unmute, result },
 				);
 			}
 			Ok(NetworkCommand::FetchRelationship { account_id }) => {

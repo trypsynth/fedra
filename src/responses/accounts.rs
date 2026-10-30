@@ -269,6 +269,7 @@ fn relationship_failure_message(action: RelationshipAction, target_name: &str) -
 		RelationshipAction::HideBoosts => format!("Could not hide boosts from {target_name}"),
 		RelationshipAction::EnableNotifications => format!("Could not turn on notifications for {target_name}"),
 		RelationshipAction::DisableNotifications => format!("Could not turn off notifications for {target_name}"),
+		RelationshipAction::ToggleFollow => format!("Could not follow or unfollow {target_name}"),
 	}
 }
 
@@ -287,6 +288,7 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 		RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
 		RelationshipAction::EnableNotifications => format!("Turned on notifications for {target_name}"),
 		RelationshipAction::DisableNotifications => format!("Turned off notifications for {target_name}"),
+		RelationshipAction::ToggleFollow => format!("Toggled follow for {target_name}"),
 	}
 }
 
