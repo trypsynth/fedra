@@ -229,31 +229,31 @@ impl TimelineEntry {
 		}
 	}
 
+	/// `query` must already be lowercase.
 	pub fn matches_query(&self, query: &str) -> bool {
-		let query = query.to_lowercase();
 		match self {
-			Self::Status(status) => Self::status_matches(status, &query),
+			Self::Status(status) => Self::status_matches(status, query),
 			Self::Notification(notification) => {
-				if notification.account.display_name.to_lowercase().contains(&query)
-					|| notification.account.username.to_lowercase().contains(&query)
-					|| notification.account.acct.to_lowercase().contains(&query)
+				if notification.account.display_name.to_lowercase().contains(query)
+					|| notification.account.username.to_lowercase().contains(query)
+					|| notification.account.acct.to_lowercase().contains(query)
 				{
 					return true;
 				}
-				notification.status.as_ref().is_some_and(|s| Self::status_matches(s, &query))
+				notification.status.as_ref().is_some_and(|s| Self::status_matches(s, query))
 			}
 			Self::Account(account) => {
-				account.display_name.to_lowercase().contains(&query)
-					|| account.username.to_lowercase().contains(&query)
-					|| account.acct.to_lowercase().contains(&query)
+				account.display_name.to_lowercase().contains(query)
+					|| account.username.to_lowercase().contains(query)
+					|| account.acct.to_lowercase().contains(query)
 			}
-			Self::Hashtag(tag) => tag.name.to_lowercase().contains(&query),
+			Self::Hashtag(tag) => tag.name.to_lowercase().contains(query),
 		}
 	}
 
 	fn status_matches(status: &Status, query: &str) -> bool {
 		let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-		if target.content.to_lowercase().contains(query)
+		if target.display_text().to_lowercase().contains(query)
 			|| target.spoiler_text.to_lowercase().contains(query)
 			|| target.account.display_name.to_lowercase().contains(query)
 			|| target.account.username.to_lowercase().contains(query)
@@ -263,7 +263,7 @@ impl TimelineEntry {
 		}
 		if let Some(quote) = &target.quote
 			&& let Some(quoted_status) = &quote.quoted_status
-			&& (quoted_status.content.to_lowercase().contains(query)
+			&& (quoted_status.display_text().to_lowercase().contains(query)
 				|| quoted_status.spoiler_text.to_lowercase().contains(query)
 				|| quoted_status.account.display_name.to_lowercase().contains(query)
 				|| quoted_status.account.username.to_lowercase().contains(query)
@@ -325,10 +325,7 @@ impl Timeline {
 	}
 
 	pub fn find_next(&self, start_index: usize, config: &Config) -> Option<usize> {
-		let query = self.find_query.as_ref()?;
-		if self.entries.is_empty() {
-			return None;
-		}
+		let query = self.find_query.as_ref()?.to_lowercase();
 		let effective_sort_order = self.effective_sort_order(config);
 		let len = self.entries.len();
 		for visual_index in start_index..len {
@@ -337,7 +334,7 @@ impl Timeline {
 				SortOrder::OldestToNewest => len - 1 - visual_index,
 			};
 			if let Some(entry) = self.entries.get(entry_index)
-				&& entry.matches_query(query)
+				&& entry.matches_query(&query)
 			{
 				return Some(entry_index);
 			}
@@ -346,23 +343,16 @@ impl Timeline {
 	}
 
 	pub fn find_prev(&self, start_visual_index: usize, config: &Config) -> Option<usize> {
-		let query = self.find_query.as_ref()?;
-		if self.entries.is_empty() {
-			return None;
-		}
+		let query = self.find_query.as_ref()?.to_lowercase();
 		let effective_sort_order = self.effective_sort_order(config);
 		let len = self.entries.len();
-		let current_visual_index = start_visual_index;
-		if current_visual_index == 0 {
-			return None;
-		}
-		for visual_index in (0..current_visual_index).rev() {
+		for visual_index in (0..start_visual_index.min(len)).rev() {
 			let entry_index = match effective_sort_order {
 				SortOrder::NewestToOldest => visual_index,
 				SortOrder::OldestToNewest => len - 1 - visual_index,
 			};
 			if let Some(entry) = self.entries.get(entry_index)
-				&& entry.matches_query(query)
+				&& entry.matches_query(&query)
 			{
 				return Some(entry_index);
 			}
