@@ -4,18 +4,18 @@ version = 4
 
 [[package]]
 name = "accesskit"
-version = "0.25.1"
+version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad442f58ee04714aaa0ba0a2768c1ea1935b29507bb22ddece8cbbc76db02932"
+checksum = "4e883d1d28c5fd5568c79ed2d2bd48d9f2fd3945c8974ed0f53690ceddb051be"
 dependencies = [
  "uuid",
 ]
 
 [[package]]
 name = "accesskit_consumer"
-version = "0.39.1"
+version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a45e2bb300bea6d5f33a82c3e051c3ddc6f41c209750f68a0acbe991a284344"
+checksum = "f3da8f27636015191b2264ee1df681503170a632cafd832fdc1edfdd4e3a2fd3"
 dependencies = [
  "accesskit",
  "hashbrown",
@@ -23,9 +23,9 @@ dependencies = [
 
 [[package]]
 name = "accesskit_windows"
-version = "0.35.1"
+version = "0.35.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce63f35d6bdcf59f26b76b3379063f738e6412cef46999cc772d46aa3de35adb"
+checksum = "498668b90da9995302a0055aaecad4756932333da2ddef6baee1c00844c430fc"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -126,7 +126,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
- "syn 3.0.6",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -480,7 +480,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1448,9 +1448,9 @@ dependencies = [
 
 [[package]]
 name = "minijinja"
-version = "3.0.2"
+version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0032a2738ba16d9a8822e4eb2833faeed5c41d767633ea753f33b6becd58cbfc"
+checksum = "00f5a04892e86ddb4fc254e9160835370b63a0d44042d3ab4725bc2dbcbab136"
 
 [[package]]
 name = "minimal-lexical"
@@ -2565,9 +2565,9 @@ dependencies = [
 
 [[package]]
 name = "ship-shape"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b0b7c20aa2e52b4bc6836cae11b8ac863a0263139522d11f8b09ee123dcd3a4"
+checksum = "6ce8fbe060ee50d27fa6ecbe67a266e79a547257c5452ac87dbb6382d5d98e51"
 dependencies = [
  "homeport",
  "minisign-verify",
@@ -2576,15 +2576,16 @@ dependencies = [
  "serde",
  "tempfile",
  "ureq",
+ "windows",
  "wx-utils",
  "wxdragon",
 ]
 
 [[package]]
 name = "shipfitter"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b83e6e576eb2735a36051a15fec07c0fedede422d74d550ac46f4128182bd0d7"
+checksum = "91ac0595a8daf8c8e137fd328a71fbe7a61dfc2721dc676a17060cf448731300"
 dependencies = [
  "embed-manifest",
  "finl_unicode",
