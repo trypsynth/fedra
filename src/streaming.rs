@@ -88,7 +88,7 @@ fn streaming_loop(url: &Url, timeline_type: &TimelineType, sender: &Sender<Strea
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
 	loop {
-		if connect_and_stream(url, timeline_type, sender, ui_waker) == Ok(()) {
+		if connect_and_stream(url, timeline_type, sender, ui_waker, &mut retry_count) == Ok(()) {
 			// Receiver dropped or intentional shutdown.
 			break;
 		}
@@ -107,6 +107,7 @@ fn connect_and_stream(
 	timeline_type: &TimelineType,
 	sender: &Sender<StreamEvent>,
 	ui_waker: &UiWaker,
+	retry_count: &mut u32,
 ) -> Result<(), String> {
 	let request = url.as_str().into_client_request().map_err(|e| format!("WebSocket request failed: {e}"))?;
 	let uri = request.uri().clone();
@@ -118,6 +119,7 @@ fn connect_and_stream(
 	if !send_event(sender, ui_waker, StreamEvent::Connected(timeline_type.clone())) {
 		return Ok(());
 	}
+	*retry_count = 0;
 	loop {
 		if last_ping_at.elapsed() >= HEARTBEAT_INTERVAL {
 			socket.send(Message::Ping(Vec::new().into())).map_err(|e| format!("WebSocket ping failed: {e}"))?;
