@@ -229,31 +229,6 @@ pub fn bind_input_handlers(
 			}
 		}
 	});
-	let ui_tx_menu = ui_tx.clone();
-	let shutdown_menu = is_shutting_down.clone();
-	let frame_menu = parts.frame;
-	frame_menu.on_key_down(move |event| {
-		if shutdown_menu.get() {
-			return;
-		}
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.control_down() {
-				match key_event.get_key_code() {
-					Some(91) => {
-						let _ = ui_tx_menu.send(UiCommand::SwitchPrevAccount);
-					}
-					Some(93) => {
-						let _ = ui_tx_menu.send(UiCommand::SwitchNextAccount);
-					}
-					_ => event.skip(true),
-				}
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
 	let ui_tx_menu = ui_tx;
 	let shutdown_menu = is_shutting_down;
 	let frame_menu = parts.frame;
