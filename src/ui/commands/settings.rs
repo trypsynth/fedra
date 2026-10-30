@@ -7,7 +7,7 @@ use crate::{
 	config::ContentWarningDisplay,
 	network::NetworkCommand,
 	timeline::{TimelineTextOptions, TimelineType},
-	ui::{dialogs, menu::update_menu_labels, timeline_list::TimelineList},
+	ui::{dialogs, menu::relabel_menus, timeline_list::TimelineList},
 	ui_wake::UiCommandSender,
 };
 
@@ -143,7 +143,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		autoload_mode.set(autoload);
 		sort_order_cell.set(sort_order);
 		if let Some(mb) = frame.get_menu_bar() {
-			update_menu_labels(&mb, state);
+			relabel_menus(&mb, state);
 		}
 		state.config.sort_order = sort_order;
 		state.config.preserve_thread_order = preserve_thread_order;
@@ -174,7 +174,7 @@ pub(super) fn customize_shortcuts(ctx: &mut UiCommandContext<'_>) {
 			dialogs::show_error(frame, &err);
 		}
 		if let Some(mb) = frame.get_menu_bar() {
-			update_menu_labels(&mb, state);
+			relabel_menus(&mb, state);
 		}
 	}
 }

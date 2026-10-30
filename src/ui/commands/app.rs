@@ -3,7 +3,7 @@
 use wxdragon::prelude::*;
 
 use super::UiCommandContext;
-use crate::ui::{app_shell, dialogs, menu::update_menu_labels};
+use crate::ui::{app_shell, dialogs, menu::relabel_menus};
 
 pub(super) fn toggle_window_visibility(ctx: &mut UiCommandContext<'_>) {
 	let frame = ctx.frame;
@@ -28,7 +28,7 @@ pub(super) fn set_quick_action_keys_enabled(ctx: &mut UiCommandContext<'_>, enab
 	let msg = if enabled { "Quick keys enabled" } else { "Quick keys disabled" };
 	live_region.announce(msg);
 	if let Some(mb) = frame.get_menu_bar() {
-		update_menu_labels(&mb, state);
+		relabel_menus(&mb, state);
 	}
 }
 

@@ -61,26 +61,12 @@ use crate::{
 	timeline::TimelineManager,
 	ui::{
 		commands::{UiCommand, UiCommandContext, handle_ui_command},
-		menu::update_menu_labels,
+		menu::{PostMenuState, relabel_menus},
 		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
 		window::{bind_input_handlers, build_main_window},
 	},
 	ui_wake::{UiCommandSender, UiWaker},
 };
-
-#[derive(Copy, Clone, Default)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct ContextMenuState {
-	pub favourited: bool,
-	pub reblogged: bool,
-	pub bookmarked: bool,
-	pub pinned: bool,
-	pub is_direct: bool,
-	pub is_own: bool,
-	pub has_boosts: bool,
-	pub has_favorites: bool,
-	pub quick_action_keys: bool,
-}
 
 pub(crate) enum PostOperation {
 	NewPost,
@@ -118,7 +104,7 @@ pub(crate) struct AppState {
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
-	pub(crate) context_menu_state: Rc<Cell<ContextMenuState>>,
+	pub(crate) post_menu_state: Rc<Cell<PostMenuState>>,
 	pub(crate) notification_sound: Option<audio::AudioOutput>,
 	pub(crate) refresh_timer: Option<Rc<Timer<Frame>>>,
 	pub(crate) ui_waker: UiWaker,
@@ -157,7 +143,7 @@ impl AppState {
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
 			app_shell: None,
-			context_menu_state: Rc::new(Cell::new(ContextMenuState::default())),
+			post_menu_state: Rc::new(Cell::new(PostMenuState::default())),
 			notification_sound: None,
 			refresh_timer: None,
 			ui_waker,
@@ -325,7 +311,7 @@ fn main() {
 			return;
 		}
 		if let Some(mb) = frame.get_menu_bar() {
-			update_menu_labels(&mb, &state);
+			relabel_menus(&mb, &state);
 		}
 		switch_to_account(&mut state, &frame, timelines_selector, &timeline_list, &suppress_selection, false, None);
 		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
@@ -344,7 +330,7 @@ fn main() {
 		let timeline_list_wake = timeline_list;
 		let start_maximized = state.config.start_maximized;
 		let mut state = state;
-		let context_menu_state_for_handlers = state.context_menu_state.clone();
+		let post_menu_state_for_handlers = state.post_menu_state.clone();
 		let ui_waker_handler = ui_waker.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
@@ -437,7 +423,7 @@ fn main() {
 			&quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,
-			context_menu_state_for_handlers,
+			post_menu_state_for_handlers,
 			shortcuts_cell,
 		);
 		let shutdown_close = is_shutting_down;
