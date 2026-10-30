@@ -162,16 +162,19 @@ pub(super) fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result
 pub(super) fn replied(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
 	match result {
 		Ok(PostSubmission::Published(status)) => {
+			ctx.state.pending_post = None;
 			ctx.announce("Reply sent");
 			continue_thread_if_pending(ctx, status);
 		}
 		Ok(PostSubmission::Scheduled(scheduled)) => {
+			ctx.state.pending_post = None;
 			ctx.state.pending_thread_continuation = false;
 			ctx.announce(&format!("Reply scheduled for {}", friendly_time_local(&scheduled.scheduled_at)));
 		}
 		Err(err) => {
 			ctx.state.pending_thread_continuation = false;
 			ctx.announce_failure("Failed to reply", &err);
+			ctx.dispatch(UiCommand::RecoverDraft);
 		}
 	}
 }
