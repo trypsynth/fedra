@@ -1,43 +1,42 @@
 use std::{
 	cell::{Cell, RefCell},
 	collections::HashMap,
-	path::PathBuf,
+	io::{Read, Write},
+	path::{Path, PathBuf},
 	rc::Rc,
 	sync::{
-		Arc, Mutex,
-		atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+		Arc,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	thread,
-	time::Duration,
+	thread::{self, LocalKey},
+	time::{Duration, Instant},
 };
 
 use rodio::Source;
 use url::Url;
+use wx_utils::{
+	format_duration_seconds,
+	progress::{Ended, run_with_progress},
+};
 use wxdragon::prelude::*;
 
 use crate::audio;
 #[cfg(target_os = "macos")]
 use crate::ui::keys;
 
-// Background threads (downloading, decoding) never touch wxWidgets handles
-// or Rc-based state directly, since those aren't `Send`. Instead they only
-// exchange plain `Send` data (ids, atomics, decoders) with the main thread
-// via `wxdragon::call_after`, and callbacks that DO need to close over
-// widgets/Rc state are registered here, keyed by task id, so they're only
-// ever stored and invoked on the main thread.
-type TaskCallbacks<T> = RefCell<HashMap<usize, Box<T>>>;
+// Background threads never touch wxWidgets handles or Rc-based state directly, since those aren't
+// `Send`. They only send plain `Send` data to the main thread via `wxdragon::call_after`, and the
+// callbacks that DO close over widgets/Rc state are registered here, keyed by task id, so they're
+// only ever stored and invoked on the main thread.
+type LoadCallbacks<T> = RefCell<HashMap<usize, Box<dyn FnMut(Load<T>)>>>;
 
 thread_local! {
-	static ACTIVE_PROGRESS: RefCell<Option<ProgressDialog>> = const { RefCell::new(None) };
-	static ACTIVE_DOWNLOAD_DONE: TaskCallbacks<dyn FnOnce(DownloadOutcome)> = RefCell::new(HashMap::new());
-	static ACTIVE_LOAD_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedSource, String>)> = RefCell::new(HashMap::new());
-	static ACTIVE_IMAGE_DONE: TaskCallbacks<dyn FnOnce(Result<DecodedImage, String>)> = RefCell::new(HashMap::new());
-	static ACTIVE_TICKS: TaskCallbacks<dyn Fn(TickerUpdate)> = RefCell::new(HashMap::new());
+	static MEDIA_LOADS: LoadCallbacks<DecodedSource> = RefCell::new(HashMap::new());
+	static IMAGE_LOADS: LoadCallbacks<DecodedImage> = RefCell::new(HashMap::new());
 }
 
-/// A progress report sent to whatever's registered in [`ACTIVE_TICKS`].
-#[derive(Clone, Copy)]
-enum TickerUpdate {
+/// What a background load reports to the window waiting on it.
+enum Load<T> {
 	Downloading {
 		downloaded: u64,
 		total: u64,
@@ -45,11 +44,14 @@ enum TickerUpdate {
 	/// The download itself finished, but decoding hasn't caught up yet (for
 	/// some formats, working out an accurate duration means scanning a good
 	/// chunk of the file). Without this, the status label would sit on
-	/// whatever download percentage it last showed — which, thanks to the
-	/// ticker's own polling interval, is rarely a clean 100% — making it
-	/// look stuck or wrong right when the file is actually fully there.
+	/// whatever download percentage it last showed, which is rarely a clean
+	/// 100%, making it look stuck or wrong right when the file is actually
+	/// fully there.
 	Finishing,
+	Done(Result<T, String>),
 }
+
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
 static NEXT_TASK_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -167,30 +169,20 @@ impl MediaLiveRegion {
 	}
 }
 
-/// Shared state for a media file being downloaded to a local temp file in
-/// the background, so its progress can be reported while the player window
-/// waits for it to finish. Playback only starts once the whole file has
-/// arrived: decoding or seeking a file that's still being written to made
-/// fast seeking freeze the player (a seek past what had downloaded so far
-/// blocked rodio's whole audio thread waiting for more bytes), so nothing
-/// touches the file for playback until it's complete.
-struct DownloadProgress {
-	downloaded: AtomicU64,
-	total: AtomicU64,
-	/// Set once the background download thread has stopped, for any reason.
-	done: AtomicBool,
-	/// Ask the background download thread to stop early.
+/// A media file downloaded to a temp file, deleted once nothing needs it.
+/// Playback only starts once the whole file has arrived: decoding or seeking
+/// a file that's still being written to made fast seeking freeze the player
+/// (a seek past what had downloaded so far blocked rodio's whole audio
+/// thread waiting for more bytes), so nothing touches the file for playback
+/// until it's complete.
+struct TempMedia {
+	path: PathBuf,
 	cancel: AtomicBool,
-	error: Mutex<Option<String>>,
-	dest: PathBuf,
 }
 
-impl Drop for DownloadProgress {
+impl Drop for TempMedia {
 	fn drop(&mut self) {
-		// The last reference to this is only ever dropped once nothing needs
-		// the file anymore, including the download thread itself (it holds
-		// its own clone until it exits), so it's always safe to delete here.
-		let _ = std::fs::remove_file(&self.dest);
+		let _ = std::fs::remove_file(&self.path);
 	}
 }
 
@@ -205,42 +197,83 @@ fn unique_temp_path() -> PathBuf {
 	))
 }
 
-/// Downloads `url` to `progress.dest` on a background thread, updating
-/// `progress` as it goes. Returns immediately; does not wait for completion.
-/// Nothing reads `progress.dest` back until `progress.done` is set, so
-/// there's no race with this thread creating the file. Closing `frame`
-/// cancels the download.
-fn start_background_download(frame: &Frame, url: String, progress: Arc<DownloadProgress>) {
-	let cancel_progress = progress.clone();
-	frame.on_destroy(move |_| cancel_progress.cancel.store(true, Ordering::Release));
-	thread::spawn(move || {
-		let result: anyhow::Result<()> = (|| {
-			let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
-			let mut resp = client.get(&url).send()?.error_for_status()?;
-			progress.total.store(resp.content_length().unwrap_or(0), Ordering::Release);
-			let mut file = std::fs::File::create(&progress.dest)?;
-			let mut buf = vec![0u8; 65536];
-			let mut current_downloaded = 0u64;
-			loop {
-				if progress.cancel.load(Ordering::Acquire) {
-					// An error, so nothing downstream tries to decode the partial file.
-					anyhow::bail!("Download cancelled");
-				}
-				let n = std::io::Read::read(&mut resp, &mut buf)?;
-				if n == 0 {
-					break;
-				}
-				std::io::Write::write_all(&mut file, &buf[..n])?;
-				current_downloaded += n as u64;
-				progress.downloaded.store(current_downloaded, Ordering::Release);
-			}
-			Ok(())
-		})();
-		if let Err(e) = result {
-			*progress.error.lock().unwrap() = Some(e.to_string());
+/// Downloads `url` to `dest`, reporting the bytes so far and the total (0 if unknown) after each
+/// chunk. Fails once `cancel` is set, so nothing goes on to use the partial file.
+fn download(url: &str, dest: &Path, cancel: &AtomicBool, mut report: impl FnMut(u64, u64)) -> anyhow::Result<()> {
+	let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
+	let mut resp = client.get(url).send()?.error_for_status()?;
+	let total = resp.content_length().unwrap_or(0);
+	let mut file = std::fs::File::create(dest)?;
+	let mut buf = vec![0u8; 65536];
+	let mut downloaded = 0u64;
+	loop {
+		if cancel.load(Ordering::Acquire) {
+			anyhow::bail!("Download cancelled");
 		}
-		progress.done.store(true, Ordering::Release);
+		let n = resp.read(&mut buf)?;
+		if n == 0 {
+			return Ok(());
+		}
+		file.write_all(&buf[..n])?;
+		downloaded += n as u64;
+		report(downloaded, total);
+	}
+}
+
+/// Downloads `url` to a temp file and decodes it with `decode` on one background thread, passing
+/// progress and then the result to `on_update` on the UI thread. Closing `frame` cancels it.
+fn start_load<T: Send + 'static>(
+	loads: &'static LocalKey<LoadCallbacks<T>>,
+	frame: &Frame,
+	url: String,
+	decode: fn(Arc<TempMedia>) -> Result<T, String>,
+	on_update: impl FnMut(Load<T>) + 'static,
+) {
+	let media = Arc::new(TempMedia { path: unique_temp_path(), cancel: AtomicBool::new(false) });
+	let cancel_media = Arc::clone(&media);
+	frame.on_destroy(move |_| cancel_media.cancel.store(true, Ordering::Release));
+	let id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+	loads.with_borrow_mut(|callbacks| callbacks.insert(id, Box::new(on_update)));
+	let send = move |update: Load<T>| {
+		ui_call_after(move || {
+			// Taken out while it runs, since showing an error runs a nested event loop.
+			let done = matches!(update, Load::Done(_));
+			let Some(mut callback) = loads.with_borrow_mut(|callbacks| callbacks.remove(&id)) else { return };
+			callback(update);
+			if !done {
+				loads.with_borrow_mut(|callbacks| callbacks.insert(id, callback));
+			}
+		});
+	};
+	thread::spawn(move || {
+		let mut last_report = Instant::now();
+		let downloaded = download(&url, &media.path, &media.cancel, |downloaded, total| {
+			if last_report.elapsed() >= PROGRESS_INTERVAL {
+				last_report = Instant::now();
+				send(Load::Downloading { downloaded, total });
+			}
+		});
+		let result = match downloaded {
+			Ok(()) => {
+				send(Load::Finishing);
+				decode(media)
+			}
+			Err(e) => Err(e.to_string()),
+		};
+		send(Load::Done(result));
 	});
+}
+
+/// The status label text for a load's progress.
+fn loading_label<T>(what: &str, update: &Load<T>) -> String {
+	match update {
+		Load::Downloading { downloaded, total } if *total > 0 => {
+			let percent = (downloaded.saturating_mul(100) / total).min(100);
+			format!("Loading {what}... {percent}%")
+		}
+		Load::Finishing => format!("Loading {what}... almost ready"),
+		_ => format!("Loading {what}..."),
+	}
 }
 
 /// The result of successfully decoding a fully-downloaded media file on a
@@ -250,21 +283,14 @@ fn start_background_download(frame: &Frame, url: String, progress: Arc<DownloadP
 struct DecodedSource {
 	decoder: rodio::Decoder<std::io::BufReader<std::fs::File>>,
 	total_duration: Option<Duration>,
-	progress: Arc<DownloadProgress>,
+	media: Arc<TempMedia>,
 }
 
-/// Builds a decoder against `progress`'s destination file. Only call this
-/// once `progress.done` is set: it doesn't wait, and always reads the file
-/// as a complete, static file rather than one still being written to.
-fn build_decoded_source(progress: Arc<DownloadProgress>) -> Result<DecodedSource, String> {
-	let error = progress.error.lock().unwrap().clone();
-	if let Some(err) = error {
-		return Err(err);
-	}
-	let file = std::fs::File::open(&progress.dest).map_err(|e| e.to_string())?;
+fn build_decoded_source(media: Arc<TempMedia>) -> Result<DecodedSource, String> {
+	let file = std::fs::File::open(&media.path).map_err(|e| e.to_string())?;
 	let decoder = rodio::Decoder::try_from(file).map_err(|_| "Could not play that file".to_string())?;
 	let total_duration = decoder.total_duration();
-	Ok(DecodedSource { decoder, total_duration, progress })
+	Ok(DecodedSource { decoder, total_duration, media })
 }
 
 /// A rodio player set up to play a fully-downloaded media attachment.
@@ -273,142 +299,13 @@ struct PlaybackSession {
 	_output: audio::AudioOutput,
 	player: rodio::Player,
 	total_duration: Option<Duration>,
-	progress: Arc<DownloadProgress>,
+	media: Arc<TempMedia>,
 }
 
-impl Drop for PlaybackSession {
-	fn drop(&mut self) {
-		self.progress.cancel.store(true, Ordering::Release);
-	}
-}
-
-/// Either still waiting for enough of the attachment to arrive to start
-/// decoding it, or fully set up and ready to play.
+/// Either still loading the attachment, or fully set up and ready to play.
 enum PlayerState {
-	Loading(Arc<DownloadProgress>),
+	Loading,
 	Ready(Box<PlaybackSession>),
-}
-
-impl Drop for PlayerState {
-	fn drop(&mut self) {
-		if let Self::Loading(progress) = self {
-			progress.cancel.store(true, Ordering::Release);
-		}
-	}
-}
-
-/// What happened to a download started by [`spawn_progress_download`].
-enum DownloadOutcome {
-	Success,
-	Cancelled,
-	Failed(String),
-}
-
-/// Downloads `url` to `dest` on a background thread, showing a cancellable
-/// progress dialog parented on `frame`. `on_done` runs on the UI thread once
-/// the download finishes, is cancelled, or fails; it is responsible for any
-/// cleanup of `dest` that the outcome calls for.
-///
-/// This is used for the explicit "save a copy of this attachment" command.
-/// Playback itself uses the simpler [`start_background_download`], since it
-/// reports progress through the player window itself rather than a dialog.
-fn spawn_progress_download(
-	frame: &Frame,
-	url: String,
-	dest: PathBuf,
-	title: &str,
-	message: &str,
-	on_done: impl FnOnce(DownloadOutcome) + 'static,
-) {
-	let progress = ProgressDialog::builder(frame, title, message, 100)
-		.with_style(
-			ProgressDialogStyle::AutoHide
-				| ProgressDialogStyle::AppModal
-				| ProgressDialogStyle::RemainingTime
-				| ProgressDialogStyle::CanAbort,
-		)
-		.build();
-	ACTIVE_PROGRESS.with(|p| {
-		*p.borrow_mut() = Some(progress);
-	});
-	let downloaded = Arc::new(AtomicU64::new(0));
-	let total = Arc::new(AtomicU64::new(0));
-	let is_running = Arc::new(AtomicBool::new(true));
-	let cancelled = Arc::new(AtomicBool::new(false));
-	let hb_downloaded = downloaded.clone();
-	let hb_total = total.clone();
-	let hb_is_running = is_running.clone();
-	let hb_cancelled = cancelled.clone();
-	thread::spawn(move || {
-		while hb_is_running.load(Ordering::Relaxed) {
-			let d = hb_downloaded.load(Ordering::Relaxed);
-			let t = hb_total.load(Ordering::Relaxed);
-			let current_cancelled = hb_cancelled.clone();
-			ui_call_after(move || {
-				ACTIVE_PROGRESS.with(|p| {
-					if let Some(dialog) = p.borrow().as_ref() {
-						if let Some(fraction) = (d * 100).checked_div(t) {
-							let percent = i32::try_from(fraction).unwrap_or(i32::MAX);
-							if !dialog.update(percent, None) {
-								current_cancelled.store(true, Ordering::Relaxed);
-							}
-						} else if !dialog.pulse(None) {
-							current_cancelled.store(true, Ordering::Relaxed);
-						}
-					}
-				});
-			});
-			thread::sleep(Duration::from_millis(200));
-		}
-	});
-	let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_DOWNLOAD_DONE.with(|d| {
-		d.borrow_mut().insert(task_id, Box::new(on_done));
-	});
-	let d_downloaded = downloaded;
-	let d_total = total;
-	let d_is_running = is_running;
-	let d_cancelled = cancelled;
-	let dest_thread = dest;
-	thread::spawn(move || {
-		let result: anyhow::Result<()> = (|| {
-			let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
-			let mut resp = client.get(&url).send()?.error_for_status()?;
-			let total_size = resp.content_length().unwrap_or(0);
-			d_total.store(total_size, Ordering::Relaxed);
-			let mut file = std::fs::File::create(&dest_thread)?;
-			let mut buf = [0u8; 8192];
-			let mut current_downloaded = 0u64;
-			loop {
-				if d_cancelled.load(Ordering::Relaxed) {
-					return Err(anyhow::anyhow!("Download cancelled"));
-				}
-				let n = std::io::Read::read(&mut resp, &mut buf)?;
-				if n == 0 {
-					break;
-				}
-				std::io::Write::write_all(&mut file, &buf[..n])?;
-				current_downloaded += n as u64;
-				d_downloaded.store(current_downloaded, Ordering::Relaxed);
-			}
-			Ok(())
-		})();
-		d_is_running.store(false, Ordering::Relaxed);
-		let outcome = match result {
-			Ok(()) => DownloadOutcome::Success,
-			Err(e) if e.to_string() == "Download cancelled" => DownloadOutcome::Cancelled,
-			Err(e) => DownloadOutcome::Failed(e.to_string()),
-		};
-		ui_call_after(move || {
-			ACTIVE_PROGRESS.with(|p| {
-				*p.borrow_mut() = None;
-			});
-			let done = ACTIVE_DOWNLOAD_DONE.with(|d| d.borrow_mut().remove(&task_id));
-			if let Some(done) = done {
-				done(outcome);
-			}
-		});
-	});
 }
 
 /// Prompts for a save location and downloads `url` there, showing progress
@@ -430,83 +327,40 @@ fn download_to_user_file(frame: &Frame, url: &str) {
 		.with_default_file(&default_file)
 		.with_style(FileDialogStyle::Save | FileDialogStyle::OverwritePrompt)
 		.build();
-	if dialog.show_modal() == ID_OK
-		&& let Some(path) = dialog.get_path()
-	{
-		let path = PathBuf::from(path);
-		let target = *frame;
-		let cleanup_path = path.clone();
-		spawn_progress_download(
-			frame,
-			url.to_string(),
-			path,
-			"Downloading Media",
-			"Downloading media...",
-			move |outcome| match outcome {
-				DownloadOutcome::Success => {
-					if target.is_valid() {
-						let dlg = MessageDialog::builder(&target, "Download complete.", "Fedra")
-							.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconInformation)
-							.build();
-						dlg.show_modal();
-						dlg.destroy();
-						target.set_focus();
-					}
-				}
-				DownloadOutcome::Cancelled => {
-					let _ = std::fs::remove_file(&cleanup_path);
-				}
-				DownloadOutcome::Failed(e) => {
-					if target.is_valid() {
-						let msg = format!("Failed to download media: {e}");
-						let dlg = MessageDialog::builder(&target, &msg, "Fedra")
-							.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-							.build();
-						dlg.show_modal();
-						dlg.destroy();
-						target.set_focus();
-					}
-				}
-			},
-		);
+	if dialog.show_modal() != ID_OK {
+		return;
 	}
-	dialog.destroy();
-}
-
-/// Starts a background ticker that periodically reports `progress`'s
-/// download counters (until `still_loading` is cleared or the download
-/// ends) to whatever callback is registered under `id` in [`ACTIVE_TICKS`].
-/// If the download finishes before `still_loading` is cleared (decoding
-/// hasn't caught up yet), sends one last [`TickerUpdate::Finishing`].
-fn spawn_loading_ticker(id: usize, progress: Arc<DownloadProgress>, still_loading: Arc<AtomicBool>) {
-	thread::spawn(move || {
-		while still_loading.load(Ordering::Acquire) && !progress.done.load(Ordering::Acquire) {
-			let downloaded = progress.downloaded.load(Ordering::Acquire);
-			let total = progress.total.load(Ordering::Acquire);
-			ui_call_after(move || {
-				ACTIVE_TICKS.with(|t| {
-					if let Some(cb) = t.borrow().get(&id) {
-						cb(TickerUpdate::Downloading { downloaded, total });
-					}
-				});
-			});
-			thread::sleep(Duration::from_millis(250));
-		}
-		if still_loading.load(Ordering::Acquire) {
-			ui_call_after(move || {
-				ACTIVE_TICKS.with(|t| {
-					if let Some(cb) = t.borrow().get(&id) {
-						cb(TickerUpdate::Finishing);
-					}
-				});
-			});
-		}
-		ui_call_after(move || {
-			ACTIVE_TICKS.with(|t| {
-				t.borrow_mut().remove(&id);
-			});
-		});
-	});
+	let Some(path) = dialog.get_path().map(PathBuf::from) else { return };
+	let url = url.to_string();
+	let target = *frame;
+	let work_path = path.clone();
+	run_with_progress(
+		frame,
+		"Downloading Media",
+		"Downloading media...",
+		move |progress| {
+			download(&url, &work_path, progress.cancel_flag(), |done, total| progress.set(done, Some(total)))
+				.map_err(|e| e.to_string())
+		},
+		move |result, ended| {
+			if ended == Ended::Cancelled {
+				let _ = std::fs::remove_file(&path);
+				return;
+			}
+			if !target.is_valid() {
+				return;
+			}
+			let (msg, style) = match result {
+				Ok(()) => ("Download complete.".to_string(), MessageDialogStyle::IconInformation),
+				Err(e) => (format!("Failed to download media: {e}"), MessageDialogStyle::IconError),
+			};
+			MessageDialog::builder(&target, &msg, "Fedra")
+				.with_style(MessageDialogStyle::OK | style)
+				.build()
+				.show_modal();
+			target.set_focus();
+		},
+	);
 }
 
 pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _access_token: Option<String>) {
@@ -569,49 +423,65 @@ pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _acces
 			(keys::ESCAPE, ID_CLOSE),
 		],
 	);
-	let temp_path = unique_temp_path();
-	let progress = Arc::new(DownloadProgress {
-		downloaded: AtomicU64::new(0),
-		total: AtomicU64::new(0),
-		done: AtomicBool::new(false),
-		cancel: AtomicBool::new(false),
-		error: Mutex::new(None),
-		dest: temp_path,
-	});
-	start_background_download(&frame, url.clone(), progress.clone());
-	let state: Rc<RefCell<Option<PlayerState>>> = Rc::new(RefCell::new(Some(PlayerState::Loading(progress.clone()))));
+	let state: Rc<RefCell<Option<PlayerState>>> = Rc::new(RefCell::new(Some(PlayerState::Loading)));
 	// Set when Space is pressed before the media is ready, so playback starts
 	// on its own once loading finishes instead of the press being dropped and
 	// the user having to guess when to try again.
 	let play_when_ready = Rc::new(Cell::new(false));
-	let still_loading = Arc::new(AtomicBool::new(true));
-	let ticker_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_TICKS.with(|t| {
-		t.borrow_mut().insert(ticker_id, {
-			Box::new(move |update: TickerUpdate| {
-				if !frame.is_valid() {
-					return;
-				}
-				let text = match update {
-					TickerUpdate::Downloading { downloaded, total } if total > 0 => {
-						let percent = (downloaded.saturating_mul(100) / total).min(100);
-						format!("Loading media... {percent}%")
-					}
-					TickerUpdate::Downloading { .. } => "Loading media...".to_string(),
-					TickerUpdate::Finishing => "Loading media... almost ready".to_string(),
-				};
-				status_label.set_label(&text);
-			})
-		});
-	});
-	spawn_loading_ticker(ticker_id, progress.clone(), still_loading.clone());
-	frame.on_menu_selected({
+	start_load(&MEDIA_LOADS, &frame, url.clone(), build_decoded_source, {
 		let state = state.clone();
 		let play_when_ready = play_when_ready.clone();
 		let frm = frame;
+		move |update| {
+			if !frm.is_valid() {
+				return;
+			}
+			let Load::Done(result) = update else {
+				status_label.set_label(&loading_label("media", &update));
+				return;
+			};
+			let outcome = result.and_then(|decoded| {
+				audio::AudioOutput::open()
+					.map(|output| (output, decoded))
+					.map_err(|e| format!("Could not open audio output: {e}"))
+			});
+			match outcome {
+				Ok((output, decoded)) => {
+					let player = rodio::Player::connect_new(output.mixer());
+					// Wait for the user to press play rather than starting immediately,
+					// unless they already pressed it while loading.
+					player.pause();
+					player.append(decoded.decoder);
+					if play_when_ready.get() {
+						player.play();
+					}
+					let session = PlaybackSession {
+						_output: output,
+						player,
+						total_duration: decoded.total_duration,
+						media: decoded.media,
+					};
+					// Deliberately silent: this happens on its own, without the
+					// user asking for it, so it only updates the visible label.
+					// The live region stays quiet until the user actually tries
+					// to do something (e.g. presses Space) and needs to know
+					// whether that worked.
+					status_label.set_label("Ready. Press Space to play or pause.");
+					*state.borrow_mut() = Some(PlayerState::Ready(Box::new(session)));
+				}
+				Err(e) => {
+					show_media_load_error(&frm, &e);
+					*state.borrow_mut() = None;
+					frm.close(true);
+				}
+			}
+		}
+	});
+	frame.on_menu_selected({
+		let frm = frame;
 		move |event| match event.get_id() {
 			ID_PLAY_PAUSE => {
-				if matches!(state.borrow().as_ref(), Some(PlayerState::Loading(_))) {
+				if matches!(state.borrow().as_ref(), Some(PlayerState::Loading)) {
 					let queued = !play_when_ready.get();
 					play_when_ready.set(queued);
 					lr.announce(if queued { "Queued" } else { "Unqueued" });
@@ -621,8 +491,7 @@ pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _acces
 					if s.player.empty() {
 						// Reached the end: start over from the beginning
 						// rather than doing nothing.
-						match std::fs::File::open(&s.progress.dest).ok().and_then(|f| rodio::Decoder::try_from(f).ok())
-						{
+						match std::fs::File::open(&s.media.path).ok().and_then(|f| rodio::Decoder::try_from(f).ok()) {
 							Some(decoder) => {
 								s.player.append(decoder);
 								s.player.play();
@@ -711,65 +580,6 @@ pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _acces
 	// own even though nothing calls announce() for them. The label stays
 	// visible for sighted users; it's just not what's focused.
 	frame.set_focus();
-	let load_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_LOAD_DONE.with(|d| {
-		d.borrow_mut().insert(load_id, {
-			let frm = frame;
-			Box::new(move |result: Result<DecodedSource, String>| {
-				still_loading.store(false, Ordering::Release);
-				if !frm.is_valid() {
-					return;
-				}
-				let outcome = result.and_then(|decoded| {
-					audio::AudioOutput::open()
-						.map(|output| (output, decoded))
-						.map_err(|e| format!("Could not open audio output: {e}"))
-				});
-				match outcome {
-					Ok((output, decoded)) => {
-						let player = rodio::Player::connect_new(output.mixer());
-						// Wait for the user to press play rather than starting immediately,
-						// unless they already pressed it while loading.
-						player.pause();
-						player.append(decoded.decoder);
-						if play_when_ready.get() {
-							player.play();
-						}
-						let session = PlaybackSession {
-							_output: output,
-							player,
-							total_duration: decoded.total_duration,
-							progress: decoded.progress,
-						};
-						// Deliberately silent: this happens on its own, without the
-						// user asking for it, so it only updates the visible label.
-						// The live region stays quiet until the user actually tries
-						// to do something (e.g. presses Space) and needs to know
-						// whether that worked.
-						status_label.set_label("Ready. Press Space to play or pause.");
-						*state.borrow_mut() = Some(PlayerState::Ready(Box::new(session)));
-					}
-					Err(e) => {
-						show_media_load_error(&frm, &e);
-						*state.borrow_mut() = None;
-						frm.close(true);
-					}
-				}
-			})
-		});
-	});
-	thread::spawn(move || {
-		while !progress.done.load(Ordering::Acquire) {
-			thread::sleep(Duration::from_millis(20));
-		}
-		let result = build_decoded_source(progress);
-		ui_call_after(move || {
-			let done = ACTIVE_LOAD_DONE.with(|d| d.borrow_mut().remove(&load_id));
-			if let Some(done) = done {
-				done(result);
-			}
-		});
-	});
 }
 
 /// The result of successfully decoding a fully-downloaded image attachment
@@ -782,14 +592,9 @@ struct DecodedImage {
 	height: u32,
 }
 
-/// Decodes `progress`'s destination file as an image. Only call this once
-/// `progress.done` is set, same as [`build_decoded_source`].
-fn decode_image(progress: &DownloadProgress) -> Result<DecodedImage, String> {
-	let error = progress.error.lock().unwrap().clone();
-	if let Some(err) = error {
-		return Err(err);
-	}
-	let bytes = std::fs::read(&progress.dest).map_err(|e| e.to_string())?;
+#[allow(clippy::needless_pass_by_value, reason = "matches the decoder signature start_load takes")]
+fn decode_image(media: Arc<TempMedia>) -> Result<DecodedImage, String> {
+	let bytes = std::fs::read(&media.path).map_err(|e| e.to_string())?;
 	let rgba = image::load_from_memory(&bytes).map_err(|e| format!("Could not decode image: {e}"))?.to_rgba8();
 	let (width, height) = rgba.dimensions();
 	Ok(DecodedImage { rgba: rgba.into_raw(), width, height })
@@ -836,88 +641,45 @@ fn show_image_viewer(parent: &impl WxWidget, url: String) {
 	// See show_media_player: focusing the frame, not the label, avoids the
 	// screen reader re-speaking every status text change on its own.
 	frame.set_focus();
-	let temp_path = unique_temp_path();
-	let progress = Arc::new(DownloadProgress {
-		downloaded: AtomicU64::new(0),
-		total: AtomicU64::new(0),
-		done: AtomicBool::new(false),
-		cancel: AtomicBool::new(false),
-		error: Mutex::new(None),
-		dest: temp_path,
-	});
-	start_background_download(&frame, url, progress.clone());
-	let still_loading = Arc::new(AtomicBool::new(true));
-	let ticker_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_TICKS.with(|t| {
-		t.borrow_mut().insert(ticker_id, {
-			Box::new(move |update: TickerUpdate| {
-				if !frame.is_valid() {
-					return;
-				}
-				let text = match update {
-					TickerUpdate::Downloading { downloaded, total } if total > 0 => {
-						let percent = (downloaded.saturating_mul(100) / total).min(100);
-						format!("Loading image... {percent}%")
-					}
-					TickerUpdate::Downloading { .. } => "Loading image...".to_string(),
-					TickerUpdate::Finishing => "Loading image... almost ready".to_string(),
-				};
-				status_label.set_label(&text);
-			})
-		});
-	});
-	spawn_loading_ticker(ticker_id, progress.clone(), still_loading.clone());
-	let load_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-	ACTIVE_IMAGE_DONE.with(|d| {
-		d.borrow_mut().insert(load_id, {
-			let frm = frame;
-			Box::new(move |result: Result<DecodedImage, String>| {
-				still_loading.store(false, Ordering::Release);
-				if !frm.is_valid() {
-					return;
-				}
-				match result {
-					Ok(decoded) => {
-						if let Some(bitmap) = Bitmap::from_rgba(&decoded.rgba, decoded.width, decoded.height) {
-							// Cap the window to something reasonable; AspectFit
-							// keeps larger images from being stretched or cropped.
-							const MAX_DIM: i32 = 1000;
-							let w = i32::try_from(decoded.width).unwrap_or(MAX_DIM).min(MAX_DIM);
-							let h = i32::try_from(decoded.height).unwrap_or(MAX_DIM).min(MAX_DIM);
-							status_label.destroy();
-							let bitmap_view = StaticBitmap::builder(&panel)
-								.with_bitmap(Some(bitmap))
-								.with_scale_mode(Some(ScaleMode::AspectFit))
-								.with_size(Size::new(w, h))
-								.build();
-							panel_sizer.add(&bitmap_view, 1, SizerFlag::Expand | SizerFlag::All, 0);
-							panel.layout();
-							frm.set_client_size(Size::new(w, h));
-							frm.centre();
-						} else {
-							show_media_load_error(&frm, "Could not display this image.");
-							frm.close(true);
-						}
-					}
-					Err(e) => {
-						show_media_load_error(&frm, &e);
+	start_load(&IMAGE_LOADS, &frame, url, decode_image, {
+		let frm = frame;
+		move |update| {
+			if !frm.is_valid() {
+				return;
+			}
+			let Load::Done(result) = update else {
+				status_label.set_label(&loading_label("image", &update));
+				return;
+			};
+			match result {
+				Ok(decoded) => {
+					if let Some(bitmap) = Bitmap::from_rgba(&decoded.rgba, decoded.width, decoded.height) {
+						// Cap the window to something reasonable; AspectFit
+						// keeps larger images from being stretched or cropped.
+						const MAX_DIM: i32 = 1000;
+						let w = i32::try_from(decoded.width).unwrap_or(MAX_DIM).min(MAX_DIM);
+						let h = i32::try_from(decoded.height).unwrap_or(MAX_DIM).min(MAX_DIM);
+						status_label.destroy();
+						let bitmap_view = StaticBitmap::builder(&panel)
+							.with_bitmap(Some(bitmap))
+							.with_scale_mode(Some(ScaleMode::AspectFit))
+							.with_size(Size::new(w, h))
+							.build();
+						panel_sizer.add(&bitmap_view, 1, SizerFlag::Expand | SizerFlag::All, 0);
+						panel.layout();
+						frm.set_client_size(Size::new(w, h));
+						frm.centre();
+					} else {
+						show_media_load_error(&frm, "Could not display this image.");
 						frm.close(true);
 					}
 				}
-			})
-		});
-	});
-	thread::spawn(move || {
-		while !progress.done.load(Ordering::Acquire) {
-			thread::sleep(Duration::from_millis(20));
-		}
-		let result = decode_image(&progress);
-		ui_call_after(move || {
-			let done = ACTIVE_IMAGE_DONE.with(|d| d.borrow_mut().remove(&load_id));
-			if let Some(done) = done {
-				done(result);
+				Err(e) => {
+					show_media_load_error(&frm, &e);
+					frm.close(true);
+				}
 			}
-		});
+		}
 	});
 }
 
@@ -937,21 +699,8 @@ fn show_media_load_error(frame: &Frame, detail: &str) {
 		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
 		.build();
 	dlg.show_modal();
-	dlg.destroy();
 }
 
 fn format_duration(duration: Duration) -> String {
-	let total_secs = duration.as_secs();
-	let hours = total_secs / 3600;
-	let minutes = (total_secs % 3600) / 60;
-	let seconds = total_secs % 60;
-	let mut parts = Vec::new();
-	if hours > 0 {
-		parts.push(if hours == 1 { "1 hour".to_string() } else { format!("{hours} hours") });
-	}
-	if minutes > 0 {
-		parts.push(if minutes == 1 { "1 minute".to_string() } else { format!("{minutes} minutes") });
-	}
-	parts.push(if seconds == 1 { "1 second".to_string() } else { format!("{seconds} seconds") });
-	parts.join(", ")
+	format_duration_seconds(duration.as_secs())
 }
