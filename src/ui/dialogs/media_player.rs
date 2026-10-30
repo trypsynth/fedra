@@ -208,8 +208,11 @@ fn unique_temp_path() -> PathBuf {
 /// Downloads `url` to `progress.dest` on a background thread, updating
 /// `progress` as it goes. Returns immediately; does not wait for completion.
 /// Nothing reads `progress.dest` back until `progress.done` is set, so
-/// there's no race with this thread creating the file.
-fn start_background_download(url: String, progress: Arc<DownloadProgress>) {
+/// there's no race with this thread creating the file. Closing `frame`
+/// cancels the download.
+fn start_background_download(frame: &Frame, url: String, progress: Arc<DownloadProgress>) {
+	let cancel_progress = progress.clone();
+	frame.on_destroy(move |_| cancel_progress.cancel.store(true, Ordering::Release));
 	thread::spawn(move || {
 		let result: anyhow::Result<()> = (|| {
 			let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
@@ -220,7 +223,8 @@ fn start_background_download(url: String, progress: Arc<DownloadProgress>) {
 			let mut current_downloaded = 0u64;
 			loop {
 				if progress.cancel.load(Ordering::Acquire) {
-					return Ok(());
+					// An error, so nothing downstream tries to decode the partial file.
+					anyhow::bail!("Download cancelled");
 				}
 				let n = std::io::Read::read(&mut resp, &mut buf)?;
 				if n == 0 {
@@ -574,7 +578,7 @@ pub fn show_media_player(parent: &impl WxWidget, url: String, kind: &str, _acces
 		error: Mutex::new(None),
 		dest: temp_path,
 	});
-	start_background_download(url.clone(), progress.clone());
+	start_background_download(&frame, url.clone(), progress.clone());
 	let state: Rc<RefCell<Option<PlayerState>>> = Rc::new(RefCell::new(Some(PlayerState::Loading(progress.clone()))));
 	// Set when Space is pressed before the media is ready, so playback starts
 	// on its own once loading finishes instead of the press being dropped and
@@ -841,7 +845,7 @@ fn show_image_viewer(parent: &impl WxWidget, url: String) {
 		error: Mutex::new(None),
 		dest: temp_path,
 	});
-	start_background_download(url, progress.clone());
+	start_background_download(&frame, url, progress.clone());
 	let still_loading = Arc::new(AtomicBool::new(true));
 	let ticker_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
 	ACTIVE_TICKS.with(|t| {
