@@ -1,6 +1,6 @@
 use std::{
 	collections::HashMap,
-	fs, io,
+	fs,
 	path::{Path, PathBuf},
 	sync::LazyLock,
 	time::{SystemTime, UNIX_EPOCH},
@@ -1214,13 +1214,13 @@ impl ConfigStore {
 	}
 
 	pub fn load(&self) -> Config {
-		match fs::read_to_string(&self.path) {
-			Ok(contents) => serde_json::from_str::<Config>(&contents)
-				.map(|config| config.migrate_legacy_timelines().migrate_legacy_hotkey())
-				.unwrap_or_default(),
-			Err(err) if err.kind() == io::ErrorKind::NotFound => Config::default(),
-			Err(_) => Config::default(),
+		let Ok(contents) = fs::read_to_string(&self.path) else { return Config::default() };
+		if let Ok(config) = serde_json::from_str::<Config>(&contents) {
+			return config.migrate_legacy_timelines().migrate_legacy_hotkey();
 		}
+		// Move it aside so the next save can't destroy the user's accounts and tokens.
+		let _ = fs::rename(&self.path, self.path.with_extension("json.bak"));
+		Config::default()
 	}
 
 	pub fn save(&self, config: &Config) -> Result<()> {
@@ -1228,7 +1228,10 @@ impl ConfigStore {
 			fs::create_dir_all(parent)?;
 		}
 		let contents = serde_json::to_string_pretty(config)?;
-		fs::write(&self.path, contents)?;
+		// Write then rename, so a crash mid-save can't leave a truncated config behind.
+		let tmp = self.path.with_extension("json.tmp");
+		fs::write(&tmp, contents)?;
+		fs::rename(&tmp, &self.path)?;
 		Ok(())
 	}
 }
