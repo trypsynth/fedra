@@ -3,7 +3,7 @@
 use wxdragon::prelude::*;
 
 use super::{
-	UiCommand, UiCommandContext, handle_ui_command,
+	UiCommand, UiCommandContext,
 	post::post_result_to_data,
 	selection::{acct_from_mention_link, foreign_url, get_selected_entry, get_selected_status},
 	timeline::{open_timeline, refresh_active_timeline},
@@ -195,7 +195,6 @@ pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
-	let ui_tx = ctx.ui_tx;
 	let Some(status) = get_selected_status(state) else {
 		live_region.announce("No post selected");
 		return;
@@ -223,78 +222,14 @@ pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 		return;
 	}
 	if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &all_mentions) {
-		if let Some(url) = foreign_url(state, Some(&mention.url)) {
-			state.pending_user_lookup_action = Some(action);
-			if let Some(net) = &state.network_handle {
-				net.send(NetworkCommand::ResolveAccount { url });
-			}
+		let Some(net) = &state.network_handle else {
+			live_region.announce("Network not available");
 			return;
-		}
-		let account = if let (Some(client), Some(token)) = (&state.client, &state.access_token) {
-			let by_id = if mention.id.is_empty() { None } else { client.get_account(token, &mention.id).ok() };
-			by_id.or_else(|| client.lookup_account(token, &mention.full_acct()).ok())
-		} else {
-			None
 		};
-		let account = match account {
-			Some(acc) => acc,
-			None if mention.id.is_empty() => {
-				live_region.announce(&format!("Could not resolve account @{}", mention.full_acct()));
-				return;
-			}
-			None => crate::mastodon::Account {
-				id: mention.id.clone(),
-				username: mention.username.clone(),
-				acct: mention.full_acct(),
-				display_name: String::new(),
-				url: mention.url,
-				note: String::new(),
-				followers_count: 0,
-				following_count: 0,
-				statuses_count: 0,
-				fields: Vec::new(),
-				created_at: String::new(),
-				locked: false,
-				bot: false,
-				discoverable: None,
-				source: None,
-			},
-		};
-		match action {
-			dialogs::UserLookupAction::Profile => {
-				if let Some(net) = &state.network_handle {
-					net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-					let net_tx = net.command_tx.clone();
-					let ui_tx_timeline = ui_tx.clone();
-					let timeline_type = TimelineType::User {
-						id: account.id.clone(),
-						name: account.display_name_or_username().to_string(),
-					};
-					let ui_tx_close = ui_tx.clone();
-					let dlg = dialogs::ProfileDialog::new(
-						frame,
-						account,
-						state.current_user_id.as_deref(),
-						net_tx,
-						ui_tx.clone(),
-						move || {
-							let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
-						},
-						move || {
-							let _ = ui_tx_close.send(UiCommand::ProfileDialogClosed);
-						},
-					);
-					dlg.show();
-					state.profile_dialog = Some(dlg);
-				} else {
-					live_region.announce("Network not available");
-				}
-			}
-			dialogs::UserLookupAction::Timeline => {
-				let timeline_type =
-					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
-				handle_ui_command(UiCommand::OpenTimeline(timeline_type), ctx);
-			}
+		state.pending_user_lookup_action = Some(action);
+		match foreign_url(state, Some(&mention.url)) {
+			Some(url) => net.send(NetworkCommand::ResolveAccount { url }),
+			None => net.send(NetworkCommand::LookupAccount { handle: mention.full_acct() }),
 		}
 	}
 }
