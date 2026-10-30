@@ -23,14 +23,14 @@ fn project_root() -> PathBuf {
 
 fn release() -> Result<(), Box<dyn Error>> {
 	let root = project_root();
+	// Load the signing keys before building anything, so a broken secret fails fast.
+	let minisign = Minisign::from_env()?;
 	cargo_build_release(&root, &[])?;
 	let target_dir = root.join("target/release");
 	let exe_path = target_dir.join(if cfg!(windows) { "fedra.exe" } else { "fedra" });
 	if !exe_path.exists() {
 		return Err("Executable not found".into());
 	}
-	// Load the signing keys before building anything, so a broken secret fails fast.
-	let minisign = Minisign::from_env()?;
 	println!("Packaging binaries and docs...");
 	let artifacts = package(&root, &target_dir, &exe_path)?;
 	if let Some(minisign) = minisign {
