@@ -56,7 +56,7 @@ pub fn update_timeline_ui(
 		list_entries.push((entry_id_to_node_id(entry.id()), text));
 	}
 	let selected_node_id = selected_id.map(entry_id_to_node_id);
-	timeline_list.update_entries(&list_entries, selected_node_id);
+	timeline_list.update_entries(list_entries, selected_node_id);
 }
 
 pub fn with_suppressed_selection<T>(suppress_selection: &Cell<bool>, f: impl FnOnce() -> T) -> T {

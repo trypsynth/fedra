@@ -109,8 +109,8 @@ impl TimelineList {
 	}
 
 	/// Replaces the rows, selecting `selected_id`, or the first entry if it's `None` or gone.
-	pub fn update_entries(&self, entries: &[(NodeId, String)], selected_id: Option<NodeId>) {
-		self.list.update_labelled(entries.to_vec(), selected_id.map_or(Select::Start, Select::Key));
+	pub fn update_entries(&self, entries: Vec<(NodeId, String)>, selected_id: Option<NodeId>) {
+		self.list.update_labelled(entries, selected_id.map_or(Select::Start, Select::Key));
 	}
 
 	/// Moves the selection without firing `on_selection_changed`, so the caller's own model is not
