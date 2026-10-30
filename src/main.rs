@@ -57,7 +57,7 @@ use crate::{
 	config::Config,
 	mastodon::{MastodonClient, PollLimits},
 	network::NetworkHandle,
-	responses::{NetworkResponseContext, process_network_responses, process_stream_events},
+	responses::{process_network_responses, process_stream_events},
 	timeline::TimelineManager,
 	ui::{
 		commands::{UiCommand, UiCommandContext, handle_ui_command},
@@ -356,47 +356,29 @@ fn main() {
 			}
 			busy_wake.set(true);
 			ui_waker_handler.reset();
-			{
-				let mut ui_ctx = UiCommandContext {
-					state: &mut state,
-					frame: &frame_wake,
-					timelines_selector: timelines_selector_wake,
-					timeline_list: timeline_list_wake.clone(),
-					suppress_selection: &suppress_wake,
-					live_region: &timeline_list_wake,
-					quick_action_keys_enabled: &quick_action_keys_drain,
-					autoload_mode: &autoload_drain,
-					sort_order_cell: &sort_order_drain,
-					tray_hidden: &tray_hidden_drain,
-					shortcuts_cell: &shortcuts_drain,
-					ui_tx: &ui_tx_timer,
-				};
-				drain_ui_commands(&ui_rx, &mut ui_ctx);
-			}
+			let mut ctx = UiCommandContext {
+				state: &mut state,
+				frame: &frame_wake,
+				timelines_selector: timelines_selector_wake,
+				timeline_list: timeline_list_wake.clone(),
+				suppress_selection: &suppress_wake,
+				live_region: &timeline_list_wake,
+				quick_action_keys_enabled: &quick_action_keys_drain,
+				autoload_mode: &autoload_drain,
+				sort_order_cell: &sort_order_drain,
+				tray_hidden: &tray_hidden_drain,
+				shortcuts_cell: &shortcuts_drain,
+				ui_tx: &ui_tx_timer,
+			};
+			drain_ui_commands(&ui_rx, &mut ctx);
 			if is_shutting_down {
 				busy_wake.set(false);
 				return;
 			}
-			process_stream_events(&mut state, &timeline_list_wake, &suppress_wake, &frame_wake);
-			{
-				let mut network_ctx = NetworkResponseContext {
-					frame: &frame_wake,
-					state: &mut state,
-					timelines_selector: timelines_selector_wake,
-					timeline_list: timeline_list_wake.clone(),
-					suppress_selection: &suppress_wake,
-					live_region: &timeline_list_wake,
-					quick_action_keys_enabled: &quick_action_keys_drain,
-					autoload_mode: &autoload_drain,
-					sort_order_cell: &sort_order_drain,
-					tray_hidden: &tray_hidden_drain,
-					shortcuts_cell: &shortcuts_drain,
-					ui_tx: &ui_tx_timer,
-				};
-				process_network_responses(&mut network_ctx);
-			}
+			process_stream_events(ctx.state, &timeline_list_wake, &suppress_wake, &frame_wake);
+			process_network_responses(&mut ctx);
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
-				state.redraw_active_timeline(&timeline_list_wake, &suppress_wake);
+				ctx.state.redraw_active_timeline(&timeline_list_wake, &suppress_wake);
 				last_ui_refresh = Instant::now();
 			}
 			busy_wake.set(false);

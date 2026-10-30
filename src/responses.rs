@@ -7,39 +7,20 @@ mod tags;
 mod timeline_updates;
 mod timelines;
 
-use std::cell::{Cell, RefCell};
-
 pub use stream::process_stream_events;
-use wxdragon::prelude::*;
 
 use self::helpers::{spoken_failure, summarize_api_error};
 use crate::{
-	AppState, UiCommand,
-	config::{AutoloadMode, ShortcutsConfig, SortOrder},
+	UiCommand,
 	network::NetworkResponse,
 	ui::{
 		commands::{UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
-		timeline_list::TimelineList,
 	},
-	ui_wake::UiCommandSender,
 };
 
-/// Everything a response handler needs to update application state and the UI.
-pub struct NetworkResponseContext<'a> {
-	pub frame: &'a Frame,
-	pub state: &'a mut AppState,
-	pub timelines_selector: ListBox,
-	pub timeline_list: TimelineList,
-	pub suppress_selection: &'a Cell<bool>,
-	pub live_region: &'a TimelineList,
-	pub quick_action_keys_enabled: &'a Cell<bool>,
-	pub autoload_mode: &'a Cell<AutoloadMode>,
-	pub sort_order_cell: &'a Cell<SortOrder>,
-	pub tray_hidden: &'a Cell<bool>,
-	pub shortcuts_cell: &'a RefCell<ShortcutsConfig>,
-	pub ui_tx: &'a UiCommandSender,
-}
+/// Responses are handled with the same context as UI commands, so a handler can run one directly.
+pub type NetworkResponseContext<'a> = UiCommandContext<'a>;
 
 impl NetworkResponseContext<'_> {
 	fn announce(&self, message: &str) {
@@ -50,23 +31,8 @@ impl NetworkResponseContext<'_> {
 		self.announce(&spoken_failure(prefix, err));
 	}
 
-	/// Runs a UI command through the same path the main loop uses.
 	fn dispatch(&mut self, cmd: UiCommand) {
-		let mut ctx = UiCommandContext {
-			state: &mut *self.state,
-			frame: self.frame,
-			timelines_selector: self.timelines_selector,
-			timeline_list: self.timeline_list.clone(),
-			suppress_selection: self.suppress_selection,
-			live_region: self.live_region,
-			quick_action_keys_enabled: self.quick_action_keys_enabled,
-			autoload_mode: self.autoload_mode,
-			sort_order_cell: self.sort_order_cell,
-			tray_hidden: self.tray_hidden,
-			shortcuts_cell: self.shortcuts_cell,
-			ui_tx: self.ui_tx,
-		};
-		handle_ui_command(cmd, &mut ctx);
+		handle_ui_command(cmd, self);
 	}
 
 	/// Redraws the active timeline so entry changes reach the screen reader.
