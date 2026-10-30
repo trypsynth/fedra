@@ -187,21 +187,21 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::ListUpdated { result: Ok(list) } => {
 			lists::changed(ctx, &format!("List '{}' updated", list.title));
 		}
-		NetworkResponse::ListDeleted { id: _, result: Ok(()) } => lists::changed(ctx, "List deleted"),
+		NetworkResponse::ListDeleted { result: Ok(()) } => lists::changed(ctx, "List deleted"),
 		NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
 			lists::accounts_fetched(ctx, list_id, members);
 		}
 		NetworkResponse::AccountListsFetched { account_id, result: Ok(lists) } => {
 			lists::account_lists_fetched(ctx, account_id, &lists);
 		}
-		NetworkResponse::ListAccountAdded { result: Ok(()), .. } => lists::membership_changed(ctx, "Member added"),
-		NetworkResponse::ListAccountRemoved { result: Ok(()), .. } => lists::membership_changed(ctx, "Member removed"),
+		NetworkResponse::ListAccountAdded { result: Ok(()) } => lists::membership_changed(ctx, "Member added"),
+		NetworkResponse::ListAccountRemoved { result: Ok(()) } => lists::membership_changed(ctx, "Member removed"),
 		NetworkResponse::ListCreated { result: Err(err) }
 		| NetworkResponse::ListUpdated { result: Err(err) }
-		| NetworkResponse::ListDeleted { result: Err(err), .. }
+		| NetworkResponse::ListDeleted { result: Err(err) }
 		| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
 		| NetworkResponse::AccountListsFetched { result: Err(err), .. }
-		| NetworkResponse::ListAccountAdded { result: Err(err), .. }
-		| NetworkResponse::ListAccountRemoved { result: Err(err), .. } => lists::operation_failed(ctx, &err),
+		| NetworkResponse::ListAccountAdded { result: Err(err) }
+		| NetworkResponse::ListAccountRemoved { result: Err(err) } => lists::operation_failed(ctx, &err),
 	}
 }

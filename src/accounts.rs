@@ -217,9 +217,6 @@ pub fn switch_to_account(
 				state.timeline_manager.open(t.clone());
 				if let Some(handle) = &state.network_handle {
 					match t.clone() {
-						TimelineType::Thread { id, .. } => {
-							handle.send(NetworkCommand::FetchThreadById { timeline_type: t, status_id: id });
-						}
 						TimelineType::Search { query, search_type } => {
 							handle.send(NetworkCommand::Search {
 								query,

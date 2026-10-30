@@ -32,9 +32,7 @@ pub struct NotificationPolicySummary {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct Report {
-	pub id: String,
 	#[serde(default)]
 	pub category: String,
 	#[serde(default)]
@@ -43,12 +41,10 @@ pub struct Report {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct Notification {
 	pub id: String,
 	#[serde(rename = "type")]
 	pub kind: String,
-	pub created_at: String,
 	pub account: Account,
 	pub status: Option<Box<Status>>,
 	pub report: Option<Report>,

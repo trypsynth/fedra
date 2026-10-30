@@ -8,7 +8,6 @@ use crate::mastodon::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Poll {
 	pub id: String,
 	pub expires_at: Option<String>,
@@ -24,7 +23,6 @@ pub struct Poll {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct PollOption {
 	pub title: String,
 	#[serde(default, deserialize_with = "deserialize_option_u64_or_zero")]

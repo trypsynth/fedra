@@ -710,7 +710,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 		},
 	);
 	if let Some((timeline_type, status_id)) = quoted_info {
-		state.pending_restore_post_id = Some((timeline_type.clone(), status_id.clone()));
+		state.pending_restore_post_id = Some((timeline_type.clone(), status_id));
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
 		let Some(handle) = &state.network_handle else {
 			live_region.announce("Network not available");
@@ -720,7 +720,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 		// carry its own nested quote data, so fetch the full status fresh by id instead of
 		// reusing it as the thread focus (otherwise the quote inside it looked broken until the
 		// thread was manually refreshed).
-		handle.send(NetworkCommand::FetchThreadById { timeline_type, status_id });
+		handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: None, max_id: None });
 	}
 }
 

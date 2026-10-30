@@ -67,10 +67,6 @@ pub enum NetworkCommand {
 		timeline_type: TimelineType,
 		focus: Box<Status>,
 	},
-	FetchThreadById {
-		timeline_type: TimelineType,
-		status_id: String,
-	},
 	FetchStatusSource {
 		status: Box<Status>,
 	},
@@ -419,8 +415,6 @@ pub enum NetworkResponse {
 		result: Result<crate::mastodon::List>,
 	},
 	ListDeleted {
-		#[allow(dead_code)]
-		id: String,
 		result: Result<()>,
 	},
 	ListAccountsFetched {
@@ -432,15 +426,9 @@ pub enum NetworkResponse {
 		result: Result<Vec<crate::mastodon::List>>,
 	},
 	ListAccountAdded {
-		#[allow(dead_code)]
-		list_id: String,
 		result: Result<()>,
 	},
 	ListAccountRemoved {
-		#[allow(dead_code)]
-		list_id: String,
-		#[allow(dead_code)]
-		account_id: String,
 		result: Result<()>,
 	},
 }
@@ -659,13 +647,11 @@ fn network_loop(
 					TimelineType::Direct => client
 						.get_conversations(access_token, limit, max_id.as_deref())
 						.map(|(c, next)| TimelineData::Conversations(c, next)),
-					TimelineType::Thread { ref id, .. } => match client.get_status(access_token, id) {
-						Ok(focus) => match client.get_status_context(access_token, id) {
-							Ok(context) => Ok(prepare_thread_timeline(focus, context)),
-							Err(e) => Err(e),
-						},
-						Err(e) => Err(e),
-					},
+					TimelineType::Thread { ref id, .. } => client.get_status(access_token, id).and_then(|focus| {
+						client
+							.get_status_context(access_token, id)
+							.map(|context| prepare_thread_timeline(focus, context))
+					}),
 					_ => {
 						let mut statuses = Vec::new();
 						if let TimelineType::User { ref id, .. } = timeline_type
@@ -717,20 +703,6 @@ fn network_loop(
 				let result = client
 					.get_status_context(access_token, &focus.id)
 					.map(|context| prepare_thread_timeline(*focus, context));
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None },
-				);
-			}
-			Ok(NetworkCommand::FetchThreadById { timeline_type, status_id }) => {
-				let result = match client.get_status(access_token, &status_id) {
-					Ok(focus) => match client.get_status_context(access_token, &status_id) {
-						Ok(context) => Ok(prepare_thread_timeline(focus, context)),
-						Err(e) => Err(e),
-					},
-					Err(e) => Err(e),
-				};
 				send_response(
 					responses,
 					ui_waker,
@@ -1146,7 +1118,7 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::DeleteList { id }) => {
 				let result = client.delete_list(access_token, &id);
-				send_response(responses, ui_waker, NetworkResponse::ListDeleted { id, result });
+				send_response(responses, ui_waker, NetworkResponse::ListDeleted { result });
 			}
 			Ok(NetworkCommand::FetchListAccounts { list_id }) => {
 				let result = client.get_list_accounts(access_token, &list_id);
@@ -1158,11 +1130,11 @@ fn network_loop(
 			}
 			Ok(NetworkCommand::AddListAccount { list_id, account_id }) => {
 				let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-				send_response(responses, ui_waker, NetworkResponse::ListAccountAdded { list_id, result });
+				send_response(responses, ui_waker, NetworkResponse::ListAccountAdded { result });
 			}
 			Ok(NetworkCommand::RemoveListAccount { list_id, account_id }) => {
 				let result = client.remove_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-				send_response(responses, ui_waker, NetworkResponse::ListAccountRemoved { list_id, account_id, result });
+				send_response(responses, ui_waker, NetworkResponse::ListAccountRemoved { result });
 			}
 			Ok(NetworkCommand::FetchNotificationPolicy) => {
 				let result = client.get_notification_policy(access_token);

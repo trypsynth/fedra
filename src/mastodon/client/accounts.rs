@@ -130,11 +130,6 @@ impl MastodonClient {
 		self.get_json(access_token, url, "fetch relationships")
 	}
 
-	#[allow(dead_code)]
-	pub fn follow_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
-		self.follow_account_with_options(access_token, account_id, true, false)
-	}
-
 	pub fn follow_account_with_options(
 		&self,
 		access_token: &str,

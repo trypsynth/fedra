@@ -11,7 +11,6 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Relationship {
 	pub id: String,
@@ -21,17 +20,14 @@ pub struct Relationship {
 	pub followed_by: bool,
 	pub blocking: bool,
 	pub muting: bool,
-	pub muting_notifications: bool,
 	pub requested: bool,
 	#[serde(default)]
 	pub requested_by: bool,
 	pub domain_blocking: bool,
-	pub endorsed: bool,
 	pub note: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Account {
 	pub id: String,
 	pub username: String,

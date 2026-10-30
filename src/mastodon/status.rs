@@ -17,22 +17,18 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[allow(dead_code)]
 pub struct Quote {
 	pub quoted_status: Option<Box<Status>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct QuoteApproval {
 	#[serde(default, deserialize_with = "deserialize_string_or_none")]
 	pub current_user: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct ScheduledStatus {
-	pub id: String,
 	pub scheduled_at: String,
 }
 
@@ -72,7 +68,6 @@ pub enum PostSubmission {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools, reason = "mirrors the fields the Mastodon API sends")]
 pub struct Status {
 	pub id: String,
@@ -122,9 +117,7 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct StatusSource {
-	pub id: String,
 	#[serde(default)]
 	pub text: String,
 	#[serde(default)]
@@ -132,7 +125,6 @@ pub struct StatusSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Card {
 	#[serde(default)]
 	pub url: Option<String>,
@@ -149,7 +141,6 @@ pub struct Card {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Mention {
 	pub id: String,
 	pub username: String,
@@ -170,23 +161,18 @@ impl Mention {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct Conversation {
 	pub id: String,
-	pub accounts: Vec<Account>,
 	pub last_status: Option<Status>,
-	pub unread: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Application {
 	pub name: String,
 	pub website: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct MediaAttachment {
 	pub id: String,
 	#[serde(rename = "type")]

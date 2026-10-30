@@ -3,7 +3,6 @@
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Tag {
 	pub name: String,
 	pub url: String,
@@ -16,7 +15,6 @@ pub struct Tag {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct TagHistory {
 	pub day: String,
 	pub uses: String,

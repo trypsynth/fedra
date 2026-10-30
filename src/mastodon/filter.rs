@@ -5,13 +5,11 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct FilterResult {
 	pub filter: Filter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct Filter {
 	pub id: String,
 	pub title: String,
@@ -37,7 +35,6 @@ impl Filter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[allow(dead_code)]
 pub struct FilterKeyword {
 	pub id: String,
 	pub keyword: String,

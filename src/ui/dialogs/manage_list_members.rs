@@ -105,21 +105,8 @@ impl ManageListMembersDialog {
 		self.dialog.destroy();
 	}
 
-	#[allow(dead_code)]
 	pub fn update_members(&self, new_members: Vec<crate::mastodon::Account>) {
 		*self.members.borrow_mut() = new_members;
-		self.update_members_display();
-	}
-
-	#[allow(dead_code)]
-	pub fn add_member(&self, member: crate::mastodon::Account) {
-		self.members.borrow_mut().push(member);
-		self.update_members_display();
-	}
-
-	#[allow(dead_code)]
-	pub fn remove_member(&self, account_id: &str) {
-		self.members.borrow_mut().retain(|a| a.id != account_id);
 		self.update_members_display();
 	}
 

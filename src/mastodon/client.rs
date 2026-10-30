@@ -38,11 +38,6 @@ impl MastodonClient {
 		Ok(Self { base_url, http })
 	}
 
-	#[allow(dead_code)]
-	pub const fn base_url(&self) -> &Url {
-		&self.base_url
-	}
-
 	/// Sends `request`, checks the status, and deserializes the JSON body.
 	///
 	/// `what` names the operation as a verb phrase, e.g. `"favorite status"`, and is
