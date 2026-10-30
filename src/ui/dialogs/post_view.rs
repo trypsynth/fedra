@@ -204,17 +204,21 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 	let mut content = if status.spoiler_text.is_empty() {
 		status.content.clone()
 	} else {
-		format!("<p><strong>Content Warning: {}</strong></p><hr>{}", status.spoiler_text, status.content)
+		format!("<p><strong>Content Warning: {}</strong></p><hr>{}", escape_html(&status.spoiler_text), status.content)
 	};
 	content.push_str(&media_html(&status.media_attachments));
 	if let Some(quote) = status.quote.as_ref().and_then(|q| q.quoted_status.as_ref()) {
 		content = strip_quote_html(&content);
-		let quote_author = quote.account.display_name_or_username();
-		let quote_acct = &quote.account.acct;
+		let quote_author = escape_html(quote.account.display_name_or_username());
+		let quote_acct = escape_html(&quote.account.acct);
 		let quote_content = if quote.spoiler_text.is_empty() {
 			quote.content.clone()
 		} else {
-			format!("<p><strong>Content Warning: {}</strong></p><hr>{}", quote.spoiler_text, quote.content)
+			format!(
+				"<p><strong>Content Warning: {}</strong></p><hr>{}",
+				escape_html(&quote.spoiler_text),
+				quote.content
+			)
 		};
 		let quote_media = media_html(&quote.media_attachments);
 		content = format!(
@@ -244,9 +248,9 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 			{}
 		</body>
 		</html>",
-		title,
-		status.account.display_name_or_username(),
-		status.account.acct,
+		escape_html(&title),
+		escape_html(status.account.display_name_or_username()),
+		escape_html(&status.account.acct),
 		content
 	);
 	web_view.set_page(&html, "");
