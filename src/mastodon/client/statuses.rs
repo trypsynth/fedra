@@ -7,7 +7,9 @@ use reqwest::{StatusCode, blocking::multipart};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mastodon::{Account, MastodonClient, Poll, PostSubmission, Status, StatusContext, StatusSource};
+use crate::mastodon::{
+	Account, MastodonClient, Poll, PostSubmission, Status, StatusAction, StatusContext, StatusSource,
+};
 
 #[derive(Debug, Deserialize)]
 struct MediaResponse {
@@ -155,44 +157,10 @@ impl MastodonClient {
 		self.get_json(access_token, url, "fetch status")
 	}
 
-	pub fn favorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/favourite"))?;
-		self.post_json(access_token, url, "favorite status")
-	}
-
-	pub fn bookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/bookmark"))?;
-		self.post_json(access_token, url, "bookmark status")
-	}
-
-	pub fn unfavorite(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unfavourite"))?;
-		self.post_json(access_token, url, "unfavorite status")
-	}
-
-	pub fn unbookmark(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unbookmark"))?;
-		self.post_json(access_token, url, "unbookmark status")
-	}
-
-	pub fn pin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/pin"))?;
-		self.post_json(access_token, url, "pin status")
-	}
-
-	pub fn unpin_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unpin"))?;
-		self.post_json(access_token, url, "unpin status")
-	}
-
-	pub fn reblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/reblog"))?;
-		self.post_json(access_token, url, "boost status")
-	}
-
-	pub fn unreblog(&self, access_token: &str, status_id: &str) -> Result<Status> {
-		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/unreblog"))?;
-		self.post_json(access_token, url, "unboost status")
+	pub fn status_action(&self, access_token: &str, status_id: &str, action: StatusAction) -> Result<Status> {
+		let endpoint = action.endpoint();
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/{endpoint}"))?;
+		self.post_json(access_token, url, &format!("{endpoint} status"))
 	}
 
 	pub fn get_status_context(&self, access_token: &str, status_id: &str) -> Result<StatusContext> {

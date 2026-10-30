@@ -7,12 +7,12 @@ use super::{
 };
 use crate::{
 	UiCommand,
-	mastodon::{Poll, PostSubmission, Status, StatusSource, friendly_time_local},
+	mastodon::{Poll, PostSubmission, Status, StatusAction, StatusSource, friendly_time_local},
 };
 
 /// One of the toggle actions a post supports, and how to fold the server's
 /// answer back into every copy of that post already on screen.
-pub(super) struct StatusAction {
+struct StatusEffect {
 	success: &'static str,
 	failure: &'static str,
 	apply: fn(&mut Status, &Status),
@@ -20,56 +20,56 @@ pub(super) struct StatusAction {
 	refetch_own_timelines: bool,
 }
 
-pub(super) const FAVORITE: StatusAction = StatusAction {
+const FAVORITE: StatusEffect = StatusEffect {
 	success: "Favorited",
 	failure: "Failed to favorite",
 	apply: copy_favorite,
 	refetch_own_timelines: false,
 };
 
-pub(super) const UNFAVORITE: StatusAction = StatusAction {
+const UNFAVORITE: StatusEffect = StatusEffect {
 	success: "Unfavorited",
 	failure: "Failed to unfavorite",
 	apply: copy_favorite,
 	refetch_own_timelines: false,
 };
 
-pub(super) const BOOKMARK: StatusAction = StatusAction {
+const BOOKMARK: StatusEffect = StatusEffect {
 	success: "Bookmarked",
 	failure: "Failed to bookmark",
 	apply: copy_bookmark,
 	refetch_own_timelines: false,
 };
 
-pub(super) const UNBOOKMARK: StatusAction = StatusAction {
+const UNBOOKMARK: StatusEffect = StatusEffect {
 	success: "Unbookmarked",
 	failure: "Failed to unbookmark",
 	apply: copy_bookmark,
 	refetch_own_timelines: false,
 };
 
-pub(super) const PIN: StatusAction = StatusAction {
+const PIN: StatusEffect = StatusEffect {
 	success: "Post pinned",
 	failure: "Failed to pin post",
 	apply: copy_pin,
 	refetch_own_timelines: true,
 };
 
-pub(super) const UNPIN: StatusAction = StatusAction {
+const UNPIN: StatusEffect = StatusEffect {
 	success: "Post unpinned",
 	failure: "Failed to unpin post",
 	apply: copy_pin,
 	refetch_own_timelines: true,
 };
 
-pub(super) const BOOST: StatusAction = StatusAction {
+const BOOST: StatusEffect = StatusEffect {
 	success: "Boosted",
 	failure: "Failed to boost",
 	apply: copy_boost_from_wrapper,
 	refetch_own_timelines: false,
 };
 
-pub(super) const UNBOOST: StatusAction = StatusAction {
+const UNBOOST: StatusEffect = StatusEffect {
 	success: "Unboosted",
 	failure: "Failed to unboost",
 	apply: copy_boost,
@@ -101,22 +101,31 @@ fn copy_boost_from_wrapper(target: &mut Status, source: &Status) {
 	}
 }
 
-pub(super) fn action(
-	ctx: &mut NetworkResponseContext<'_>,
-	status_id: &str,
-	result: Result<Status>,
-	action: &StatusAction,
-) {
+const fn effect(action: StatusAction) -> &'static StatusEffect {
+	match action {
+		StatusAction::Favorite => &FAVORITE,
+		StatusAction::Unfavorite => &UNFAVORITE,
+		StatusAction::Bookmark => &BOOKMARK,
+		StatusAction::Unbookmark => &UNBOOKMARK,
+		StatusAction::Pin => &PIN,
+		StatusAction::Unpin => &UNPIN,
+		StatusAction::Boost => &BOOST,
+		StatusAction::Unboost => &UNBOOST,
+	}
+}
+
+pub(super) fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction, result: Result<(String, Status)>) {
+	let effect = effect(action);
 	match result {
-		Ok(status) => {
-			update_status_in_timelines(ctx.state, status_id, |s| (action.apply)(s, &status));
-			if action.refetch_own_timelines {
+		Ok((status_id, status)) => {
+			update_status_in_timelines(ctx.state, &status_id, |s| (effect.apply)(s, &status));
+			if effect.refetch_own_timelines {
 				refresh_own_user_timelines(ctx.state);
 			}
 			ctx.refresh_menu_labels();
-			ctx.announce(action.success);
+			ctx.announce(effect.success);
 		}
-		Err(err) => ctx.announce_failure(action.failure, &err),
+		Err(err) => ctx.announce_failure(effect.failure, &err),
 	}
 }
 

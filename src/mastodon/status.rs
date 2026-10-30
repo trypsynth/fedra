@@ -36,6 +36,34 @@ pub struct ScheduledStatus {
 	pub scheduled_at: String,
 }
 
+/// A toggle a user can apply to a post, named after the API endpoint it hits.
+#[derive(Debug, Clone, Copy)]
+pub enum StatusAction {
+	Favorite,
+	Unfavorite,
+	Bookmark,
+	Unbookmark,
+	Pin,
+	Unpin,
+	Boost,
+	Unboost,
+}
+
+impl StatusAction {
+	pub const fn endpoint(self) -> &'static str {
+		match self {
+			Self::Favorite => "favourite",
+			Self::Unfavorite => "unfavourite",
+			Self::Bookmark => "bookmark",
+			Self::Unbookmark => "unbookmark",
+			Self::Pin => "pin",
+			Self::Unpin => "unpin",
+			Self::Boost => "reblog",
+			Self::Unboost => "unreblog",
+		}
+	}
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum PostSubmission {

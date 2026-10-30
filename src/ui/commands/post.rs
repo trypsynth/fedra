@@ -10,7 +10,7 @@ use crate::{
 	AppState,
 	config::{ContentWarningDisplay, SortOrder},
 	html,
-	mastodon::Status,
+	mastodon::{Status, StatusAction},
 	network,
 	network::{ForeignInteraction, NetworkCommand},
 	timeline::{TimelineTextOptions, TimelineType},
@@ -44,107 +44,32 @@ pub(super) fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: O
 	}
 }
 
-pub(super) fn do_favorite(state: &AppState, live_region: &crate::ui::timeline_list::TimelineList) {
+/// Sends the toggle `choose` picks for the selected post, or announces why it can't.
+fn send_status_action(
+	ctx: &UiCommandContext<'_>,
+	choose: fn(&AppState, &Status) -> Result<StatusAction, &'static str>,
+) {
+	let state = &*ctx.state;
 	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
+		ctx.live_region.announce("No post selected");
 		return;
 	};
 	let Some(handle) = &state.network_handle else {
-		live_region.announce("Network not available");
+		ctx.live_region.announce("Network not available");
 		return;
 	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-	let is_foreign =
-		matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. }));
-	if is_foreign && let Some(url) = &target.url {
-		let interaction = if target.favourited { ForeignInteraction::Unfavorite } else { ForeignInteraction::Favorite };
-		handle.send(NetworkCommand::ResolveAndInteract { url: url.clone(), interaction });
-		return;
-	}
-	let status_id = target.id.clone();
-	if target.favourited {
-		handle.send(NetworkCommand::Unfavorite { status_id });
-	} else {
-		handle.send(NetworkCommand::Favorite { status_id });
-	}
-}
-
-pub(super) fn do_bookmark(state: &AppState, live_region: &crate::ui::timeline_list::TimelineList) {
-	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
-		return;
+	let target = status.reblog.as_deref().unwrap_or(status);
+	let action = match choose(state, target) {
+		Ok(action) => action,
+		Err(reason) => {
+			ctx.live_region.announce(reason);
+			return;
+		}
 	};
-	let Some(handle) = &state.network_handle else {
-		live_region.announce("Network not available");
-		return;
-	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 	if let Some(url) = foreign_url(state, target.url.as_ref()) {
-		let interaction = if target.bookmarked { ForeignInteraction::Unbookmark } else { ForeignInteraction::Bookmark };
-		handle.send(NetworkCommand::ResolveAndInteract { url, interaction });
-		return;
-	}
-	let status_id = target.id.clone();
-	if target.bookmarked {
-		handle.send(NetworkCommand::Unbookmark { status_id });
+		handle.send(NetworkCommand::ResolveAndInteract { url, interaction: ForeignInteraction::Action(action) });
 	} else {
-		handle.send(NetworkCommand::Bookmark { status_id });
-	}
-}
-
-pub(super) fn do_pin(state: &AppState, live_region: &crate::ui::timeline_list::TimelineList) {
-	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
-		return;
-	};
-	let Some(handle) = &state.network_handle else {
-		live_region.announce("Network not available");
-		return;
-	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-	if Some(&target.account.id) != state.current_user_id.as_ref() {
-		live_region.announce("You can only pin your own posts");
-		return;
-	}
-	let is_foreign =
-		matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. }));
-	if is_foreign && let Some(url) = &target.url {
-		let interaction = if target.pinned { ForeignInteraction::Unpin } else { ForeignInteraction::Pin };
-		handle.send(NetworkCommand::ResolveAndInteract { url: url.clone(), interaction });
-		return;
-	}
-	let status_id = target.id.clone();
-	if target.pinned {
-		handle.send(NetworkCommand::Unpin { status_id });
-	} else {
-		handle.send(NetworkCommand::Pin { status_id });
-	}
-}
-
-pub(super) fn do_boost(state: &AppState, live_region: &crate::ui::timeline_list::TimelineList) {
-	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
-		return;
-	};
-	let Some(handle) = &state.network_handle else {
-		live_region.announce("Network not available");
-		return;
-	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
-	if target.visibility == "direct" {
-		live_region.announce("Cannot boost direct messages");
-		return;
-	}
-	if let Some(url) = foreign_url(state, target.url.as_ref()) {
-		let interaction = if target.reblogged { ForeignInteraction::Unboost } else { ForeignInteraction::Boost };
-		handle.send(NetworkCommand::ResolveAndInteract { url, interaction });
-		return;
-	}
-	let status_id = target.id.clone();
-	if target.reblogged {
-		handle.send(NetworkCommand::Unboost { status_id });
-	} else {
-		handle.send(NetworkCommand::Boost { status_id });
+		handle.send(NetworkCommand::ActOnStatus { status_id: target.id.clone(), action });
 	}
 }
 
@@ -557,27 +482,29 @@ pub(super) fn copy_post_link(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn favorite(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	do_favorite(state, live_region);
+	send_status_action(ctx, |_, s| Ok(if s.favourited { StatusAction::Unfavorite } else { StatusAction::Favorite }));
 }
 
 pub(super) fn bookmark(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	do_bookmark(state, live_region);
+	send_status_action(ctx, |_, s| Ok(if s.bookmarked { StatusAction::Unbookmark } else { StatusAction::Bookmark }));
 }
 
 pub(super) fn boost(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	do_boost(state, live_region);
+	send_status_action(ctx, |_, s| {
+		if s.visibility == "direct" {
+			return Err("Cannot boost direct messages");
+		}
+		Ok(if s.reblogged { StatusAction::Unboost } else { StatusAction::Boost })
+	});
 }
 
 pub(super) fn pin(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	do_pin(state, live_region);
+	send_status_action(ctx, |state, s| {
+		if Some(&s.account.id) != state.current_user_id.as_ref() {
+			return Err("You can only pin your own posts");
+		}
+		Ok(if s.pinned { StatusAction::Unpin } else { StatusAction::Pin })
+	});
 }
 
 pub(super) fn toggle_content_warning(ctx: &mut UiCommandContext<'_>) {

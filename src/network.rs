@@ -12,7 +12,7 @@ use url::Url;
 use crate::{
 	mastodon::{
 		Account, Conversation, FilterAction, FilterContext, MastodonClient, Notification, PostSubmission, Relationship,
-		SearchResults, SearchType, Status, StatusContext,
+		SearchResults, SearchType, Status, StatusAction, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -51,14 +51,7 @@ pub struct PostData {
 
 #[derive(Debug)]
 pub enum ForeignInteraction {
-	Favorite,
-	Unfavorite,
-	Bookmark,
-	Unbookmark,
-	Boost,
-	Unboost,
-	Pin,
-	Unpin,
+	Action(StatusAction),
 	Vote(Vec<usize>),
 	Reply(Box<PostData>),
 }
@@ -99,29 +92,9 @@ pub enum NetworkCommand {
 	PostStatus {
 		post: PostData,
 	},
-	Favorite {
+	ActOnStatus {
 		status_id: String,
-	},
-	Bookmark {
-		status_id: String,
-	},
-	Unfavorite {
-		status_id: String,
-	},
-	Unbookmark {
-		status_id: String,
-	},
-	Pin {
-		status_id: String,
-	},
-	Unpin {
-		status_id: String,
-	},
-	Boost {
-		status_id: String,
-	},
-	Unboost {
-		status_id: String,
+		action: StatusAction,
 	},
 	Reply {
 		in_reply_to_id: String,
@@ -344,37 +317,10 @@ pub enum NetworkResponse {
 		result: Result<Account>,
 	},
 	PostComplete(Result<PostSubmission>),
-	Favorited {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Bookmarked {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Unfavorited {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Unbookmarked {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Pinned {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Unpinned {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Boosted {
-		status_id: String,
-		result: Result<Status>,
-	},
-	Unboosted {
-		status_id: String,
-		result: Result<Status>,
+	/// Pairs the acted-on status id with the server's answer, which for a boost is the new wrapper.
+	StatusActed {
+		action: StatusAction,
+		result: Result<(String, Status)>,
 	},
 	Replied(Result<PostSubmission>),
 	StatusDeleted {
@@ -799,101 +745,41 @@ fn network_loop(
 				send_response(responses, ui_waker, NetworkResponse::StatusResolvedForQuote { result });
 			}
 			Ok(NetworkCommand::ResolveAndInteract { url, interaction }) => {
-				let result = client
+				let status = client
 					.search(access_token, &url, SearchType::Statuses, Some(1), None)
 					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
-				if let Ok(status) = result {
-					match interaction {
-						ForeignInteraction::Favorite => {
-							let res = client.favorite(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Favorited { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Unfavorite => {
-							let res = client.unfavorite(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Unfavorited { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Bookmark => {
-							let res = client.bookmark(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Bookmarked { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Unbookmark => {
-							let res = client.unbookmark(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Unbookmarked { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Boost => {
-							let res = client.reblog(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Boosted { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Unboost => {
-							let res = client.unreblog(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Unboosted { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Pin => {
-							let res = client.pin_status(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Pinned { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Unpin => {
-							let res = client.unpin_status(access_token, &status.id);
-							send_response(
-								responses,
-								ui_waker,
-								NetworkResponse::Unpinned { status_id: status.id, result: res },
-							);
-						}
-						ForeignInteraction::Vote(choices) => {
-							if let Some(poll) = status.poll {
-								let res = client.vote_poll(access_token, &poll.id, &choices);
-								send_response(responses, ui_waker, NetworkResponse::PollVoted { result: res });
-							}
-						}
-						ForeignInteraction::Reply(post) => {
-							let res = post_with_media(
-								client,
-								access_token,
-								&post.content,
-								&post.visibility,
-								post.sensitive,
-								post.spoiler_text.as_deref(),
-								post.content_type.as_deref(),
-								post.language.as_deref(),
-								post.media,
-								post.poll.as_ref(),
-								Some(&status.id),
-								None,
-								post.scheduled_at.as_deref(),
-							);
-							send_response(responses, ui_waker, NetworkResponse::PostComplete(res));
-						}
-					}
-				}
+				let response = match interaction {
+					ForeignInteraction::Action(action) => NetworkResponse::StatusActed {
+						action,
+						result: status.and_then(|status| {
+							client.status_action(access_token, &status.id, action).map(|result| (status.id, result))
+						}),
+					},
+					ForeignInteraction::Vote(choices) => NetworkResponse::PollVoted {
+						result: status.and_then(|status| {
+							let poll = status.poll.context("Post has no poll")?;
+							client.vote_poll(access_token, &poll.id, &choices)
+						}),
+					},
+					ForeignInteraction::Reply(post) => NetworkResponse::Replied(status.and_then(|status| {
+						post_with_media(
+							client,
+							access_token,
+							&post.content,
+							&post.visibility,
+							post.sensitive,
+							post.spoiler_text.as_deref(),
+							post.content_type.as_deref(),
+							post.language.as_deref(),
+							post.media,
+							post.poll.as_ref(),
+							Some(&status.id),
+							None,
+							post.scheduled_at.as_deref(),
+						)
+					})),
+				};
+				send_response(responses, ui_waker, response);
 			}
 			Ok(NetworkCommand::ResolveAccount { url }) => {
 				let result = client
@@ -941,37 +827,9 @@ fn network_loop(
 				let result = client.delete_status(access_token, &status_id);
 				send_response(responses, ui_waker, NetworkResponse::StatusDeleted { status_id, result });
 			}
-			Ok(NetworkCommand::Favorite { status_id }) => {
-				let result = client.favorite(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Favorited { status_id, result });
-			}
-			Ok(NetworkCommand::Bookmark { status_id }) => {
-				let result = client.bookmark(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Bookmarked { status_id, result });
-			}
-			Ok(NetworkCommand::Unfavorite { status_id }) => {
-				let result = client.unfavorite(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Unfavorited { status_id, result });
-			}
-			Ok(NetworkCommand::Unbookmark { status_id }) => {
-				let result = client.unbookmark(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Unbookmarked { status_id, result });
-			}
-			Ok(NetworkCommand::Pin { status_id }) => {
-				let result = client.pin_status(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Pinned { status_id, result });
-			}
-			Ok(NetworkCommand::Unpin { status_id }) => {
-				let result = client.unpin_status(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Unpinned { status_id, result });
-			}
-			Ok(NetworkCommand::Boost { status_id }) => {
-				let result = client.reblog(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Boosted { status_id, result });
-			}
-			Ok(NetworkCommand::Unboost { status_id }) => {
-				let result = client.unreblog(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::Unboosted { status_id, result });
+			Ok(NetworkCommand::ActOnStatus { status_id, action }) => {
+				let result = client.status_action(access_token, &status_id, action).map(|status| (status_id, status));
+				send_response(responses, ui_waker, NetworkResponse::StatusActed { action, result });
 			}
 			Ok(NetworkCommand::Reply {
 				in_reply_to_id,

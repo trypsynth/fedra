@@ -140,24 +140,7 @@ fn handle_response(
 			ctx.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
 		}
 		NetworkResponse::PostComplete(result) => statuses::post_complete(ctx, result),
-		NetworkResponse::Favorited { status_id, result } => {
-			statuses::action(ctx, &status_id, result, &statuses::FAVORITE);
-		}
-		NetworkResponse::Unfavorited { status_id, result } => {
-			statuses::action(ctx, &status_id, result, &statuses::UNFAVORITE);
-		}
-		NetworkResponse::Bookmarked { status_id, result } => {
-			statuses::action(ctx, &status_id, result, &statuses::BOOKMARK);
-		}
-		NetworkResponse::Unbookmarked { status_id, result } => {
-			statuses::action(ctx, &status_id, result, &statuses::UNBOOKMARK);
-		}
-		NetworkResponse::Pinned { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::PIN),
-		NetworkResponse::Unpinned { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::UNPIN),
-		NetworkResponse::Boosted { status_id, result } => statuses::action(ctx, &status_id, result, &statuses::BOOST),
-		NetworkResponse::Unboosted { status_id, result } => {
-			statuses::action(ctx, &status_id, result, &statuses::UNBOOST);
-		}
+		NetworkResponse::StatusActed { action, result } => statuses::action(ctx, action, result),
 		NetworkResponse::Replied(result) => statuses::replied(ctx, result),
 		NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => statuses::deleted(ctx, &status_id),
 		NetworkResponse::StatusDeleted { result: Err(err), .. } => ctx.announce_failure("Failed to delete", &err),
