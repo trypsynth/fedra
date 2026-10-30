@@ -1,4 +1,11 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::LazyLock};
+
+use clearurls::UrlCleaner;
+use scraper::Selector;
+
+static LINKS: LazyLock<Selector> = LazyLock::new(|| Selector::parse("a").unwrap());
+// The ruleset is hundreds of regexes; compiling it per link made opening links noticeably slow.
+static CLEANER: LazyLock<Option<UrlCleaner>> = LazyLock::new(|| UrlCleaner::from_embedded_rules().ok());
 
 pub fn strip_html(html: &str) -> String {
 	let fragment = scraper::Html::parse_fragment(html);
@@ -128,7 +135,7 @@ fn normalize_text(input: &str) -> String {
 }
 
 pub fn clean_url(raw: &str) -> String {
-	let Ok(cleaner) = clearurls::UrlCleaner::from_embedded_rules() else {
+	let Some(cleaner) = CLEANER.as_ref() else {
 		return raw.to_string();
 	};
 	cleaner.clear_single_url_str(raw).map_or_else(|_| raw.to_string(), Cow::into_owned)
@@ -144,8 +151,7 @@ pub struct Link {
 pub fn extract_mention_links(html: &str) -> Vec<(String, String)> {
 	let fragment = scraper::Html::parse_fragment(html);
 	let mut result = Vec::new();
-	let selector = scraper::Selector::parse("a").unwrap();
-	for element in fragment.select(&selector) {
+	for element in fragment.select(&LINKS) {
 		let Some(href) = element.value().attr("href") else { continue };
 		let class_attr = element.value().attr("class").unwrap_or("");
 		let is_mention = class_attr.split_whitespace().any(|c| c == "mention")
@@ -162,8 +168,7 @@ pub fn extract_mention_links(html: &str) -> Vec<(String, String)> {
 pub fn extract_links(html: &str) -> Vec<Link> {
 	let fragment = scraper::Html::parse_fragment(html);
 	let mut links = Vec::new();
-	let selector = scraper::Selector::parse("a").unwrap();
-	for element in fragment.select(&selector) {
+	for element in fragment.select(&LINKS) {
 		if let Some(href) = element.value().attr("href") {
 			if let Some(class) = element.value().attr("class") {
 				let classes: Vec<&str> = class.split_whitespace().collect();
