@@ -222,7 +222,7 @@ fn prompt_for_poll(
 		option_text.enable(true);
 		let first_option = options.borrow().first().cloned();
 		if let Some(first) = first_option {
-			option_text.set_value(&first);
+			option_text.change_value(&first);
 		}
 	}
 	let default_expires = existing.as_ref().map_or(86_400, |poll| poll.expires_in);
@@ -258,7 +258,7 @@ fn prompt_for_poll(
 		}
 		remove_button_add.enable(true);
 		option_label_add.enable(true);
-		option_text_add.set_value("");
+		option_text_add.change_value("");
 		option_text_add.enable(true);
 		if !can_add_more {
 			add_button_add.enable(false);
@@ -286,7 +286,7 @@ fn prompt_for_poll(
 			refresh_poll_list(poll_list_remove, &items_snapshot);
 			if items_snapshot.is_empty() {
 				remove_button_remove.enable(false);
-				option_text_remove.set_value("");
+				option_text_remove.change_value("");
 				option_text_remove.enable(false);
 				option_label_remove.enable(false);
 			} else {
@@ -294,6 +294,7 @@ fn prompt_for_poll(
 				if let Ok(selection) = u32::try_from(next) {
 					poll_list_remove.set_selection(selection, true);
 				}
+				option_text_remove.change_value(&items_snapshot[next]);
 				remove_button_remove.enable(true);
 				option_label_remove.enable(true);
 				option_text_remove.enable(true);
@@ -319,7 +320,7 @@ fn prompt_for_poll(
 			}
 		};
 		if let Some(value) = item_value {
-			option_text_select.set_value(&value);
+			option_text_select.change_value(&value);
 		}
 	});
 	let options_edit = options.clone();
@@ -451,7 +452,7 @@ fn prompt_for_media(
 		desc_label.enable(true);
 		desc_text.enable(true);
 		let first_desc = items.borrow().first().and_then(|media| media.description.clone()).unwrap_or_default();
-		desc_text.set_value(&first_desc);
+		desc_text.change_value(&first_desc);
 	}
 	if items.borrow().is_empty() {
 		remove_button.enable(false);
@@ -495,7 +496,7 @@ fn prompt_for_media(
 					remove_button_add.enable(true);
 					desc_label_add.enable(true);
 					desc_text_add.enable(true);
-					desc_text_add.set_value("");
+					desc_text_add.change_value("");
 				}
 				update_title_add();
 			}
@@ -527,7 +528,10 @@ fn prompt_for_media(
 				remove_button_remove.enable(false);
 			}
 		}
-		desc_text_remove.set_value("");
+		let next_desc = media_list_remove
+			.get_selection()
+			.and_then(|i| items_remove.borrow().get(i as usize).and_then(|media| media.description.clone()));
+		desc_text_remove.change_value(next_desc.as_deref().unwrap_or(""));
 		if media_list_remove.get_selection().is_none() {
 			desc_label_remove.enable(false);
 			desc_text_remove.enable(false);
@@ -555,10 +559,10 @@ fn prompt_for_media(
 		if let Some(desc) = selected_desc {
 			desc_label_select.enable(true);
 			desc_text_select.enable(true);
-			desc_text_select.set_value(desc.as_deref().unwrap_or(""));
+			desc_text_select.change_value(desc.as_deref().unwrap_or(""));
 			remove_button_select.enable(true);
 		} else {
-			desc_text_select.set_value("");
+			desc_text_select.change_value("");
 			desc_label_select.enable(false);
 			desc_text_select.enable(false);
 			remove_button_select.enable(false);
