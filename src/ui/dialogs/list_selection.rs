@@ -1,3 +1,4 @@
+use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
 use crate::mastodon::List;
@@ -14,22 +15,14 @@ pub fn show_list_selection_dialog(frame: &Frame, lists: &[List], title: &str, bu
 	if !lists.is_empty() {
 		list_box.set_selection(0, true);
 	}
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label(button_label).build();
-	ok_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, button_label);
 	main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&list_box, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
 	let selection = list_box.get_selection().map(|s| s as usize);
