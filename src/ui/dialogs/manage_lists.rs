@@ -107,17 +107,10 @@ impl ManageListsDialog {
 			if let Some(sel) = list_ctrl_remove.get_selection() {
 				let idx = sel as usize;
 				let lists = lists_remove.borrow();
-				if let Some(list) = lists.get(idx) {
-					let warning = MessageDialog::builder(
-						&parent_remove,
-						"Are you sure you want to delete this list?",
-						"Delete List",
-					)
-					.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-					.build();
-					if warning.show_modal() == ID_YES {
-						let _ = net_tx_remove.send(NetworkCommand::DeleteList { id: list.id.clone() });
-					}
+				if let Some(list) = lists.get(idx)
+					&& wx_utils::confirm(&parent_remove, "Are you sure you want to delete this list?", "Delete List")
+				{
+					let _ = net_tx_remove.send(NetworkCommand::DeleteList { id: list.id.clone() });
 				}
 			}
 		});

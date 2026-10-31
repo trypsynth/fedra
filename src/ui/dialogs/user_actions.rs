@@ -188,10 +188,7 @@ pub fn handle_action(
 			},
 		},
 		ID_ACTION_BLOCK => {
-			let confirm = MessageDialog::builder(parent, "Are you sure you want to block this user?", "Block User")
-				.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-				.build();
-			if confirm.show_modal() != ID_YES {
+			if !wx_utils::confirm(parent, "Are you sure you want to block this user?", "Block User") {
 				return;
 			}
 			NetworkCommand::BlockAccount { account_id, target_name }

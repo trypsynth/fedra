@@ -110,18 +110,14 @@ pub fn show_manage_accounts_dialog(
 	remove_button.on_click(move |_| {
 		if let Some(sel) = accounts_list_remove.get_selection() {
 			let idx = sel as usize;
-			if idx < account_ids_remove.len() {
-				let warning = MessageDialog::builder(
+			if idx < account_ids_remove.len()
+				&& wx_utils::confirm(
 					&parent,
 					"Are you sure you want to remove this account? This cannot be undone.",
 					"Remove Account",
-				)
-				.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-				.build();
-				if warning.show_modal() == ID_YES {
-					*result_remove.borrow_mut() = ManageAccountsResult::Remove(account_ids_remove[idx].clone());
-					dialog.end_modal(ID_OK);
-				}
+				) {
+				*result_remove.borrow_mut() = ManageAccountsResult::Remove(account_ids_remove[idx].clone());
+				dialog.end_modal(ID_OK);
 			}
 		}
 	});

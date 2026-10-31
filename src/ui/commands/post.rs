@@ -355,10 +355,7 @@ pub(super) fn delete_post(ctx: &mut UiCommandContext<'_>) {
 		live_region.announce("Could not tell whether this post is yours");
 		return;
 	}
-	let confirm = MessageDialog::builder(frame, "Are you sure you want to delete this post?", "Delete Post")
-		.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-		.build();
-	if confirm.show_modal() == ID_YES {
+	if wx_utils::confirm(frame, "Are you sure you want to delete this post?", "Delete Post") {
 		if let Some(handle) = &state.network_handle {
 			handle.send(NetworkCommand::DeleteStatus { status_id: target.id.clone() });
 		} else {

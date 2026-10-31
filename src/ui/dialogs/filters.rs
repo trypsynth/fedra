@@ -85,15 +85,11 @@ pub fn prompt_manage_filters(frame: &Frame, filters: &[Filter]) -> ManageFilters
 	remove_button.on_click(move |_| {
 		if let Some(sel) = filters_list_remove.get_selection() {
 			let idx = sel as usize;
-			if idx < filter_ids_remove.len() {
-				let warning =
-					MessageDialog::builder(&parent, "Are you sure you want to delete this filter?", "Delete Filter")
-						.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::IconWarning)
-						.build();
-				if warning.show_modal() == ID_YES {
-					*result_remove.borrow_mut() = ManageFiltersResult::Delete(filter_ids_remove[idx].clone());
-					dialog.end_modal(ID_OK);
-				}
+			if idx < filter_ids_remove.len()
+				&& wx_utils::confirm(&parent, "Are you sure you want to delete this filter?", "Delete Filter")
+			{
+				*result_remove.borrow_mut() = ManageFiltersResult::Delete(filter_ids_remove[idx].clone());
+				dialog.end_modal(ID_OK);
 			}
 		}
 	});
