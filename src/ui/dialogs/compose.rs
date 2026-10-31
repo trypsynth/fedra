@@ -1,6 +1,7 @@
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
+use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::{event::KeyboardEvent, prelude::*};
 
 use super::{
@@ -697,22 +698,16 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 		}
 		main_sizer.add_sizer(&results_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	}
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let vote_button = Button::builder(&panel).with_id(ID_OK).with_label("Vote").build();
-	vote_button.set_default();
-	let close_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
+	let (vote_button, close_button) = build_ok_cancel_buttons_on(&panel, &dialog, "Vote");
+	close_button.set_label("Close");
 	if poll.expired || poll.voted.unwrap_or(false) {
 		vote_button.enable(false);
 	}
-	button_sizer.add(&vote_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	add_ok_cancel_footer(main_sizer, vote_button, close_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
 	let mut selected_indices = Vec::new();
