@@ -224,8 +224,7 @@ pub fn resource_dir() -> std::path::PathBuf {
 #[cfg(target_os = "macos")]
 fn promote_unbundled_to_regular_app() {
 	use objc::{class, msg_send, runtime::Object, sel, sel_impl};
-	let in_bundle = std::env::current_exe().is_ok_and(|exe| exe.to_string_lossy().contains(".app/Contents/MacOS/"));
-	if in_bundle {
+	if config::home().kind() == homeport::InstallKind::MacBundle {
 		return;
 	}
 	// NSApplicationActivationPolicyRegular = 0.
