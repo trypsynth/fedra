@@ -523,25 +523,13 @@ pub(super) fn open_instance_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let live_region = ctx.live_region;
-	let dialog =
-		TextEntryDialog::builder(frame, "Enter instance domain (e.g. mastodon.social):", "Open Instance Timeline")
-			.build();
-	if dialog.show_modal() == ID_OK {
-		let input = dialog.get_value().unwrap_or_default().trim().to_string();
-		if !input.is_empty() {
-			let instance =
-				input.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
-			let timeline_type = TimelineType::InstanceLocal { instance };
-			open_timeline(
-				state,
-				timelines_selector,
-				timeline_list,
-				&timeline_type,
-				suppress_selection,
-				live_region,
-				frame,
-			);
-		}
+	if let Some(input) =
+		dialogs::prompt_text(frame, "Enter instance domain (e.g. mastodon.social):", "Open Instance Timeline")
+	{
+		let instance =
+			input.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
+		let timeline_type = TimelineType::InstanceLocal { instance };
+		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
 	}
 }
 
