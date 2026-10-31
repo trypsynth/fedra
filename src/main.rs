@@ -328,7 +328,7 @@ fn main() {
 		state.app_shell = Some(app_shell);
 		ui::commands::register_hotkeys(&state, &ui_tx, &timeline_list);
 		if state.config.check_for_updates_on_startup {
-			crate::ui::update_check::run_update_check(frame, true);
+			crate::ui::update_check::run_update_check(frame, true, ui_tx.clone());
 		}
 		let shutdown_wake = is_shutting_down.clone();
 		let suppress_wake = suppress_selection.clone();

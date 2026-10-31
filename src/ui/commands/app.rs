@@ -61,8 +61,7 @@ pub(super) fn show_window(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn check_for_updates(ctx: &mut UiCommandContext<'_>) {
-	let frame = ctx.frame;
-	crate::ui::update_check::run_update_check(*frame, false);
+	crate::ui::update_check::run_update_check(*ctx.frame, false, ctx.ui_tx.clone());
 }
 
 pub(super) fn app_closing(ctx: &mut UiCommandContext<'_>) {
