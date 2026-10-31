@@ -1,11 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
+use wx_utils::{add_ok_cancel_footer, bind_enter_confirms, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
-use crate::{
-	mastodon::{Filter, FilterAction, FilterContext},
-	ui::keys,
-};
+use crate::mastodon::{Filter, FilterAction, FilterContext};
 
 #[derive(Clone)]
 pub enum ManageFiltersResult {
@@ -140,34 +138,13 @@ fn prompt_keyword_edit(
 	main_sizer.add(&keyword_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Top, 8);
 	main_sizer.add(&keyword_input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add(&whole_word_check, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
-	ok_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	buttons_sizer.add_stretch_spacer(1);
-	buttons_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	buttons_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "OK");
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
-	let input_enter = keyword_input;
-	let dialog_enter = dialog;
-	input_enter.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(keys::RETURN) && !key_event.shift_down() && !key_event.control_down() {
-				dialog_enter.end_modal(ID_OK);
-				event.skip(false);
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
+	bind_enter_confirms(&dialog, keyword_input);
 	dialog.centre();
 	keyword_input.set_focus();
 	let result = dialog.show_modal();
@@ -272,20 +249,12 @@ pub fn prompt_filter_edit(frame: &Frame, existing: Option<&Filter>) -> Option<Fi
 	keyword_actions_sizer.add_stretch_spacer(1);
 	keyword_actions_sizer.add(&remove_keyword_button, 0, SizerFlag::Right, 8);
 	main_sizer.add_sizer(&keyword_actions_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let save_button = Button::builder(&panel).with_id(ID_OK).with_label("Save").build();
-	save_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	buttons_sizer.add_stretch_spacer(1);
-	buttons_sizer.add(&save_button, 0, SizerFlag::Right, 8);
-	buttons_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add_sizer(&buttons_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	let (save_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "Save");
+	add_ok_cancel_footer(main_sizer, save_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	let initial_keywords: Vec<KeywordEntry> = existing.map_or_else(Vec::new, |f| {
 		f.keywords
 			.iter()
