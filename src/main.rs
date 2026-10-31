@@ -427,6 +427,7 @@ fn main() {
 		}
 		if !start_hidden {
 			frame.show(true);
+			ship_shape::ui::bring_to_front_after_update(&frame);
 			// macOS otherwise leaves keyboard focus nowhere Tab can move on from.
 			if cfg!(target_os = "macos") {
 				window_parts.timeline_list.set_focus();
