@@ -1,7 +1,7 @@
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
-use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
+use wx_utils::{add_ok_cancel_footer, bind_enter_confirms, build_ok_cancel_buttons_on};
 use wxdragon::{event::KeyboardEvent, prelude::*};
 
 use super::{
@@ -805,19 +805,7 @@ fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<O
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-	let dialog_enter = dialog;
-	time_input.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(keys::RETURN) && !key_event.shift_down() && !key_event.control_down() {
-				dialog_enter.end_modal(ID_OK);
-				event.skip(false);
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
+	bind_enter_confirms(&dialog, time_input);
 	dialog.centre();
 	date_input.set_focus();
 	let result = dialog.show_modal();
