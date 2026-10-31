@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
 use crate::{
@@ -36,20 +37,12 @@ pub fn prompt_for_notification_types(
 	let shown = group("Show in timelines", initial_hidden);
 	let alerting = group("Alert me with a sound or notification", initial_silent);
 	main_sizer.add_sizer(&groups_sizer, 1, SizerFlag::Expand | SizerFlag::All, 5);
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
-	ok_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "OK");
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
 	let unchecked = |checkboxes: Vec<(CheckBox, NotificationKind)>| {
@@ -77,20 +70,12 @@ pub fn prompt_for_default_timelines(
 		main_sizer.add(&cb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 10);
 		checkboxes.push((cb, *timeline));
 	}
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
-	ok_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 10);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "OK");
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	let result = dialog.show_modal();
 	let selected = checkboxes.into_iter().filter(|(cb, _)| cb.get_value()).map(|(_, timeline)| timeline).collect();
@@ -751,21 +736,13 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 			),
 		);
 	});
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let ok_button = Button::builder(&panel).with_id(ID_OK).with_label("OK").build();
-	ok_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&ok_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "OK");
 	main_sizer.add(&notebook, 1, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
 	dialog.centre();
 	if dialog.show_modal() != ID_OK {
 		dialog.destroy();
