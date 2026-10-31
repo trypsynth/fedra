@@ -1,7 +1,8 @@
 pub use wx_utils::prompt_text;
+use wx_utils::{add_ok_cancel_footer, bind_enter_confirms, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
-use crate::{mastodon::SearchType, ui::keys};
+use crate::mastodon::SearchType;
 
 #[derive(Clone, Copy)]
 pub enum UserLookupAction {
@@ -90,35 +91,16 @@ pub fn prompt_for_search(frame: &Frame) -> Option<(String, SearchType)> {
 	let type_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	type_sizer.add(&type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	type_sizer.add(&type_choice, 1, SizerFlag::Expand, 0);
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let search_button = Button::builder(&panel).with_id(ID_OK).with_label("Search").build();
-	search_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&search_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	let (search_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "Search");
 	main_sizer.add(&query_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&query_input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 	main_sizer.add_sizer(&type_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	add_ok_cancel_footer(main_sizer, search_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
-	query_input.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(keys::RETURN) && !key_event.shift_down() && !key_event.control_down() {
-				dialog.end_modal(ID_OK);
-				event.skip(false);
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
+	bind_enter_confirms(&dialog, query_input);
 	dialog.centre();
 	query_input.set_focus();
 	let result = dialog.show_modal();
@@ -147,34 +129,15 @@ pub fn prompt_for_account_search(parent: &dyn WxWidget) -> Option<String> {
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let query_label = StaticText::builder(&panel).with_label("Search accounts:").build();
 	let query_input = TextCtrl::builder(&panel).with_style(TextCtrlStyle::ProcessEnter).build();
-	let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-	let search_button = Button::builder(&panel).with_id(ID_OK).with_label("Search").build();
-	search_button.set_default();
-	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
-	button_sizer.add_stretch_spacer(1);
-	button_sizer.add(&search_button, 0, SizerFlag::Right, 8);
-	button_sizer.add(&cancel_button, 0, SizerFlag::Right, 8);
+	let (search_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "Search");
 	main_sizer.add(&query_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	main_sizer.add(&query_input, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
-	main_sizer.add_sizer(&button_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	add_ok_cancel_footer(main_sizer, search_button, cancel_button);
 	panel.set_sizer(main_sizer, true);
 	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 	dialog.set_sizer(dialog_sizer, true);
-	dialog.set_affirmative_id(ID_OK);
-	dialog.set_escape_id(ID_CANCEL);
-	query_input.on_key_down(move |event| {
-		if let WindowEventData::Keyboard(ref key_event) = event {
-			if key_event.get_key_code() == Some(keys::RETURN) && !key_event.shift_down() && !key_event.control_down() {
-				dialog.end_modal(ID_OK);
-				event.skip(false);
-			} else {
-				event.skip(true);
-			}
-		} else {
-			event.skip(true);
-		}
-	});
+	bind_enter_confirms(&dialog, query_input);
 	dialog.centre();
 	query_input.set_focus();
 	let result = dialog.show_modal();
