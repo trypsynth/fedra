@@ -2,9 +2,9 @@ use std::cell::RefCell;
 
 use minijinja::{AutoEscape, Environment, Error, Value, context};
 
-pub const DEFAULT_POST_TEMPLATE: &str = "{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
-pub const DEFAULT_BOOST_TEMPLATE: &str = "{{ booster }} boosted {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
-pub const DEFAULT_QUOTE_TEMPLATE: &str = "{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_POST_TEMPLATE: &str = "{% if pinned %}{{ pinned }}: {% endif %}{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_BOOST_TEMPLATE: &str = "{% if pinned %}{{ pinned }}: {% endif %}{{ booster }} boosted {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
+pub const DEFAULT_QUOTE_TEMPLATE: &str = "{% if pinned %}{{ pinned }}: {% endif %}{{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_FAVORITE_TEMPLATE: &str = "{{ favoriter }} favorited {{ author }}: {{ content }}{% if media or poll %} - {{ media }}{{ poll }}{% endif %}{% if quote_author %} - Quoting {{ quote_author }} ({{ quote_username }}): {{ quote_content }}{% if quote_media or quote_poll %} - {{ quote_media }}{{ quote_poll }}{% endif %}{% endif %} - {{ relative_time }}, {{ visibility }}{% if reply_count %}, {{ reply_count }}{% endif %}{% if boost_count %}, {{ boost_count }}{% endif %}{% if favorite_count %}, {{ favorite_count }}{% endif %}{% if client %}, via {{ client }}{% endif %}";
 pub const DEFAULT_WINDOW_TITLE_TEMPLATE: &str = "Fedra - {{ account }}";
 
@@ -65,6 +65,10 @@ pub struct PostTemplateVars {
 	pub quote_content: String,
 	pub quote_media: String,
 	pub quote_poll: String,
+	pub pinned: String,
+	pub boosted: String,
+	pub favorited: String,
+	pub bookmarked: String,
 }
 
 pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
@@ -91,6 +95,10 @@ pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
 		quote_content => &vars.quote_content,
 		quote_media => &vars.quote_media,
 		quote_poll => &vars.quote_poll,
+		favorited => &vars.favorited,
+		boosted => &vars.boosted,
+		bookmarked => &vars.bookmarked,
+		pinned => &vars.pinned,
 	};
 	render(template, ctx).unwrap_or_else(|_| format!("{}: {}", vars.author, vars.content))
 }
