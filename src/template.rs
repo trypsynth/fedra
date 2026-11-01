@@ -67,7 +67,7 @@ pub struct PostTemplateVars {
 	pub quote_poll: String,
 	pub pinned: String,
 	pub boosted: String,
-	pub favourited: String,
+	pub favorited: String,
 	pub bookmarked: String,
 }
 
@@ -95,7 +95,7 @@ pub fn render_template(template: &str, vars: &PostTemplateVars) -> String {
 		quote_content => &vars.quote_content,
 		quote_media => &vars.quote_media,
 		quote_poll => &vars.quote_poll,
-		favourited => &vars.favourited,
+		favorited => &vars.favorited,
 		boosted => &vars.boosted,
 		bookmarked => &vars.bookmarked,
 		pinned => &vars.pinned,

@@ -407,7 +407,7 @@ impl Status {
 					(author, username, content, media, poll)
 				},
 			);
-		let favourited = if self.favourited { "favourited".to_owned() } else { String::new() };
+		let favorited = if self.favourited { "favorited".to_owned() } else { String::new() };
 		let boosted = if self.reblogged { "boosted".to_owned() } else { String::new() };
 		let bookmarked = if self.bookmarked { "bookmarked".to_owned() } else { String::new() };
 		let pinned = if self.pinned { "pinned".to_owned() } else { String::new() };
@@ -434,7 +434,7 @@ impl Status {
 			quote_content,
 			quote_media,
 			quote_poll,
-			favourited,
+			favorited,
 			boosted,
 			bookmarked,
 			pinned,
