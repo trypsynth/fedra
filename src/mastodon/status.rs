@@ -323,7 +323,7 @@ impl Status {
 		quote_template: &str,
 		filter_ctx: &FilterContext,
 	) -> String {
-		let text = self.reblog.as_ref().map_or_else(
+		self.reblog.as_ref().map_or_else(
 			|| {
 				let vars = self.build_template_vars(options, cw_expanded, filter_ctx);
 				if self.quote.as_ref().is_some_and(|q| q.quoted_status.is_some()) {
@@ -338,8 +338,7 @@ impl Status {
 				vars.booster_username = format!("@{}", self.account.acct);
 				render_template(boost_template, &vars)
 			},
-		);
-		if self.pinned { format!("Pinned: {text}") } else { text }
+		)
 	}
 
 	pub(crate) fn base_display(
@@ -408,6 +407,10 @@ impl Status {
 					(author, username, content, media, poll)
 				},
 			);
+		let favourited = if self.favourited { "favourited".to_owned() } else { String::new() };
+		let boosted = if self.reblogged { "boosted".to_owned() } else { String::new() };
+		let bookmarked = if self.bookmarked { "bookmarked".to_owned() } else { String::new() };
+		let pinned = if self.pinned { "pinned".to_owned() } else { String::new() };
 		PostTemplateVars {
 			author,
 			username,
@@ -431,6 +434,10 @@ impl Status {
 			quote_content,
 			quote_media,
 			quote_poll,
+			favourited,
+			boosted,
+			bookmarked,
+			pinned,
 		}
 	}
 
