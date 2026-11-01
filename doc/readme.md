@@ -212,6 +212,10 @@ Fedra renders the template for each entry each time it shows a timeline. If a te
 | `{{ client }}` | Name of the app that posted, or empty if not known |
 | `{{ media }}` | Summary of media attachments, or empty |
 | `{{ poll }}` | Summary of the poll, or empty |
+| `{{ favorited }}` | Whether you have favorited this post. "favorited", or empty |
+| `{{ boosted }}` | Whether you have boosted this post. "boosted", or empty |
+| `{{ bookmarked }}` | Whether you have bookmarked this post. "bookmarked", or empty |
+| `{{ pinned }}` | Whether this is a pinned post. "pinned", or empty |
 | `{{ booster }}` | Display name of the user who boosted. Boost template only. Empty for usual posts. |
 | `{{ booster_username }}` | `@acct` handle of the user who boosted. Boost template only. |
 | `{{ favoriter }}` | Display name of the user who favorited your post. Favorite template only. |
