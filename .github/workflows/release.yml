@@ -100,6 +100,8 @@ jobs:
       if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
       run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/wxWidgets/wxWidgets.git
     - name: Build, sign, and notarize
+      # notarytool waits on Apple with no limit of its own, so without this the step could sit until the job's 6-hour limit.
+      timeout-minutes: 45
       env:
         WXWIDGETS_DIR: ${{ github.workspace }}/wxWidgets
         MACOSX_DEPLOYMENT_TARGET: "13.0"
