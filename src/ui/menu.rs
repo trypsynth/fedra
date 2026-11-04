@@ -137,8 +137,8 @@ const ITEMS: &[Item] = &[
 	item(ID_VIEW_HELP, ActionId::ViewHelp, "View &Help", "Open documentation"),
 ];
 
-/// Stands for a separator in a menu layout; no item uses id 0.
-const SEPARATOR: i32 = 0;
+/// Stands for a separator in a menu layout. It's `wxID_SEPARATOR`, so separators already in a menu compare equal to it.
+const SEPARATOR: i32 = -2;
 
 const OPTIONS_MENU: &[i32] = &[
 	ID_MANAGE_ACCOUNTS,
@@ -325,33 +325,94 @@ pub fn action_for_id(id: i32) -> Option<ActionId> {
 	ITEMS.iter().find(|item| item.id == id).map(|item| item.action)
 }
 
-/// Appends `layout`'s items to `menu`, leaving out hidden ones and the separators they'd strand.
-fn fill_menu(menu: &Menu, layout: &[i32], post: PostMenuState, shortcuts: &ShortcutsConfig) {
+/// `layout`'s items as `post` shows them, leaving out hidden ones and the separators they'd strand.
+fn visible_layout(layout: &[i32], post: PostMenuState) -> Vec<i32> {
+	let mut visible = Vec::with_capacity(layout.len());
 	let mut separator_due = false;
 	for &id in layout {
 		if id == SEPARATOR {
-			separator_due = menu.get_item_count() > 0;
-			continue;
+			separator_due = !visible.is_empty();
+		} else if post.shows(id) {
+			if separator_due {
+				visible.push(SEPARATOR);
+				separator_due = false;
+			}
+			visible.push(id);
 		}
-		if !post.shows(id) {
-			continue;
+	}
+	visible
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MenuEdit {
+	Keep(i32),
+	Insert(i32),
+	Delete,
+}
+
+/// The edits, left to right, that turn the `current` items into the `wanted` ones.
+fn menu_edits(current: &[i32], wanted: &[i32]) -> Vec<MenuEdit> {
+	let mut edits = Vec::with_capacity(wanted.len());
+	let mut at = 0;
+	for (index, &id) in wanted.iter().enumerate() {
+		while current.get(at).is_some_and(|&item| item != id && !wanted[index + 1..].contains(&item)) {
+			edits.push(MenuEdit::Delete);
+			at += 1;
 		}
-		if separator_due {
-			menu.append_separator();
-			separator_due = false;
+		if current.get(at) == Some(&id) {
+			edits.push(MenuEdit::Keep(id));
+			at += 1;
+		} else {
+			edits.push(MenuEdit::Insert(id));
 		}
+	}
+	edits.extend(current.iter().skip(at).map(|_| MenuEdit::Delete));
+	edits
+}
+
+/// Brings `menu` in line with `layout`, touching only what differs: on Windows, each item added or removed redraws the
+/// menu bar and each item added rebuilds the accelerator table, which is too slow to do for a whole menu on every
+/// selection change.
+fn sync_menu(menu: &Menu, layout: &[i32], post: PostMenuState, shortcuts: &ShortcutsConfig) {
+	let current: Vec<i32> = (0..menu.get_item_count())
+		.filter_map(|position| menu.find_item_by_position(position))
+		.map(|item| item.get_item_id())
+		.collect();
+	let label_of = |id| {
 		let item = find_item(id);
-		let shortcut = shortcuts.get_menu_str(post.quick_action_keys, item.action);
-		menu.append(id, &menu_label(post.label(item), &shortcut), item.help, ItemKind::Normal);
-		if !post.enables(id) {
-			menu.enable_item(id, false);
+		menu_label(post.label(item), &shortcuts.get_menu_str(post.quick_action_keys, item.action))
+	};
+	let mut position = 0;
+	for edit in menu_edits(&current, &visible_layout(layout, post)) {
+		match edit {
+			MenuEdit::Delete => {
+				if let Some(item) = menu.find_item_by_position(position) {
+					menu.delete_item(&item);
+				}
+				continue;
+			}
+			MenuEdit::Keep(SEPARATOR) => {}
+			MenuEdit::Insert(SEPARATOR) => {
+				menu.insert_separator(position);
+			}
+			MenuEdit::Keep(id) => {
+				if let Some(item) = menu.find_item_by_position(position) {
+					item.set_label(&label_of(id));
+				}
+				menu.enable_item(id, post.enables(id));
+			}
+			MenuEdit::Insert(id) => {
+				menu.insert(position, id, &label_of(id), find_item(id).help, ItemKind::Normal);
+				menu.enable_item(id, post.enables(id));
+			}
 		}
+		position += 1;
 	}
 }
 
 fn build_menu(layout: &[i32], post: PostMenuState, shortcuts: &ShortcutsConfig) -> Menu {
 	let menu = Menu::builder().build();
-	fill_menu(&menu, layout, post, shortcuts);
+	sync_menu(&menu, layout, post, shortcuts);
 	menu
 }
 
@@ -371,20 +432,17 @@ pub fn build_context_menu(post: PostMenuState, shortcuts: &ShortcutsConfig) -> M
 	build_menu(CONTEXT_MENU, post, shortcuts)
 }
 
-fn rebuild_post_menu(menu_bar: &MenuBar, post: PostMenuState, shortcuts: &ShortcutsConfig) {
-	let Some(menu) = menu_bar.get_menu(POST_MENU_INDEX) else { return };
-	// Emptied and refilled rather than replaced, since it may be open and a replaced menu is destroyed.
-	while let Some(item) = menu.find_item_by_position(0) {
-		menu.delete_item(&item);
+fn sync_post_menu(menu_bar: &MenuBar, post: PostMenuState, shortcuts: &ShortcutsConfig) {
+	if let Some(menu) = menu_bar.get_menu(POST_MENU_INDEX) {
+		sync_menu(&menu, POST_MENU, post, shortcuts);
 	}
-	fill_menu(&menu, POST_MENU, post, shortcuts);
 }
 
 /// Brings the menus in line with the selected post, the active timeline and pending message requests.
 pub fn update_menu_labels(menu_bar: &MenuBar, state: &AppState) {
 	let post = PostMenuState::of(state);
 	if state.post_menu_state.replace(post) != post {
-		rebuild_post_menu(menu_bar, post, &state.config.shortcuts);
+		sync_post_menu(menu_bar, post, &state.config.shortcuts);
 	}
 	let supports_paging = state.timeline_manager.active().is_some_and(|t| t.timeline_type.supports_paging());
 	menu_bar.enable_item(ID_LOAD_MORE, supports_paging);
@@ -409,7 +467,7 @@ pub fn relabel_menus(menu_bar: &MenuBar, state: &AppState) {
 		);
 	}
 	state.post_menu_state.set(post);
-	rebuild_post_menu(menu_bar, post, shortcuts);
+	sync_post_menu(menu_bar, post, shortcuts);
 	update_menu_labels(menu_bar, state);
 }
 
@@ -426,5 +484,72 @@ mod tests {
 		for &id in bar.iter().chain(CONTEXT_MENU).filter(|&&id| id != SEPARATOR) {
 			assert_eq!(ITEMS.iter().filter(|item| item.id == id).count(), 1, "menu id {id}");
 		}
+	}
+
+	fn post_with(flags: u8) -> PostMenuState {
+		PostMenuState {
+			is_direct: flags & 1 != 0,
+			has_boosts: flags & 2 != 0,
+			has_favorites: flags & 4 != 0,
+			is_own: flags & 8 != 0,
+			has_poll: flags & 16 != 0,
+			..PostMenuState::default()
+		}
+	}
+
+	fn apply(current: &[i32], edits: &[MenuEdit]) -> Vec<i32> {
+		let mut items = current.iter().copied();
+		let mut result = Vec::new();
+		for edit in edits {
+			match *edit {
+				MenuEdit::Keep(id) => {
+					assert_eq!(items.next(), Some(id));
+					result.push(id);
+				}
+				MenuEdit::Insert(id) => result.push(id),
+				MenuEdit::Delete => {
+					items.next().expect("deleted an item that isn't there");
+				}
+			}
+		}
+		assert_eq!(items.next(), None);
+		result
+	}
+
+	#[test]
+	fn visible_layouts_never_strand_a_separator() {
+		for flags in 0..32 {
+			let visible = visible_layout(POST_MENU, post_with(flags));
+			assert_ne!(visible.first(), Some(&SEPARATOR));
+			assert_ne!(visible.last(), Some(&SEPARATOR));
+			assert!(!visible.windows(2).any(|pair| pair == [SEPARATOR, SEPARATOR]));
+		}
+	}
+
+	#[test]
+	fn edits_turn_any_post_menu_into_any_other() {
+		for from in 0..32 {
+			let current = visible_layout(POST_MENU, post_with(from));
+			for to in 0..32 {
+				let wanted = visible_layout(POST_MENU, post_with(to));
+				assert_eq!(apply(&current, &menu_edits(&current, &wanted)), wanted);
+			}
+		}
+	}
+
+	#[test]
+	fn edits_only_touch_what_changed() {
+		let changes = |from: u8, to: u8| {
+			let current = visible_layout(POST_MENU, post_with(from));
+			let wanted = visible_layout(POST_MENU, post_with(to));
+			menu_edits(&current, &wanted).iter().filter(|edit| !matches!(edit, MenuEdit::Keep(_))).count()
+		};
+		assert_eq!(changes(0, 0), 0);
+		assert_eq!(changes(0, 2), 1, "boosts appear");
+		assert_eq!(changes(2, 0), 1, "boosts disappear");
+		assert_eq!(changes(0, 16), 1, "a poll appears");
+		// Edit, Delete and Pin, plus the separator that goes with them.
+		assert_eq!(changes(0, 8), 4, "your own post");
+		assert_eq!(changes(8, 0), 4, "someone else's post");
 	}
 }
