@@ -2060,9 +2060,9 @@ dependencies = [
 
 [[package]]
 name = "quiet-list"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2b63a97552b411bacc36193af2a4a0b056a0608c20b97dc8147fb540b20fcbf"
+checksum = "db0c782c6c505eca6d1df8254e97b419c80ec7a4a87dcb977ef14745507d1420"
 dependencies = [
  "accesskit",
  "accesskit_windows",
