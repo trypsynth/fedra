@@ -480,7 +480,7 @@ pub(super) fn move_timeline_left(ctx: &mut UiCommandContext<'_>) {
 			live_region.announce(&msg);
 		}
 	} else {
-		live_region.announce("Cannot move left");
+		live_region.announce("Already first");
 	}
 }
 
@@ -512,7 +512,7 @@ pub(super) fn move_timeline_right(ctx: &mut UiCommandContext<'_>) {
 			live_region.announce(&msg);
 		}
 	} else {
-		live_region.announce("Cannot move right");
+		live_region.announce("Already last");
 	}
 }
 

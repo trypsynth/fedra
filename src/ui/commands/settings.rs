@@ -5,7 +5,8 @@ use crate::{
 	AppState,
 	accounts::{apply_refresh_interval, apply_streaming_setting, update_window_title},
 	config::ContentWarningDisplay,
-	network::NetworkCommand,
+	mastodon::{Filter, NotificationRequest},
+	network::{FilterChange, NetworkCommand},
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, menu::relabel_menus, timeline_list::TimelineList},
 	ui_wake::UiCommandSender,
@@ -203,138 +204,131 @@ pub(super) fn manage_list_members_dialog_closed(ctx: &mut UiCommandContext<'_>) 
 }
 
 pub(super) fn manage_filters(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
+	match &ctx.state.network_handle {
+		Some(handle) => handle.send(NetworkCommand::FetchFilters),
+		None => ctx.live_region.announce("Network not available"),
+	}
+}
+
+/// Shows the filter manager once the filters arrive. A change made in it is sent off, and the
+/// filters that come back after it open the manager again.
+pub(super) fn filters_loaded(
+	ctx: &mut UiCommandContext<'_>,
+	changed: Option<anyhow::Result<()>>,
+	result: anyhow::Result<Vec<Filter>>,
+) {
 	let frame = ctx.frame;
-	let live_region = ctx.live_region;
-	let Some(client) = &state.client else {
-		live_region.announce("Network not available");
-		return;
+	if let Some(Err(err)) = changed {
+		dialogs::show_error(frame, &err);
+	}
+	let filters = match result {
+		Ok(filters) => filters,
+		Err(err) => {
+			dialogs::show_error(frame, &err);
+			return;
+		}
 	};
-	let Some(token) = &state.access_token else {
-		live_region.announce("Not logged in");
-		return;
-	};
-	match client.get_filters(token) {
-		Ok(mut filters) => loop {
-			let result = dialogs::prompt_manage_filters(frame, &filters);
-			match result {
-				dialogs::ManageFiltersResult::Add => {
-					if let Some(data) = dialogs::prompt_filter_edit(frame, None) {
-						let keywords: Vec<(String, bool)> = data
-							.keywords
-							.iter()
-							.filter(|(_, _, _, d)| !*d)
-							.map(|(_, k, w, _)| (k.clone(), *w))
-							.collect();
-						match client.create_filter(
-							token,
-							&data.title,
-							&data.contexts,
-							&data.action,
-							&keywords,
-							data.expires_in,
-						) {
-							Ok(_) => {
-								if let Ok(new_filters) = client.get_filters(token) {
-									filters = new_filters;
-								}
-							}
-							Err(e) => dialogs::show_error(frame, &e),
-						}
-					}
+	let change = loop {
+		match dialogs::prompt_manage_filters(frame, &filters) {
+			dialogs::ManageFiltersResult::Add => {
+				if let Some(data) = dialogs::prompt_filter_edit(frame, None) {
+					break save_filter(None, data);
 				}
-				dialogs::ManageFiltersResult::Edit(id) => {
-					if let Some(filter) = filters.iter().find(|f| f.id == id)
-						&& let Some(data) = dialogs::prompt_filter_edit(frame, Some(filter))
-					{
-						let keywords_attrs: Vec<(&str, &str, bool, bool)> =
-							data.keywords.iter().map(|(id, k, w, d)| (id.as_str(), k.as_str(), *w, *d)).collect();
-						match client.update_filter(
-							token,
-							&id,
-							&data.title,
-							&data.contexts,
-							&data.action,
-							&keywords_attrs,
-							data.expires_in,
-						) {
-							Ok(_) => {
-								if let Ok(new_filters) = client.get_filters(token) {
-									filters = new_filters;
-								}
-							}
-							Err(e) => dialogs::show_error(frame, &e),
-						}
-					}
-				}
-				dialogs::ManageFiltersResult::Delete(id) => match client.delete_filter(token, &id) {
-					Ok(()) => {
-						if let Ok(new_filters) = client.get_filters(token) {
-							filters = new_filters;
-						}
-					}
-					Err(e) => dialogs::show_error(frame, &e),
-				},
-				dialogs::ManageFiltersResult::None => break,
 			}
-		},
-		Err(e) => dialogs::show_error(frame, &e),
+			dialogs::ManageFiltersResult::Edit(id) => {
+				if let Some(filter) = filters.iter().find(|f| f.id == id)
+					&& let Some(data) = dialogs::prompt_filter_edit(frame, Some(filter))
+				{
+					break save_filter(Some(id), data);
+				}
+			}
+			dialogs::ManageFiltersResult::Delete(id) => break FilterChange::Delete { id },
+			dialogs::ManageFiltersResult::None => return,
+		}
+	};
+	if let Some(handle) = &ctx.state.network_handle {
+		handle.send(NetworkCommand::ChangeFilter(change));
+	}
+}
+
+fn save_filter(id: Option<String>, data: dialogs::FilterDialogResult) -> FilterChange {
+	FilterChange::Save {
+		id,
+		title: data.title,
+		contexts: data.contexts,
+		action: data.action,
+		keywords: data.keywords,
+		expires_in: data.expires_in,
 	}
 }
 
 pub(super) fn message_requests(ctx: &mut UiCommandContext<'_>) {
+	match &ctx.state.network_handle {
+		Some(handle) => handle.send(NetworkCommand::FetchMessageRequests),
+		None => ctx.live_region.announce("Not logged in"),
+	}
+}
+
+/// Shows the message requests once they arrive. Accepting or dismissing one sends the answer off,
+/// and the requests that come back after it open the dialog again on the same entry.
+pub(super) fn message_requests_loaded(
+	ctx: &mut UiCommandContext<'_>,
+	answered: Option<(usize, bool, anyhow::Result<()>)>,
+	result: anyhow::Result<Vec<NotificationRequest>>,
+) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
-	let (Some(client), Some(token)) = (&state.client, &state.access_token) else {
-		live_region.announce("Not logged in");
-		return;
-	};
-	let options = TimelineTextOptions::from_config_default(&state.config);
-	let mut selected = None;
-	let mut accepted = false;
-	loop {
-		let requests = match client.get_notification_requests(token) {
-			Ok(requests) => requests,
-			Err(err) if format!("{err:#}").contains("404") => {
-				live_region.announce("Your server doesn't support message requests");
-				return;
-			}
-			Err(err) => {
-				dialogs::show_error(frame, &err);
-				return;
-			}
-		};
-		let (index, result) = match dialogs::prompt_message_requests(frame, &requests, &options, selected) {
-			dialogs::MessageRequestAction::Accept(index) => {
-				accepted = true;
-				(index, client.accept_notification_request(token, &requests[index].id).map(|()| "Accepted"))
-			}
-			dialogs::MessageRequestAction::Dismiss(index) => {
-				(index, client.dismiss_notification_request(token, &requests[index].id).map(|()| "Dismissed"))
-			}
-			dialogs::MessageRequestAction::Close => break,
-		};
-		match result {
-			Ok(message) => live_region.announce(message),
-			Err(err) => dialogs::show_error(frame, &err),
-		}
-		selected = Some(index);
-	}
-	state.pending_message_requests = None;
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchNotificationPolicy);
-		// Accepted requests' notifications join the rest, so the timelines holding them refetch.
-		if accepted {
-			for timeline_type in [TimelineType::Notifications, TimelineType::Direct] {
-				if state.timeline_manager.index_of(&timeline_type).is_some() {
-					handle.send(NetworkCommand::FetchTimeline {
-						timeline_type,
-						limit: Some(u32::from(state.config.fetch_limit)),
-						max_id: None,
-					});
+	let selected = answered.map(|(index, accepted, answer)| {
+		match answer {
+			Ok(()) => {
+				live_region.announce(if accepted { "Accepted" } else { "Dismissed" });
+				if accepted {
+					refetch_message_request_timelines(state);
 				}
 			}
+			Err(err) => dialogs::show_error(frame, &err),
+		}
+		index
+	});
+	let requests = match result {
+		Ok(requests) => requests,
+		Err(err) if format!("{err:#}").contains("404") => {
+			live_region.announce("Your server doesn't support message requests");
+			return;
+		}
+		Err(err) => {
+			dialogs::show_error(frame, &err);
+			return;
+		}
+	};
+	let options = TimelineTextOptions::from_config_default(&state.config);
+	let (index, accept) = match dialogs::prompt_message_requests(frame, &requests, &options, selected) {
+		dialogs::MessageRequestAction::Accept(index) => (index, true),
+		dialogs::MessageRequestAction::Dismiss(index) => (index, false),
+		dialogs::MessageRequestAction::Close => {
+			state.pending_message_requests = None;
+			if let Some(handle) = &state.network_handle {
+				handle.send(NetworkCommand::FetchNotificationPolicy);
+			}
+			return;
+		}
+	};
+	if let Some(handle) = &state.network_handle {
+		handle.send(NetworkCommand::AnswerMessageRequest { id: requests[index].id.clone(), index, accept });
+	}
+}
+
+/// Accepted requests' notifications join the rest, so the timelines holding them refetch.
+fn refetch_message_request_timelines(state: &AppState) {
+	let Some(handle) = &state.network_handle else { return };
+	for timeline_type in [TimelineType::Notifications, TimelineType::Direct] {
+		if state.timeline_manager.index_of(&timeline_type).is_some() {
+			handle.send(NetworkCommand::FetchTimeline {
+				timeline_type,
+				limit: Some(u32::from(state.config.fetch_limit)),
+				max_id: None,
+			});
 		}
 	}
 }
