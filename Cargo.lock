@@ -1985,18 +1985,19 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "prism-sys"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9056b582fac161198bd0ce7dd84424e5c287495ab3cbfb1dc106553bcd2ea4c9"
+checksum = "94c1c774ee9d87b9ab9bc0ec4385de8907126467028a9cf4f50b31572d87cd0e"
 dependencies = [
  "cmake",
+ "pkg-config",
 ]
 
 [[package]]
 name = "prismer"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fab1f6ae95403371691d7ea661c98a4811613cdc3cbb45a35b774386a6ffa78"
+checksum = "b3dd6250f2232084a030475b5eb8a1e0a6557ab508858e80438c1e39df473a47"
 dependencies = [
  "prism-sys",
 ]
@@ -3656,9 +3657,9 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "wx-utils"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ee31824ac70e91cf5de61fc01e82b850a8521158177c393204d877eb52349a7"
+checksum = "145bd06b862b7245d3489195d989a55aef61bb72dadf753d303d450ba7409d0b"
 dependencies = [
  "key-chord",
  "live-region",
