@@ -268,10 +268,7 @@ fn main() {
 			&& checker.is_another_running()
 		{
 			let frame = Frame::builder().with_title("Fedra").with_size(Size::new(1, 1)).build();
-			let dialog = MessageDialog::builder(&frame, "Fedra is already running.", "Error")
-				.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-				.build();
-			dialog.show_modal();
+			wx_utils::show_error(&frame, "Fedra is already running.", "Error");
 			frame.close(true);
 			return;
 		}
