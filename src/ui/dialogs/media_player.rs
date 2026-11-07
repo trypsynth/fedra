@@ -55,23 +55,6 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
 static NEXT_TASK_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// Queues `f` to run on the UI thread, like [`wxdragon::call_after`], and
-/// also wakes the idle loop so it actually runs promptly.
-///
-/// `call_after` on its own only gets processed the next time something else
-/// pumps the event loop — wx only checks the queue when it goes idle after
-/// dispatching a message, and if the window is just sitting there with no
-/// mouse movement or other input, nothing pumps it. That left a queued
-/// update (e.g. "the file just finished loading") sitting invisible until
-/// some unrelated input arrived, so the *next* keypress would still see the
-/// stale state (reporting "still loading" for media that had, in fact,
-/// finished loading a while ago) and only the keypress *after that* would
-/// see it as ready, since it pumped the queue itself.
-fn ui_call_after(f: impl FnOnce() + Send + 'static) {
-	wxdragon::call_after(Box::new(f));
-	wxdragon::wake_up_idle();
-}
-
 #[cfg(windows)]
 mod announcer {
 	use std::{cell::RefCell, rc::Rc};
@@ -235,7 +218,7 @@ fn start_load<T: Send + 'static>(
 	let id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
 	loads.with_borrow_mut(|callbacks| callbacks.insert(id, Box::new(on_update)));
 	let send = move |update: Load<T>| {
-		ui_call_after(move || {
+		wx_utils::post_to_ui(move || {
 			// Taken out while it runs, since showing an error runs a nested event loop.
 			let done = matches!(update, Load::Done(_));
 			let Some(mut callback) = loads.with_borrow_mut(|callbacks| callbacks.remove(&id)) else { return };
@@ -350,14 +333,10 @@ fn download_to_user_file(frame: &Frame, url: &str) {
 			if !target.is_valid() {
 				return;
 			}
-			let (msg, style) = match result {
-				Ok(()) => ("Download complete.".to_string(), MessageDialogStyle::IconInformation),
-				Err(e) => (format!("Failed to download media: {e}"), MessageDialogStyle::IconError),
-			};
-			MessageDialog::builder(&target, &msg, "Fedra")
-				.with_style(MessageDialogStyle::OK | style)
-				.build()
-				.show_modal();
+			match result {
+				Ok(()) => wx_utils::show_info(&target, "Download complete.", "Fedra"),
+				Err(e) => wx_utils::show_error(&target, format!("Failed to download media: {e}"), "Fedra"),
+			}
 			target.set_focus();
 		},
 	);
@@ -695,10 +674,7 @@ fn show_media_load_error(frame: &Frame, detail: &str) {
 		"Fedra could not load this attachment: {detail}\n\nThe media may be unavailable or its format may not be \
 		supported. Try opening the attachment in your browser."
 	);
-	let dlg = MessageDialog::builder(frame, &msg, "Media Player Error")
-		.with_style(MessageDialogStyle::OK | MessageDialogStyle::IconError)
-		.build();
-	dlg.show_modal();
+	wx_utils::show_error(frame, msg, "Media Player Error");
 }
 
 fn format_duration(duration: Duration) -> String {
