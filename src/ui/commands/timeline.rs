@@ -6,6 +6,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use wx_utils::Answer;
 use wxdragon::prelude::*;
 
 use super::{
@@ -601,23 +602,17 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				return;
 			};
 			let actor = notification.account.display_name_or_username().to_string();
-			let prompt = format!(
-				"{} (@{}) requested to follow you.\r\n\r\nYes: Accept\r\nNo: Reject\r\nCancel: Keep pending",
-				actor, notification.account.acct
-			);
-			let dialog = MessageDialog::builder(frame, &prompt, "Follow Request")
-				.with_style(MessageDialogStyle::YesNo | MessageDialogStyle::Cancel | MessageDialogStyle::IconQuestion)
-				.build();
-			match dialog.show_modal() {
-				ID_YES => handle.send(NetworkCommand::AuthorizeFollowRequest {
+			let prompt = format!("{} (@{}) requested to follow you.", actor, notification.account.acct);
+			match wx_utils::ask(frame, &prompt, "Follow Request", "&Accept", "&Reject") {
+				Answer::Yes => handle.send(NetworkCommand::AuthorizeFollowRequest {
 					account_id: notification.account.id.clone(),
 					target_name: actor,
 				}),
-				ID_NO => handle.send(NetworkCommand::RejectFollowRequest {
+				Answer::No => handle.send(NetworkCommand::RejectFollowRequest {
 					account_id: notification.account.id.clone(),
 					target_name: actor,
 				}),
-				_ => {
+				Answer::Cancel => {
 					live_region.announce("Follow request unchanged");
 				}
 			}
