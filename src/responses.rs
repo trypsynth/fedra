@@ -109,6 +109,12 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 				update_menu_labels(&menu_bar, ctx.state);
 			}
 		}
+		NetworkResponse::FiltersLoaded { changed, result } => {
+			ctx.dispatch(UiCommand::FiltersLoaded { changed, result });
+		}
+		NetworkResponse::MessageRequestsLoaded { answered, result } => {
+			ctx.dispatch(UiCommand::MessageRequestsLoaded { answered, result });
+		}
 		NetworkResponse::TagUnfollowed { name, result } => tags::following_changed(ctx, &name, &result, false),
 		NetworkResponse::TagMuted { name, result } => tags::muted_changed(ctx, &name, &result, true),
 		NetworkResponse::TagUnmuted { name, result } => tags::muted_changed(ctx, &name, &result, false),

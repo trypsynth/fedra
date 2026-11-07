@@ -110,6 +110,14 @@ pub fn bind_input_handlers(
 					event.skip(false);
 					return;
 				}
+				// The list runs top to bottom, so Ctrl+Up and Ctrl+Down move the timeline up and down it.
+				if ctrl && !alt && !shift && (k == keys::UP || k == keys::DOWN) {
+					let command =
+						if k == keys::UP { UiCommand::MoveTimelineLeft } else { UiCommand::MoveTimelineRight };
+					let _ = ui_tx_delete.send(command);
+					event.skip(false);
+					return;
+				}
 				if let Some(action) = shortcuts_selector.borrow().find_action(quick_mode, k, ctrl, alt, shift)
 					&& matches!(
 						action,

@@ -11,7 +11,7 @@ pub struct SearchResults {
 	pub hashtags: Vec<Tag>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum SearchType {
 	#[default]
 	All,
