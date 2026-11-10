@@ -284,6 +284,7 @@ fn main() {
 		let wake_reschedule = Rc::new(Cell::new(false));
 		let store = config::ConfigStore::new();
 		let config = store.load();
+		ui::spell_check::configure(config.spell_check, config.spell_check_announce, &config.spell_language);
 		let launched_at_startup = std::env::args().any(|arg| arg == STARTUP_ARG);
 		let start_hidden = launched_at_startup && config.saved_window_hidden && !config.accounts.is_empty();
 		let tray_hidden = Rc::new(Cell::new(start_hidden));
