@@ -10,7 +10,7 @@ use crate::{
 	read_position::apply_markers,
 	timeline::TimelineType,
 	ui::{
-		commands::Requests,
+		commands::{Requests, deferred},
 		dialogs::{self, UserLookupAction},
 	},
 };
@@ -206,17 +206,22 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 }
 
 fn credentials_fetched(ctx: &NetworkResponseContext<'_>, account: &Account, max_profile_fields: Option<usize>) {
-	if let Some(update) = dialogs::show_profile_edit_dialog(ctx.frame, account, max_profile_fields)
-		&& let Some(requests) = ctx.requests()
-	{
-		requests.request(
-			move |client, token| update_profile(client, token, &update),
-			|ctx, result| match result {
-				Ok(account) => profile_updated(ctx, account),
-				Err(err) => ctx.announce_failure("Failed to update profile", &err),
-			},
-		);
-	}
+	let account = account.clone();
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::show_profile_edit_dialog(frame, &account, max_profile_fields),
+		|ctx, update| {
+			if let Some(requests) = ctx.requests() {
+				requests.request(
+					move |client, token| update_profile(client, token, &update),
+					|ctx, result| match result {
+						Ok(account) => profile_updated(ctx, account),
+						Err(err) => ctx.announce_failure("Failed to update profile", &err),
+					},
+				);
+			}
+		},
+	);
 }
 
 fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {

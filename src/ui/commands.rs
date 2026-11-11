@@ -7,6 +7,7 @@
 mod account;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
 mod app;
+pub mod deferred;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
 mod find;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]

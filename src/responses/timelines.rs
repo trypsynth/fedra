@@ -9,7 +9,12 @@ use crate::{
 	network::{TimelineData, fetch_thread, fetch_timeline},
 	read_position::{MAX_RESTORE_PAGES, is_older},
 	timeline::{Timeline, TimelineEntry, TimelineType},
-	ui::{commands::Requests, dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
+	ui::{
+		commands::{Requests, deferred},
+		dialogs,
+		menu::update_menu_labels,
+		timeline_view::update_active_timeline_ui,
+	},
 };
 
 /// Loads a page of `timeline_type`, the newest unless `max_id` asks for the posts older than it,
@@ -252,7 +257,6 @@ pub(super) fn search_loaded(
 	results: SearchResults,
 	offset: Option<u32>,
 ) {
-	let requests = ctx.requests();
 	let status_snapshots = {
 		let state = &mut *ctx.state;
 		let timeline_list = &ctx.timeline_list;
@@ -263,13 +267,22 @@ pub(super) fn search_loaded(
 		{
 			let labels: Vec<String> =
 				results.accounts.iter().map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct)).collect();
-			let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-			let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
-			if let Some(account) = dialogs::prompt_for_account_choice(dlg.get_dialog(), &accounts_ref, &label_refs)
-				&& let Some(requests) = &requests
-			{
-				lists::add_member(requests, dlg.get_list_id().to_string(), account.id);
-			}
+			let accounts = results.accounts;
+			let parent = *dlg.get_dialog();
+			let list_id = dlg.get_list_id().to_string();
+			deferred::dialog_some(
+				ctx,
+				move |_| {
+					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+					let accounts_ref: Vec<&crate::mastodon::Account> = accounts.iter().collect();
+					dialogs::prompt_for_account_choice(&parent, &accounts_ref, &label_refs)
+				},
+				move |ctx, account| {
+					if let Some(requests) = ctx.requests() {
+						lists::add_member(&requests, list_id, account.id);
+					}
+				},
+			);
 			return;
 		}
 		let timeline_type = TimelineType::Search { query, search_type };

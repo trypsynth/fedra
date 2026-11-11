@@ -3,9 +3,9 @@
 use url::Url;
 use wxdragon::prelude::*;
 
-use super::{UiCommand, UiCommandContext, handle_ui_command};
+use super::{UiCommand, UiCommandContext, deferred, handle_ui_command};
 use crate::{
-	accounts::{start_add_account_flow, switch_to_account, try_oob_oauth},
+	accounts::{continue_add_account_flow, switch_to_account, try_oob_oauth},
 	auth,
 	config::Account,
 	mastodon::MastodonClient,
@@ -15,25 +15,30 @@ use crate::{
 
 pub(super) fn manage_accounts(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let ui_tx = ctx.ui_tx;
-	let result = dialogs::show_manage_accounts_dialog(
-		frame,
-		&state.config.accounts,
-		state.active_account().map(|a| a.id.as_str()),
+	let accounts = state.config.accounts.clone();
+	let active_id = state.active_account().map(|a| a.id.clone());
+	deferred::dialog(
+		ctx,
+		move |frame| dialogs::show_manage_accounts_dialog(frame, &accounts, active_id.as_deref()),
+		|ctx, result| match result {
+			dialogs::ManageAccountsResult::Add => add_account(ctx, false),
+			dialogs::ManageAccountsResult::Remove(id) => handle_ui_command(UiCommand::RemoveAccount(id), ctx),
+			dialogs::ManageAccountsResult::Switch(id) => handle_ui_command(UiCommand::SwitchAccount(id), ctx),
+			dialogs::ManageAccountsResult::None => {}
+		},
 	);
-	match result {
-		dialogs::ManageAccountsResult::Add => {
-			let _ = start_add_account_flow(frame, ui_tx, state);
+}
+
+/// Asks which instance to sign in to, then starts signing in. Closing the app when there's
+/// nothing to cancel back to is up to `close_if_cancelled`.
+fn add_account(ctx: &mut UiCommandContext<'_>, close_if_cancelled: bool) {
+	deferred::dialog(ctx, dialogs::prompt_for_instance, move |ctx, instance_url| match instance_url {
+		Some(instance_url) => continue_add_account_flow(ctx.frame, ctx.ui_tx, ctx.state, instance_url),
+		None if close_if_cancelled => {
+			ctx.frame.close(true);
 		}
-		dialogs::ManageAccountsResult::Remove(id) => {
-			handle_ui_command(UiCommand::RemoveAccount(id), ctx);
-		}
-		dialogs::ManageAccountsResult::Switch(id) => {
-			handle_ui_command(UiCommand::SwitchAccount(id), ctx);
-		}
-		dialogs::ManageAccountsResult::None => {}
-	}
+		None => {}
+	});
 }
 
 pub(super) fn switch_account(ctx: &mut UiCommandContext<'_>, id: String) {
@@ -86,7 +91,6 @@ pub(super) fn remove_account(ctx: &mut UiCommandContext<'_>, id: String) {
 	let timelines_selector = ctx.timelines_selector;
 	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
-	let ui_tx = ctx.ui_tx;
 	let is_active = state.config.active_account_id.as_ref() == Some(&id);
 	state.config.accounts.retain(|a| a.id != id);
 	state.account_timelines.remove(&id);
@@ -94,11 +98,8 @@ pub(super) fn remove_account(ctx: &mut UiCommandContext<'_>, id: String) {
 	if is_active {
 		let next_id = state.config.accounts.first().map(|a| a.id.clone());
 		if next_id.is_none() {
-			if !start_add_account_flow(frame, ui_tx, state) {
-				frame.close(true);
-				return;
-			}
-			// If flow started, we return and wait for OAuthResult
+			// Waits for the OAuthResult once the instance has been chosen.
+			add_account(ctx, true);
 			return;
 		}
 		switch_to_account(state, frame, timelines_selector, timeline_list, suppress_selection, true, next_id);
@@ -122,43 +123,53 @@ pub(super) fn oauth_result(
 	let client = match MastodonClient::new(instance_url.clone()) {
 		Ok(c) => c,
 		Err(e) => {
-			dialogs::show_error(frame, &anyhow::anyhow!(e));
-			if state.config.accounts.is_empty() {
-				frame.close(true);
-			}
+			deferred::dialog(
+				ctx,
+				move |frame| dialogs::show_error(frame, &anyhow::anyhow!(e)),
+				|ctx, ()| {
+					if ctx.state.config.accounts.is_empty() {
+						ctx.frame.close(true);
+					}
+				},
+			);
 			return;
 		}
 	};
-	let success = match result {
+	match result {
 		Ok(res) => {
 			account.access_token = Some(res.access_token);
 			account.client_id = Some(res.client_id);
 			account.client_secret = Some(res.client_secret);
-			true
+			finish_oauth(ctx, Some(account));
 		}
 		Err(_) => {
-			// Fallback to OOB
-			if let Some(acc) = try_oob_oauth(frame, &client, &instance_url, &mut account) {
-				account = acc;
-				true
-			} else {
-				// Fallback to Manual
-				if let Some(token) = dialogs::prompt_for_access_token(frame, &instance_url) {
-					account.access_token = Some(token);
-					true
-				} else {
-					false
-				}
-			}
+			// Fall back to pasting a code, then to pasting a token.
+			deferred::dialog(
+				ctx,
+				move |frame| {
+					if let Some(acc) = try_oob_oauth(frame, &client, &instance_url, &mut account) {
+						return Some(acc);
+					}
+					dialogs::prompt_for_access_token(frame, &instance_url).map(|token| {
+						account.access_token = Some(token);
+						account
+					})
+				},
+				finish_oauth,
+			);
 		}
-	};
-	if success {
+	}
+}
+
+/// Adds the account that signing in produced, or gives up when it produced none.
+fn finish_oauth(ctx: &mut UiCommandContext<'_>, account: Option<Account>) {
+	if let Some(account) = account {
 		let id = account.id.clone();
-		state.config.accounts.push(account);
-		let _ = state.save_config();
+		ctx.state.config.accounts.push(account);
+		let _ = ctx.state.save_config();
 		handle_ui_command(UiCommand::SwitchAccount(id), ctx);
-	} else if state.config.accounts.is_empty() {
-		frame.close(true);
+	} else if ctx.state.config.accounts.is_empty() {
+		ctx.frame.close(true);
 	}
 }
 

@@ -2,8 +2,8 @@
 
 use wxdragon::prelude::*;
 
-use super::UiCommandContext;
-use crate::ui::{app_shell, dialogs, menu::relabel_menus};
+use super::{UiCommandContext, deferred};
+use crate::ui::{app_shell, menu::relabel_menus};
 
 pub(super) fn toggle_window_visibility(ctx: &mut UiCommandContext<'_>) {
 	let frame = ctx.frame;
@@ -33,7 +33,6 @@ pub(super) fn set_quick_action_keys_enabled(ctx: &mut UiCommandContext<'_>, enab
 }
 
 pub(super) fn view_help(ctx: &mut UiCommandContext<'_>) {
-	let frame = ctx.frame;
 	let live_region = ctx.live_region;
 	let path = crate::resource_dir().join("readme.html");
 	if path.exists() {
@@ -44,7 +43,7 @@ pub(super) fn view_help(ctx: &mut UiCommandContext<'_>) {
 		);
 	} else {
 		live_region.announce("Help file not found");
-		dialogs::show_error(frame, &anyhow::anyhow!("The help file is missing. Try reinstalling Fedra."));
+		deferred::error(ctx, anyhow::anyhow!("The help file is missing. Try reinstalling Fedra."));
 	}
 }
 

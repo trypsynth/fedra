@@ -10,7 +10,7 @@ use wx_utils::Answer;
 use wxdragon::prelude::*;
 
 use super::{
-	UiCommand, UiCommandContext, handle_ui_command,
+	UiCommand, UiCommandContext, deferred, handle_ui_command,
 	selection::{foreign_url, get_selected_entry, get_selected_status, paging_max_id},
 };
 use crate::{
@@ -247,29 +247,36 @@ pub(super) fn toggle_notifications(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn set_sound(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let Some(active_type) = state.timeline_manager.active().map(|t| t.timeline_type.clone()) else {
+	let Some(active_type) = ctx.state.timeline_manager.active().map(|t| t.timeline_type.clone()) else {
 		return;
 	};
-	let dialog = FileDialog::builder(ctx.frame)
-		.with_message(&format!("Choose a notification sound for {}", active_type.display_name()))
-		.with_wildcard("Sound files|*.mp3;*.ogg;*.oga;*.wav;*.flac;*.m4a|All files|*.*")
-		.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist)
-		.build();
-	if dialog.show_modal() != ID_OK {
-		return;
-	}
-	let Some(path) = dialog.get_path().map(PathBuf::from) else {
-		return;
-	};
-	let Some(account) = state.active_account_mut() else {
-		return;
-	};
-	account.timeline_sounds.retain(|sound| sound.timeline != active_type);
-	account.timeline_sounds.push(TimelineSound { timeline: active_type, path: path.clone() });
-	let _ = state.save_config();
-	ctx.live_region.announce("Sound set");
-	crate::notifications::play_sound(state.notification_sound.as_ref(), Some(&path));
+	let message = format!("Choose a notification sound for {}", active_type.display_name());
+	deferred::dialog_some(
+		ctx,
+		move |frame| {
+			let dialog = FileDialog::builder(frame)
+				.with_message(&message)
+				.with_wildcard("Sound files|*.mp3;*.ogg;*.oga;*.wav;*.flac;*.m4a|All files|*.*")
+				.with_style(FileDialogStyle::Open | FileDialogStyle::FileMustExist)
+				.build();
+			if dialog.show_modal() != ID_OK {
+				return None;
+			}
+			dialog.get_path().map(PathBuf::from)
+		},
+		move |ctx, path| {
+			let state = &mut *ctx.state;
+			// The timeline could have been closed or the account switched while choosing.
+			let Some(account) = state.active_account_mut() else {
+				return;
+			};
+			account.timeline_sounds.retain(|sound| sound.timeline != active_type);
+			account.timeline_sounds.push(TimelineSound { timeline: active_type, path: path.clone() });
+			let _ = state.save_config();
+			ctx.live_region.announce("Sound set");
+			crate::notifications::play_sound(state.notification_sound.as_ref(), Some(&path));
+		},
+	);
 }
 
 pub(super) fn reset_sound(ctx: &mut UiCommandContext<'_>) {
@@ -498,20 +505,24 @@ pub(super) fn move_timeline_right(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn open_instance_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = &ctx.timeline_list;
-	let suppress_selection = ctx.suppress_selection;
-	let live_region = ctx.live_region;
-	if let Some(input) =
-		dialogs::prompt_text(frame, "Enter instance domain (e.g. mastodon.social):", "Open Instance Timeline")
-	{
-		let instance =
-			input.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
-		let timeline_type = TimelineType::InstanceLocal { instance };
-		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
-	}
+	deferred::dialog_some(
+		ctx,
+		|frame| dialogs::prompt_text(frame, "Enter instance domain (e.g. mastodon.social):", "Open Instance Timeline"),
+		|ctx, input| {
+			let instance =
+				input.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
+			let timeline_type = TimelineType::InstanceLocal { instance };
+			open_timeline(
+				ctx.state,
+				ctx.timelines_selector,
+				&ctx.timeline_list,
+				&timeline_type,
+				ctx.suppress_selection,
+				ctx.live_region,
+				ctx.frame,
+			);
+		},
+	);
 }
 
 pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
@@ -581,18 +592,26 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 			};
 			let actor = notification.account.display_name_or_username().to_string();
 			let prompt = format!("{} (@{}) requested to follow you.", actor, notification.account.acct);
-			let action = match wx_utils::ask(frame, &prompt, "Follow Request", "&Accept", "&Reject") {
-				Answer::Yes => RelationshipAction::AcceptFollowRequest,
-				Answer::No => RelationshipAction::RejectFollowRequest,
-				Answer::Cancel => {
-					live_region.announce("Follow request unchanged");
-					return;
-				}
-			};
 			let account_id = notification.account.id.clone();
-			requests.request(
-				move |client, token| change_relationship(client, token, &account_id, action, FollowOptions::default()),
-				move |ctx, result| relationship_updated(ctx, &actor, action, result),
+			deferred::dialog(
+				ctx,
+				move |frame| wx_utils::ask(frame, &prompt, "Follow Request", "&Accept", "&Reject"),
+				move |ctx, answer| {
+					let action = match answer {
+						Answer::Yes => RelationshipAction::AcceptFollowRequest,
+						Answer::No => RelationshipAction::RejectFollowRequest,
+						Answer::Cancel => {
+							ctx.live_region.announce("Follow request unchanged");
+							return;
+						}
+					};
+					requests.request(
+						move |client, token| {
+							change_relationship(client, token, &account_id, action, FollowOptions::default())
+						},
+						move |ctx, result| relationship_updated(ctx, &actor, action, result),
+					);
+				},
 			);
 		}
 		TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
@@ -688,20 +707,23 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn search(ctx: &mut UiCommandContext<'_>) {
-	let requests = ctx.requests();
-	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let timelines_selector = ctx.timelines_selector;
-	let timeline_list = &ctx.timeline_list;
-	let suppress_selection = ctx.suppress_selection;
-	let live_region = ctx.live_region;
-	if let Some((query, search_type)) = dialogs::prompt_for_search(frame) {
+	deferred::dialog_some(ctx, dialogs::prompt_for_search, |ctx, (query, search_type)| {
+		let requests = ctx.requests();
+		let state = &mut *ctx.state;
 		let timeline_type = TimelineType::Search { query: query.clone(), search_type };
-		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
+		open_timeline(
+			state,
+			ctx.timelines_selector,
+			&ctx.timeline_list,
+			&timeline_type,
+			ctx.suppress_selection,
+			ctx.live_region,
+			ctx.frame,
+		);
 		if let Some(requests) = &requests {
 			responses::search(requests, query, search_type, Some(u32::from(state.config.fetch_limit)), None);
 		}
-	}
+	});
 }
 
 pub(super) fn open_list(ctx: &mut UiCommandContext<'_>) {

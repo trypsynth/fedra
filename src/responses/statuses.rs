@@ -218,7 +218,7 @@ fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: Status, resu
 			None
 		}
 	};
-	run_edit_post_dialog(ctx, &status, source_text.as_deref());
+	run_edit_post_dialog(ctx, &status, source_text);
 }
 
 fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
