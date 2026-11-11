@@ -3,7 +3,7 @@
 use wxdragon::prelude::*;
 
 use super::{
-	UiCommand, UiCommandContext,
+	UiCommand, UiCommandContext, deferred,
 	post::post_result_to_data,
 	selection::{acct_from_mention_link, foreign_url, get_selected_entry, get_selected_status},
 	timeline::{open_timeline, refresh_active_timeline},
@@ -27,9 +27,7 @@ pub(super) fn open_user_timeline(ctx: &mut UiCommandContext<'_>) {
 /// Opens someone the selected item is about, asking which one when there's more than one.
 fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::UserLookupAction) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
 	let live_region = ctx.live_region;
-	let ui_tx = ctx.ui_tx;
 	let Some(entry) = get_selected_entry(state) else {
 		live_region.announce("No item selected");
 		return;
@@ -45,25 +43,36 @@ fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::User
 	if involved.len() > 1 {
 		involved.retain(|(account, _)| state.current_user_id.as_ref() != Some(&account.id));
 	}
-	let (account, action) = match involved.as_slice() {
-		[] => {
-			live_region.announce("No users for this item");
-			return;
+	match involved.len() {
+		0 => live_region.announce("No users for this item"),
+		1 => {
+			let (account, _) = involved.remove(0);
+			open_involved_account(ctx, account, action);
 		}
-		[(account, _)] => (account.clone(), action),
-		_ => {
-			let accounts: Vec<&Account> = involved.iter().map(|(account, _)| account).collect();
-			let labels: Vec<&str> = involved.iter().map(|(_, label)| label.as_str()).collect();
-			let picked = match action {
-				dialogs::UserLookupAction::Profile => dialogs::prompt_for_account_selection(frame, &accounts, &labels),
-				dialogs::UserLookupAction::Timeline => {
-					dialogs::prompt_for_account_choice(frame, &accounts, &labels).map(|account| (account, action))
+		_ => deferred::dialog_some(
+			ctx,
+			move |frame| {
+				let accounts: Vec<&Account> = involved.iter().map(|(account, _)| account).collect();
+				let labels: Vec<&str> = involved.iter().map(|(_, label)| label.as_str()).collect();
+				match action {
+					dialogs::UserLookupAction::Profile => {
+						dialogs::prompt_for_account_selection(frame, &accounts, &labels)
+					}
+					dialogs::UserLookupAction::Timeline => {
+						dialogs::prompt_for_account_choice(frame, &accounts, &labels).map(|account| (account, action))
+					}
 				}
-			};
-			let Some(picked) = picked else { return };
-			picked
-		}
-	};
+			},
+			|ctx, (account, action)| open_involved_account(ctx, account, action),
+		),
+	}
+}
+
+fn open_involved_account(ctx: &mut UiCommandContext<'_>, account: Account, action: dialogs::UserLookupAction) {
+	let state = &mut *ctx.state;
+	let frame = ctx.frame;
+	let live_region = ctx.live_region;
+	let ui_tx = ctx.ui_tx;
 	if let Some(url) = foreign_url(state, Some(&account.url)) {
 		state.pending_user_lookup_action = Some(action);
 		if let Some(net) = &state.network_handle {
@@ -169,8 +178,6 @@ fn add_role<'a>(involved: &mut Vec<(&'a Account, Vec<&'static str>)>, account: &
 
 pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let live_region = ctx.live_region;
 	let suggestions: Vec<String> =
 		dialogs::timeline_people(state).iter().map(|person| format!("@{}", person.acct)).collect();
 	let default_value = get_selected_entry(state).and_then(|entry| match entry {
@@ -180,20 +187,24 @@ pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 		TimelineEntry::Hashtag(_) => None,
 	});
 	let default_value = default_value.map(|acct| format!("@{acct}"));
-	if let Some((input, action)) = dialogs::prompt_for_user_lookup(frame, &suggestions, default_value.as_deref()) {
-		let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-		if let Some(network) = &state.network_handle {
-			state.pending_user_lookup_action = Some(action);
-			network.send(NetworkCommand::LookupAccount { handle });
-		} else {
-			live_region.announce("Network not available");
-		}
-	}
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::prompt_for_user_lookup(frame, &suggestions, default_value.as_deref()),
+		|ctx, (input, action)| {
+			let state = &mut *ctx.state;
+			let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+			if let Some(network) = &state.network_handle {
+				state.pending_user_lookup_action = Some(action);
+				network.send(NetworkCommand::LookupAccount { handle });
+			} else {
+				ctx.live_region.announce("Network not available");
+			}
+		},
+	);
 }
 
 pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
 	let live_region = ctx.live_region;
 	let Some(status) = get_selected_status(state) else {
 		live_region.announce("No post selected");
@@ -221,17 +232,22 @@ pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 		live_region.announce("No mentions in this post");
 		return;
 	}
-	if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &all_mentions) {
-		let Some(net) = &state.network_handle else {
-			live_region.announce("Network not available");
-			return;
-		};
-		state.pending_user_lookup_action = Some(action);
-		match foreign_url(state, Some(&mention.url)) {
-			Some(url) => net.send(NetworkCommand::ResolveAccount { url }),
-			None => net.send(NetworkCommand::LookupAccount { handle: mention.full_acct() }),
-		}
-	}
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::prompt_for_mentions(frame, &all_mentions),
+		|ctx, (mention, action)| {
+			let state = &mut *ctx.state;
+			let Some(net) = &state.network_handle else {
+				ctx.live_region.announce("Network not available");
+				return;
+			};
+			state.pending_user_lookup_action = Some(action);
+			match foreign_url(state, Some(&mention.url)) {
+				Some(url) => net.send(NetworkCommand::ResolveAccount { url }),
+				None => net.send(NetworkCommand::LookupAccount { handle: mention.full_acct() }),
+			}
+		},
+	);
 }
 
 pub(super) fn view_hashtags(ctx: &mut UiCommandContext<'_>) {
@@ -322,7 +338,6 @@ pub(super) fn following_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 
 pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
 	let live_region = ctx.live_region;
 	let Some(status) = get_selected_status(state) else {
 		live_region.announce("No post selected");
@@ -364,23 +379,29 @@ pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 			});
 		}
 	}
-	let selected_user = if all_users.len() == 1 {
-		all_users[0].clone()
-	} else if let Some((acc, _)) =
-		dialogs::prompt_for_account_list(frame, "Select User", "Select user to follow/unfollow:", &all_users)
-	{
-		acc
-	} else {
+	if all_users.len() == 1 {
+		send_toggle_follow(ctx, all_users.remove(0));
 		return;
-	};
-	if let Some(net) = &state.network_handle {
+	}
+	deferred::dialog_some(
+		ctx,
+		move |frame| {
+			dialogs::prompt_for_account_list(frame, "Select User", "Select user to follow/unfollow:", &all_users)
+				.map(|(account, _)| account)
+		},
+		send_toggle_follow,
+	);
+}
+
+fn send_toggle_follow(ctx: &mut UiCommandContext<'_>, selected_user: Account) {
+	if let Some(net) = &ctx.state.network_handle {
 		net.send(NetworkCommand::ToggleFollow {
 			account_id: if selected_user.id.is_empty() { None } else { Some(selected_user.id) },
 			acct: selected_user.acct.clone(),
 			target_name: selected_user.username,
 		});
 	} else {
-		live_region.announce("Network not available");
+		ctx.live_region.announce("Network not available");
 	}
 }
 
@@ -404,58 +425,69 @@ pub(super) fn remove_user_from_list(ctx: &mut UiCommandContext<'_>, account_id: 
 }
 
 pub(super) fn set_alias(ctx: &mut UiCommandContext<'_>, account: &Account) {
-	let state = &mut *ctx.state;
 	let key = account.alias_key();
-	let current = state.config.user_aliases.get(&key).cloned().unwrap_or_default();
-	let dialog = TextEntryDialog::builder(
-		ctx.frame,
-		&format!("Alias for @{}, or leave it empty to use their display name:", account.full_acct()),
-		"Set Alias",
-	)
-	.with_default_value(&current)
-	.build();
-	if dialog.show_modal() != ID_OK {
-		return;
-	}
-	let alias = dialog.get_value().unwrap_or_default().trim().to_string();
-	if alias.is_empty() {
-		state.config.user_aliases.remove(&key);
-	} else {
-		state.config.user_aliases.insert(key, alias);
-	}
-	if let Err(err) = state.save_config() {
-		dialogs::show_error(ctx.frame, &err);
-	}
-	refresh_active_timeline(ctx);
+	let current = ctx.state.config.user_aliases.get(&key).cloned().unwrap_or_default();
+	let message = format!("Alias for @{}, or leave it empty to use their display name:", account.full_acct());
+	deferred::dialog_some(
+		ctx,
+		move |frame| {
+			let dialog = TextEntryDialog::builder(frame, &message, "Set Alias").with_default_value(&current).build();
+			if dialog.show_modal() != ID_OK {
+				return None;
+			}
+			Some(dialog.get_value().unwrap_or_default().trim().to_string())
+		},
+		move |ctx, alias| {
+			let state = &mut *ctx.state;
+			if alias.is_empty() {
+				state.config.user_aliases.remove(&key);
+			} else {
+				state.config.user_aliases.insert(key, alias);
+			}
+			if let Err(err) = state.save_config() {
+				deferred::error(ctx, err);
+			}
+			refresh_active_timeline(ctx);
+		},
+	);
 }
 
 pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Account) {
 	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let live_region = ctx.live_region;
 	let (has_account, max_post_chars, poll_limits, enter_to_send) =
 		(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone(), state.config.enter_to_send);
 	if !has_account {
-		live_region.announce("No account configured");
+		ctx.live_region.announce("No account configured");
 		return;
 	}
-	let Some((post, config)) = dialogs::prompt_for_direct_message(
-		frame,
-		&account,
-		max_post_chars,
-		state.max_media_description_chars,
-		&poll_limits,
-		enter_to_send,
-		dialogs::MentionSource::from_state(state),
-	) else {
-		return;
-	};
-	if let Some(handle) = &state.network_handle {
-		state.pending_thread_continuation = post.continue_thread;
-		state.pending_post =
-			Some(crate::PendingPost { config, operation: crate::PostOperation::NewPost, last_result: post.clone() });
-		handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
-	} else {
-		live_region.announce("Network not available");
-	}
+	let max_media_description_chars = state.max_media_description_chars;
+	let mention_source = dialogs::MentionSource::from_state(state);
+	super::deferred::dialog_some(
+		ctx,
+		move |frame| {
+			dialogs::prompt_for_direct_message(
+				frame,
+				&account,
+				max_post_chars,
+				max_media_description_chars,
+				&poll_limits,
+				enter_to_send,
+				mention_source,
+			)
+		},
+		|ctx, (post, config)| {
+			let state = &mut *ctx.state;
+			if let Some(handle) = &state.network_handle {
+				state.pending_thread_continuation = post.continue_thread;
+				state.pending_post = Some(crate::PendingPost {
+					config,
+					operation: crate::PostOperation::NewPost,
+					last_result: post.clone(),
+				});
+				handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
+			} else {
+				ctx.live_region.announce("Network not available");
+			}
+		},
+	);
 }

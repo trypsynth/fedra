@@ -27,11 +27,17 @@ pub fn update_window_title(state: &AppState, frame: &Frame) {
 
 pub fn start_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: &mut AppState) -> bool {
 	let Some(instance_url) = dialogs::prompt_for_instance(frame) else { return false };
+	continue_add_account_flow(frame, ui_tx, state, instance_url);
+	true
+}
+
+/// Starts signing in to `instance_url`, once it's been asked for.
+pub fn continue_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: &mut AppState, instance_url: Url) {
 	let client = match MastodonClient::new(instance_url.clone()) {
 		Ok(client) => client,
 		Err(err) => {
 			dialogs::show_error(frame, &err);
-			return true;
+			return;
 		}
 	};
 	let instance_url_clone = instance_url;
@@ -56,7 +62,6 @@ pub fn start_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: &mu
 	panel.set_sizer(sizer, true);
 	dialog.show(true);
 	state.pending_auth_dialog = Some(dialog);
-	true
 }
 
 pub fn try_oob_oauth(
