@@ -6,17 +6,23 @@ use crate::{
 	mastodon::{Account, List},
 	network::NetworkCommand,
 	timeline::TimelineType,
-	ui::dialogs,
+	ui::{commands::deferred, dialogs},
 };
 
 pub(super) fn fetched(ctx: &mut NetworkResponseContext<'_>, lists: Vec<List>) {
 	if let Some(account_id) = ctx.state.pending_add_to_list_user.take() {
 		if lists.is_empty() {
 			ctx.announce("No lists found to add user to");
-		} else if let Some(list) = dialogs::show_list_selection_dialog(ctx.frame, &lists, "Add to List", "Add")
-			&& let Some(handle) = &ctx.state.network_handle
-		{
-			handle.send(NetworkCommand::AddListAccount { list_id: list.id, account_id });
+		} else {
+			deferred::dialog_some(
+				ctx,
+				move |frame| dialogs::show_list_selection_dialog(frame, &lists, "Add to List", "Add"),
+				move |ctx, list| {
+					if let Some(handle) = &ctx.state.network_handle {
+						handle.send(NetworkCommand::AddListAccount { list_id: list.id, account_id });
+					}
+				},
+			);
 		}
 		return;
 	}
@@ -28,9 +34,11 @@ pub(super) fn fetched(ctx: &mut NetworkResponseContext<'_>, lists: Vec<List>) {
 		ctx.announce("No lists found");
 		return;
 	}
-	if let Some(list) = dialogs::show_list_selection_dialog(ctx.frame, &lists, "Open List", "Open") {
-		ctx.dispatch(UiCommand::OpenTimeline(TimelineType::List { id: list.id, title: list.title }));
-	}
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::show_list_selection_dialog(frame, &lists, "Open List", "Open"),
+		|ctx, list| ctx.dispatch(UiCommand::OpenTimeline(TimelineType::List { id: list.id, title: list.title })),
+	);
 }
 
 /// Announces a change to the set of lists and refetches it.
@@ -44,10 +52,17 @@ pub(super) fn changed(ctx: &NetworkResponseContext<'_>, message: &str) {
 pub(super) fn account_lists_fetched(ctx: &NetworkResponseContext<'_>, account_id: String, lists: &[List]) {
 	if lists.is_empty() {
 		ctx.announce("User is not in any lists");
-	} else if let Some(list) = dialogs::show_list_selection_dialog(ctx.frame, lists, "Remove from List", "Remove")
-		&& let Some(handle) = &ctx.state.network_handle
-	{
-		handle.send(NetworkCommand::RemoveListAccount { list_id: list.id, account_id });
+	} else {
+		let lists = lists.to_vec();
+		deferred::dialog_some(
+			ctx,
+			move |frame| dialogs::show_list_selection_dialog(frame, &lists, "Remove from List", "Remove"),
+			move |ctx, list| {
+				if let Some(handle) = &ctx.state.network_handle {
+					handle.send(NetworkCommand::RemoveListAccount { list_id: list.id, account_id });
+				}
+			},
+		);
 	}
 }
 
@@ -82,12 +97,16 @@ pub(super) fn accounts_fetched(ctx: &mut NetworkResponseContext<'_>, list_id: St
 
 pub(super) fn operation_failed(ctx: &mut NetworkResponseContext<'_>, err: &anyhow::Error) {
 	ctx.state.pending_add_to_list_user = None;
-	let parent: &dyn WxWidget = if let Some(dlg) = &ctx.state.manage_list_members_dialog {
-		dlg.get_dialog()
-	} else if let Some(dlg) = &ctx.state.manage_lists_dialog {
-		dlg.get_dialog()
-	} else {
-		ctx.frame
-	};
-	dialogs::show_error(parent, err);
+	// Over the lists dialog when that's what's open, so the error isn't hidden behind it.
+	let parent: Option<Dialog> = ctx
+		.state
+		.manage_list_members_dialog
+		.as_ref()
+		.map(|dlg| *dlg.get_dialog())
+		.or_else(|| ctx.state.manage_lists_dialog.as_ref().map(|dlg| *dlg.get_dialog()));
+	let message = anyhow::anyhow!("{err:#}");
+	deferred::show(ctx, move |frame| match &parent {
+		Some(parent) => dialogs::show_error(parent, &message),
+		None => dialogs::show_error(frame, &message),
+	});
 }

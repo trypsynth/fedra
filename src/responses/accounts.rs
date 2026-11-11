@@ -8,7 +8,10 @@ use crate::{
 	mastodon::{Account, InstanceInfo, Relationship},
 	network::{NetworkCommand, RelationshipAction},
 	timeline::TimelineType,
-	ui::dialogs::{self, UserLookupAction},
+	ui::{
+		commands::deferred,
+		dialogs::{self, UserLookupAction},
+	},
 };
 
 /// The two account lists a profile can show. They differ only in wording and in
@@ -105,15 +108,14 @@ pub(super) fn lookup_succeeded(ctx: &mut NetworkResponseContext<'_>, account: &A
 	open_account(ctx, account, action);
 }
 
-pub(super) fn pick_from_account_list(
-	ctx: &mut NetworkResponseContext<'_>,
-	accounts: &[Account],
-	title: &str,
-	label: &str,
-) {
-	if let Some((account, action)) = dialogs::prompt_for_account_list(ctx.frame, title, label, accounts) {
-		open_account(ctx, &account, action);
-	}
+pub(super) fn pick_from_account_list(ctx: &NetworkResponseContext<'_>, accounts: &[Account], title: &str, label: &str) {
+	let accounts = accounts.to_vec();
+	let (title, label) = (title.to_string(), label.to_string());
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::prompt_for_account_list(frame, &title, &label, &accounts),
+		|ctx, (account, action)| open_account(ctx, &account, action),
+	);
 }
 
 /// Shows an account either as a profile dialog or as its own timeline.
@@ -310,11 +312,16 @@ pub(super) fn credentials_fetched(
 	account: &Account,
 	max_profile_fields: Option<usize>,
 ) {
-	if let Some(update) = dialogs::show_profile_edit_dialog(ctx.frame, account, max_profile_fields)
-		&& let Some(handle) = &ctx.state.network_handle
-	{
-		handle.send(NetworkCommand::UpdateProfile { update });
-	}
+	let account = account.clone();
+	deferred::dialog_some(
+		ctx,
+		move |frame| dialogs::show_profile_edit_dialog(frame, &account, max_profile_fields),
+		|ctx, update| {
+			if let Some(handle) = &ctx.state.network_handle {
+				handle.send(NetworkCommand::UpdateProfile { update });
+			}
+		},
+	);
 }
 
 pub(super) fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {

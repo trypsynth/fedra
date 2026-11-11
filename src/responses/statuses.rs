@@ -129,7 +129,7 @@ pub(super) fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction,
 	}
 }
 
-pub(super) fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: Status, result: Result<StatusSource>) {
+pub(super) fn source_fetched(ctx: &NetworkResponseContext<'_>, mut status: Status, result: Result<StatusSource>) {
 	let source_text = match result {
 		Ok(source) => {
 			if !source.spoiler_text.is_empty() {
@@ -145,7 +145,8 @@ pub(super) fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: S
 			None
 		}
 	};
-	crate::ui::commands::run_edit_post_dialog(ctx.frame, ctx.state, &status, source_text.as_deref());
+	// Opened by a UI command rather than here, so the dialog doesn't hold up this handler.
+	let _ = ctx.ui_tx.send(crate::ui::commands::UiCommand::EditDialog(Box::new(status), source_text));
 }
 
 pub(super) fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {

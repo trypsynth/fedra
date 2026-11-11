@@ -8,7 +8,7 @@ use crate::{
 	network::{NetworkCommand, TimelineData},
 	read_position::{MAX_RESTORE_PAGES, is_older},
 	timeline::{Timeline, TimelineEntry, TimelineType},
-	ui::{dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
+	ui::{commands::deferred, dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
 };
 
 pub(super) fn loaded(
@@ -215,16 +215,22 @@ pub(super) fn search_loaded(
 		{
 			let labels: Vec<String> =
 				results.accounts.iter().map(|a| format!("{}: @{}", a.display_name_or_username(), a.acct)).collect();
-			let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-			let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
-			if let Some(account) = dialogs::prompt_for_account_choice(dlg.get_dialog(), &accounts_ref, &label_refs)
-				&& let Some(handle) = &state.network_handle
-			{
-				handle.send(NetworkCommand::AddListAccount {
-					list_id: dlg.get_list_id().to_string(),
-					account_id: account.id,
-				});
-			}
+			let accounts = results.accounts;
+			let parent = *dlg.get_dialog();
+			let list_id = dlg.get_list_id().to_string();
+			deferred::dialog_some(
+				ctx,
+				move |_| {
+					let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+					let accounts_ref: Vec<&crate::mastodon::Account> = accounts.iter().collect();
+					dialogs::prompt_for_account_choice(&parent, &accounts_ref, &label_refs)
+				},
+				move |ctx, account| {
+					if let Some(handle) = &ctx.state.network_handle {
+						handle.send(NetworkCommand::AddListAccount { list_id, account_id: account.id });
+					}
+				},
+			);
 			return;
 		}
 		let timeline_type = TimelineType::Search { query, search_type };

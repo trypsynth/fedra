@@ -7,6 +7,7 @@
 mod account;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
 mod app;
+pub mod deferred;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
 mod find;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
@@ -23,7 +24,6 @@ mod user;
 
 use std::cell::Cell;
 
-pub use post::run_edit_post_dialog;
 pub use selection::{get_selected_entry, get_selected_status};
 pub use settings::register_hotkeys;
 use url::Url;
@@ -135,6 +135,10 @@ pub enum UiCommand {
 	ExitApp,
 	RecoverDraft,
 	PollStreamable,
+	/// Opens the dialog for editing a post whose source text just arrived.
+	EditDialog(Box<Status>, Option<String>),
+	/// Work a compose dialog left for after it closed, run with the app state again.
+	Deferred(Box<dyn FnOnce(&mut UiCommandContext<'_>) + Send>),
 }
 
 /// Handles a UI command, updating state and UI as needed.
@@ -235,6 +239,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::Reply { reply_all } => post::reply(ctx, reply_all),
 		UiCommand::Quote => post::quote(ctx),
 		UiCommand::PromptForQuote(target) => post::prompt_for_quote(ctx, target),
+		UiCommand::EditDialog(target, source_text) => post::run_edit_post_dialog(ctx, &target, source_text),
+		UiCommand::Deferred(job) => job(ctx),
 		UiCommand::DeletePost => post::delete_post(ctx),
 		UiCommand::EditPost => post::edit_post(ctx),
 		UiCommand::CopyPost => post::copy_post(ctx),

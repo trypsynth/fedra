@@ -4,7 +4,7 @@
 //! timelines is the exception: it drives the same list the window does, and speaks where it
 //! lands whenever a screen reader wouldn't already be reading the list.
 
-use super::{UiCommandContext, command_for, handle_ui_command};
+use super::{UiCommandContext, command_for, deferred, handle_ui_command};
 use crate::{
 	UiCommand,
 	config::{ActionId, GlobalAction},
@@ -26,9 +26,13 @@ pub(super) fn run(ctx: &mut UiCommandContext<'_>, action: GlobalAction) {
 		GlobalAction::NextTimeline => switch_timeline(ctx, true),
 		GlobalAction::Exit => handle_ui_command(UiCommand::ExitApp, ctx),
 		GlobalAction::Action(ActionId::Find) => {
-			if let Some(query) = dialogs::show_find_dialog(ctx.frame) {
-				handle_ui_command(UiCommand::Find(query), ctx);
-			}
+			deferred::dialog_some(
+				ctx,
+				|frame| dialogs::show_find_dialog(frame),
+				|ctx, query| {
+					handle_ui_command(UiCommand::Find(query), ctx);
+				},
+			);
 		}
 		GlobalAction::Action(action) => {
 			if let Some(command) = command_for(action) {
