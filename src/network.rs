@@ -1,5 +1,6 @@
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{HashMap, HashSet, hash_map::DefaultHasher},
+	hash::{Hash, Hasher},
 	slice,
 	sync::mpsc::{self, Receiver, Sender},
 	thread::{self, JoinHandle},
@@ -11,7 +12,8 @@ use chrono::DateTime;
 use crate::{
 	mastodon::{
 		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification,
-		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusAction, StatusContext,
+		NotificationRequest, PostSubmission, Relationship, SearchResults, SearchType, Status, StatusAction,
+		StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -253,11 +255,39 @@ pub enum NetworkCommand {
 	FetchInstanceInfo,
 	FetchMarkers,
 	FetchNotificationPolicy,
+	FetchFilters,
+	/// Makes the change, then fetches the filters again.
+	ChangeFilter(FilterChange),
+	FetchMessageRequests,
+	/// Accepts or dismisses the request at `index` in the message requests dialog, then fetches the
+	/// requests again.
+	AnswerMessageRequest {
+		id: String,
+		index: usize,
+		accept: bool,
+	},
 	SaveMarker {
 		timeline: &'static str,
 		last_read_id: String,
 	},
 	Shutdown,
+}
+
+#[derive(Debug, Clone)]
+pub enum FilterChange {
+	/// Adds a filter, or replaces the one with `id`.
+	Save {
+		id: Option<String>,
+		title: String,
+		contexts: Vec<FilterContext>,
+		action: FilterAction,
+		/// (id, keyword, whole word, destroy). New keywords have no id.
+		keywords: Vec<(String, String, bool, bool)>,
+		expires_in: Option<u32>,
+	},
+	Delete {
+		id: String,
+	},
 }
 
 #[derive(Debug, Clone)]
@@ -336,6 +366,16 @@ pub enum NetworkResponse {
 	InstanceInfoFetched(Result<InstanceInfo>),
 	MarkersLoaded(Result<crate::mastodon::Markers>),
 	NotificationPolicyLoaded(Result<crate::mastodon::NotificationPolicy>),
+	FiltersLoaded {
+		/// How the change before the fetch went, if there was one.
+		changed: Option<Result<()>>,
+		result: Result<Vec<Filter>>,
+	},
+	MessageRequestsLoaded {
+		/// The index and kind of the answer before the fetch, and how it went, if there was one.
+		answered: Option<(usize, bool, Result<()>)>,
+		result: Result<Vec<NotificationRequest>>,
+	},
 	TagUnfollowed {
 		name: String,
 		result: Result<crate::mastodon::Tag>,
@@ -564,9 +604,67 @@ pub fn start_network(client: MastodonClient, access_token: String, ui_waker: UiW
 	let (cmd_tx, cmd_rx) = mpsc::channel();
 	let (resp_tx, resp_rx) = mpsc::channel();
 	let thread = thread::spawn(move || {
-		network_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker);
+		dispatch_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker);
 	});
 	NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread }
+}
+
+/// How many timeline loads can run at once.
+const LOAD_LANES: u64 = 4;
+
+/// Timeline loads run on lanes of their own, so a slow timeline holds up neither the other
+/// timelines nor actions such as favoriting. Every load of one timeline goes down the same lane,
+/// so its pages arrive in the order they were asked for. Everything else runs in order on one
+/// more lane.
+fn dispatch_loop(
+	client: &MastodonClient,
+	access_token: &str,
+	commands: &Receiver<NetworkCommand>,
+	responses: &Sender<NetworkResponse>,
+	ui_waker: &UiWaker,
+) {
+	let spawn_lane = || {
+		let (lane_tx, lane_rx) = mpsc::channel();
+		let client = client.clone();
+		let access_token = access_token.to_string();
+		let responses = responses.clone();
+		let ui_waker = ui_waker.clone();
+		thread::spawn(move || network_loop(&client, &access_token, &lane_rx, &responses, &ui_waker));
+		lane_tx
+	};
+	let actions = spawn_lane();
+	let loads: Vec<Sender<NetworkCommand>> = (0..LOAD_LANES).map(|_| spawn_lane()).collect();
+	// Returning drops the lanes' senders, which stops them.
+	while let Ok(command) = commands.recv() {
+		match command {
+			NetworkCommand::Shutdown => break,
+			// Fetched here, before any later command is passed on, so the markers arrive ahead of
+			// the timelines asked for after them, which restoring the reading position needs.
+			NetworkCommand::FetchMarkers => fetch_markers(client, access_token, responses, ui_waker),
+			command => {
+				let lane = load_lane(&command).and_then(|lane| loads.get(lane)).unwrap_or(&actions);
+				let _ = lane.send(command);
+			}
+		}
+	}
+}
+
+/// The lane a timeline load runs on, or `None` for any other command.
+fn load_lane(command: &NetworkCommand) -> Option<usize> {
+	let mut hasher = DefaultHasher::new();
+	match command {
+		NetworkCommand::FetchTimeline { timeline_type, .. } | NetworkCommand::FetchThread { timeline_type, .. } => {
+			timeline_type.hash(&mut hasher);
+		}
+		NetworkCommand::Search { query, search_type, .. } => (query, search_type).hash(&mut hasher),
+		_ => return None,
+	}
+	usize::try_from(hasher.finish() % LOAD_LANES).ok()
+}
+
+fn fetch_markers(client: &MastodonClient, access_token: &str, responses: &Sender<NetworkResponse>, ui_waker: &UiWaker) {
+	let result = client.get_markers(access_token);
+	send_response(responses, ui_waker, NetworkResponse::MarkersLoaded(result));
 }
 
 fn send_response(responses: &Sender<NetworkResponse>, ui_waker: &UiWaker, response: NetworkResponse) {
@@ -1140,13 +1238,59 @@ fn network_loop(
 				let result = client.get_notification_policy(access_token);
 				send_response(responses, ui_waker, NetworkResponse::NotificationPolicyLoaded(result));
 			}
+			Ok(NetworkCommand::FetchFilters) => {
+				let result = client.get_filters(access_token);
+				send_response(responses, ui_waker, NetworkResponse::FiltersLoaded { changed: None, result });
+			}
+			Ok(NetworkCommand::ChangeFilter(change)) => {
+				let changed = match change {
+					FilterChange::Save { id: None, title, contexts, action, keywords, expires_in } => {
+						let keywords: Vec<(String, bool)> = keywords
+							.into_iter()
+							.filter(|(_, _, _, destroy)| !destroy)
+							.map(|(_, keyword, whole_word, _)| (keyword, whole_word))
+							.collect();
+						client
+							.create_filter(access_token, &title, &contexts, &action, &keywords, expires_in)
+							.map(|_| ())
+					}
+					FilterChange::Save { id: Some(id), title, contexts, action, keywords, expires_in } => {
+						let keywords: Vec<(&str, &str, bool, bool)> = keywords
+							.iter()
+							.map(|(id, keyword, whole_word, destroy)| {
+								(id.as_str(), keyword.as_str(), *whole_word, *destroy)
+							})
+							.collect();
+						client
+							.update_filter(access_token, &id, &title, &contexts, &action, &keywords, expires_in)
+							.map(|_| ())
+					}
+					FilterChange::Delete { id } => client.delete_filter(access_token, &id),
+				};
+				let result = client.get_filters(access_token);
+				send_response(responses, ui_waker, NetworkResponse::FiltersLoaded { changed: Some(changed), result });
+			}
+			Ok(NetworkCommand::FetchMessageRequests) => {
+				let result = client.get_notification_requests(access_token);
+				send_response(responses, ui_waker, NetworkResponse::MessageRequestsLoaded { answered: None, result });
+			}
+			Ok(NetworkCommand::AnswerMessageRequest { id, index, accept }) => {
+				let answer = if accept {
+					client.accept_notification_request(access_token, &id)
+				} else {
+					client.dismiss_notification_request(access_token, &id)
+				};
+				let result = client.get_notification_requests(access_token);
+				send_response(
+					responses,
+					ui_waker,
+					NetworkResponse::MessageRequestsLoaded { answered: Some((index, accept, answer)), result },
+				);
+			}
 			Ok(NetworkCommand::FetchInstanceInfo) => {
 				send_response(responses, ui_waker, NetworkResponse::InstanceInfoFetched(client.get_instance_info()));
 			}
-			Ok(NetworkCommand::FetchMarkers) => {
-				let result = client.get_markers(access_token);
-				send_response(responses, ui_waker, NetworkResponse::MarkersLoaded(result));
-			}
+			Ok(NetworkCommand::FetchMarkers) => fetch_markers(client, access_token, responses, ui_waker),
 			Ok(NetworkCommand::SaveMarker { timeline, last_read_id }) => {
 				let _ = client.set_marker(access_token, timeline, &last_read_id);
 			}

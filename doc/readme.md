@@ -273,6 +273,7 @@ You can't change these keys:
 - `Home` and `End`: go to the first or last entry.
 - `Page Up` and `Page Down`: move 20 entries.
 - `Ctrl+1` through `Ctrl+9`: switch to timeline 1 through 9.
+- `Ctrl+Up Arrow` and `Ctrl+Down Arrow` in the Timelines list: move the selected timeline up or down the list.
 - `1` through `9`: switch to timeline 1 through 9. Quick Action Keys mode only.
 - `Shift+F10` or the Applications key: open the actions menu for the selected post, or for the selected user in the followers and following dialogs.
 

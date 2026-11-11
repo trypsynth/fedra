@@ -118,7 +118,15 @@ pub enum UiCommand {
 	Search,
 	CheckForUpdates,
 	ManageFilters,
+	FiltersLoaded {
+		changed: Option<anyhow::Result<()>>,
+		result: anyhow::Result<Vec<crate::mastodon::Filter>>,
+	},
 	MessageRequests,
+	MessageRequestsLoaded {
+		answered: Option<(usize, bool, anyhow::Result<()>)>,
+		result: anyhow::Result<Vec<crate::mastodon::NotificationRequest>>,
+	},
 	ManageLists,
 	ManageListsDialogClosed,
 	ManageListMembersDialogClosed,
@@ -307,6 +315,10 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ManageListMembersDialogClosed => settings::manage_list_members_dialog_closed(ctx),
 		UiCommand::ManageFilters => settings::manage_filters(ctx),
 		UiCommand::MessageRequests => settings::message_requests(ctx),
+		UiCommand::FiltersLoaded { changed, result } => settings::filters_loaded(ctx, changed, result),
+		UiCommand::MessageRequestsLoaded { answered, result } => {
+			settings::message_requests_loaded(ctx, answered, result);
+		}
 		UiCommand::ManageLists => settings::manage_lists(ctx),
 		UiCommand::AddUserToList(account_id) => user::add_user_to_list(ctx, account_id),
 		UiCommand::RemoveUserFromList(account_id) => user::remove_user_from_list(ctx, account_id),
