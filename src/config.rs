@@ -109,6 +109,14 @@ pub struct Config {
 	legacy_saved_selected_post_id: Option<String>,
 	#[serde(default)]
 	pub saved_window_hidden: bool,
+	#[serde(default = "default_spell_check")]
+	pub spell_check: bool,
+	/// Say "Misspelled: word" when a word is finished wrongly. Off by default.
+	#[serde(default)]
+	pub spell_check_announce: bool,
+	/// A spell checker language tag, such as `en-GB`. Empty means the Windows language.
+	#[serde(default)]
+	pub spell_language: String,
 }
 
 impl Config {
@@ -999,6 +1007,10 @@ const fn default_enter_to_send() -> bool {
 	true
 }
 
+const fn default_spell_check() -> bool {
+	true
+}
+
 const fn default_always_show_link_dialog() -> bool {
 	false
 }
@@ -1117,6 +1129,9 @@ impl Default for Config {
 			check_for_updates_on_startup: true,
 			start_maximized: false,
 			update_channel: UpdateChannel::default(),
+			spell_check: true,
+			spell_check_announce: false,
+			spell_language: String::new(),
 			legacy_hotkey: None,
 			global_keys: false,
 			repeat_at_timeline_edges: true,

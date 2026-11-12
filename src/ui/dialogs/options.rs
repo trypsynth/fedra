@@ -9,6 +9,7 @@ use crate::{
 		NotificationPreference, PerTimelineTemplates, PostTemplates, SortOrder,
 	},
 	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE},
+	ui::spell_check,
 };
 
 /// Asks which notification types show in timelines and which of them alert, returning the hidden
@@ -115,6 +116,9 @@ pub struct OptionsDialogInput {
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
 	pub window_title_template: String,
+	pub spell_check: bool,
+	pub spell_check_announce: bool,
+	pub spell_language: String,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -149,6 +153,9 @@ pub struct OptionsDialogResult {
 	pub filters: crate::config::TimelineFilters,
 	pub find_loading_mode: crate::config::FindLoadingMode,
 	pub window_title_template: String,
+	pub spell_check: bool,
+	pub spell_check_announce: bool,
+	pub spell_language: String,
 }
 
 type TemplateState = HashMap<String, (String, String, String, String)>;
@@ -185,8 +192,11 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		filters,
 		find_loading_mode,
 		window_title_template,
+		spell_check: spell_check_on,
+		spell_check_announce,
+		spell_language,
 	} = input;
-	let dialog = Dialog::builder(frame, "Options").with_size(500, 520).build();
+	let dialog = Dialog::builder(frame, "Options").with_size(500, 600).build();
 	let panel = Panel::builder(&dialog).build();
 	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let notebook = Notebook::builder(&panel).build();
@@ -251,6 +261,36 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&notification_types_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	let spell_languages = spell_check::languages();
+	let spell_check_checkbox = CheckBox::builder(&general_panel)
+		.with_label("Check s&pelling in the post box (F7 goes to the next mistake)")
+		.build();
+	spell_check_checkbox.set_value(spell_check_on);
+	let spell_announce_checkbox =
+		CheckBox::builder(&general_panel).with_label("Say when a word you type is mis&spelled").build();
+	spell_announce_checkbox.set_value(spell_check_announce);
+	let spelling_label = StaticText::builder(&general_panel).with_label("&Spelling language:").build();
+	let mut spelling_choices = vec!["Windows default".to_string()];
+	spelling_choices.extend(spell_languages.iter().map(|(_, name)| name.clone()));
+	let spelling_choice = Choice::builder(&general_panel).with_choices(spelling_choices).build();
+	let spelling_index = spell_languages
+		.iter()
+		.position(|(tag, _)| tag.eq_ignore_ascii_case(&spell_language))
+		.map_or(0, |i| u32::try_from(i).unwrap_or(0) + 1);
+	spelling_choice.set_selection(spelling_index);
+	let spelling_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	spelling_sizer.add(&spelling_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	spelling_sizer.add(&spelling_choice, 1, SizerFlag::Expand, 0);
+	if !spell_check::AVAILABLE {
+		// Kept so the saved values carry over, but there's nothing to set them on.
+		spell_check_checkbox.show(false);
+		spell_announce_checkbox.show(false);
+		spelling_label.show(false);
+		spelling_choice.show(false);
+	}
+	general_sizer.add(&spell_check_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add(&spell_announce_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add_sizer(&spelling_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let shortcuts_button = Button::builder(&general_panel).with_label("Customize &Keyboard Shortcuts...").build();
 	let current_shortcuts = Rc::new(RefCell::new(shortcuts));
 	let shortcuts_clone = current_shortcuts.clone();
@@ -830,6 +870,14 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		PostTemplates { per_timeline }
 	};
 	let options = OptionsDialogResult {
+		spell_check: spell_check_checkbox.get_value(),
+		spell_check_announce: spell_announce_checkbox.get_value(),
+		spell_language: spelling_choice
+			.get_selection()
+			.and_then(|i| (i as usize).checked_sub(1))
+			.and_then(|i| spell_languages.get(i))
+			.map(|(tag, _)| tag.clone())
+			.unwrap_or_default(),
 		enter_to_send: enter_checkbox.get_value(),
 		always_show_link_dialog: link_checkbox.get_value(),
 		show_link_previews: previews_checkbox.get_value(),
