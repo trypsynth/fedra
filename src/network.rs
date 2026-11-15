@@ -14,7 +14,7 @@ use wx_utils::tasks::{Background, Queue, background_blocking};
 use crate::{
 	mastodon::{
 		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification,
-		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusContext,
+		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusContext, Tag,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -103,62 +103,6 @@ pub enum NetworkCommand {
 		poll: Option<PollData>,
 		scheduled_at: Option<String>,
 	},
-	FollowTag {
-		name: String,
-	},
-	UnfollowTag {
-		name: String,
-	},
-	FollowAccount {
-		account_id: String,
-		target_name: String,
-		reblogs: bool,
-		notify: bool,
-		action: RelationshipAction,
-	},
-	ToggleFollow {
-		account_id: Option<String>,
-		acct: String,
-		target_name: String,
-	},
-	UnfollowAccount {
-		account_id: String,
-		target_name: String,
-		action: RelationshipAction,
-	},
-	AuthorizeFollowRequest {
-		account_id: String,
-		target_name: String,
-	},
-	RejectFollowRequest {
-		account_id: String,
-		target_name: String,
-	},
-	BlockAccount {
-		account_id: String,
-		target_name: String,
-	},
-	UnblockAccount {
-		account_id: String,
-		target_name: String,
-	},
-	MuteAccount {
-		account_id: String,
-		target_name: String,
-	},
-	UnmuteAccount {
-		account_id: String,
-		target_name: String,
-	},
-	FetchRelationship {
-		account_id: String,
-	},
-	FetchAccount {
-		account_id: String,
-	},
-	FetchTagsInfo {
-		names: Vec<String>,
-	},
 	VotePoll {
 		poll_id: String,
 		choices: Vec<usize>,
@@ -184,41 +128,6 @@ pub enum NetworkCommand {
 		search_type: SearchType,
 		limit: Option<u32>,
 		offset: Option<u32>,
-	},
-	FetchLists,
-	CreateList {
-		title: String,
-		policy: String,
-		exclusive: bool,
-	},
-	UpdateList {
-		id: String,
-		title: String,
-		policy: String,
-		exclusive: bool,
-	},
-	DeleteList {
-		id: String,
-	},
-	FetchListAccounts {
-		list_id: String,
-	},
-	FetchAccountLists {
-		account_id: String,
-	},
-	AddListAccount {
-		list_id: String,
-		account_id: String,
-	},
-	RemoveListAccount {
-		list_id: String,
-		account_id: String,
-	},
-	MuteTag {
-		name: String,
-	},
-	UnmuteTag {
-		name: String,
 	},
 	FetchInstanceInfo,
 	FetchMarkers,
@@ -264,111 +173,22 @@ pub struct PollData {
 
 #[derive(Debug)]
 pub enum NetworkResponse {
-	TimelineLoaded {
-		timeline_type: TimelineType,
-		result: Result<TimelineData>,
-		max_id: Option<String>,
-	},
-	StatusResolvedForThread {
-		result: Result<Status>,
-	},
-	StatusResolvedForQuote {
-		result: Result<Status>,
-	},
-	StatusSourceFetched {
-		status: Box<Status>,
-		result: Result<crate::mastodon::StatusSource>,
-	},
-	AccountLookupResult {
-		handle: String,
-		result: Result<Account>,
-	},
+	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
+	StatusResolvedForThread { result: Result<Status> },
+	StatusResolvedForQuote { result: Result<Status> },
+	StatusSourceFetched { status: Box<Status>, result: Result<crate::mastodon::StatusSource> },
+	AccountLookupResult { handle: String, result: Result<Account> },
 	PostComplete(Result<PostSubmission>),
 	Replied(Result<PostSubmission>),
-	StatusDeleted {
-		status_id: String,
-		result: Result<()>,
-	},
-	StatusEdited {
-		_status_id: String,
-		result: Result<Status>,
-	},
-	TagFollowed {
-		name: String,
-		result: Result<crate::mastodon::Tag>,
-	},
+	StatusDeleted { status_id: String, result: Result<()> },
+	StatusEdited { _status_id: String, result: Result<Status> },
 	InstanceInfoFetched(Result<InstanceInfo>),
 	MarkersLoaded(Result<crate::mastodon::Markers>),
 	NotificationPolicyLoaded(Result<crate::mastodon::NotificationPolicy>),
-	TagUnfollowed {
-		name: String,
-		result: Result<crate::mastodon::Tag>,
-	},
-	RelationshipUpdated {
-		target_name: String,
-		action: RelationshipAction,
-		result: Result<crate::mastodon::Relationship>,
-	},
-	RelationshipLoaded {
-		_account_id: String,
-		result: Result<crate::mastodon::Relationship>,
-	},
-	AccountFetched {
-		result: Result<Account>,
-	},
-	PollVoted {
-		result: Result<crate::mastodon::Poll>,
-	},
-	TagsInfoFetched {
-		result: Result<Vec<crate::mastodon::Tag>>,
-	},
-	TagMuted {
-		name: String,
-		result: Result<()>,
-	},
-	TagUnmuted {
-		name: String,
-		result: Result<()>,
-	},
-	CredentialsFetched {
-		result: Result<Account>,
-		max_profile_fields: Option<usize>,
-	},
-	ProfileUpdated {
-		result: Result<Account>,
-	},
-	SearchLoaded {
-		query: String,
-		search_type: SearchType,
-		result: Result<SearchResults>,
-		offset: Option<u32>,
-	},
-	ListsFetched {
-		result: Result<Vec<crate::mastodon::List>>,
-	},
-	ListCreated {
-		result: Result<crate::mastodon::List>,
-	},
-	ListUpdated {
-		result: Result<crate::mastodon::List>,
-	},
-	ListDeleted {
-		result: Result<()>,
-	},
-	ListAccountsFetched {
-		list_id: String,
-		result: Result<Vec<Account>>,
-	},
-	AccountListsFetched {
-		account_id: String,
-		result: Result<Vec<crate::mastodon::List>>,
-	},
-	ListAccountAdded {
-		result: Result<()>,
-	},
-	ListAccountRemoved {
-		result: Result<()>,
-	},
+	PollVoted { result: Result<crate::mastodon::Poll> },
+	CredentialsFetched { result: Result<Account>, max_profile_fields: Option<usize> },
+	ProfileUpdated { result: Result<Account> },
+	SearchLoaded { query: String, search_type: SearchType, result: Result<SearchResults>, offset: Option<u32> },
 }
 
 #[derive(Debug)]
@@ -625,6 +445,127 @@ pub fn resolve_status(client: &MastodonClient, access_token: &str, url: &str) ->
 		.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"))
 }
 
+/// Whether a followed account's boosts and notifications come through.
+#[derive(Debug, Clone, Copy)]
+pub struct FollowOptions {
+	pub reblogs: bool,
+	pub notify: bool,
+}
+
+/// A plain follow's: boosts come through, notifications don't.
+impl Default for FollowOptions {
+	fn default() -> Self {
+		Self { reblogs: true, notify: false }
+	}
+}
+
+/// Changes the relationship with `account_id` as `action` says. The follow actions also set the
+/// account's `options`, which the others leave as they are.
+pub fn change_relationship(
+	client: &MastodonClient,
+	access_token: &str,
+	account_id: &str,
+	action: RelationshipAction,
+	options: FollowOptions,
+) -> Result<Relationship> {
+	match action {
+		RelationshipAction::Follow
+		| RelationshipAction::ShowBoosts
+		| RelationshipAction::HideBoosts
+		| RelationshipAction::EnableNotifications
+		| RelationshipAction::DisableNotifications => {
+			client.follow_account_with_options(access_token, account_id, options.reblogs, options.notify)
+		}
+		RelationshipAction::Unfollow | RelationshipAction::CancelFollowRequest => {
+			client.unfollow_account(access_token, account_id)
+		}
+		RelationshipAction::AcceptFollowRequest => client.authorize_follow_request(access_token, account_id),
+		RelationshipAction::RejectFollowRequest => client.reject_follow_request(access_token, account_id),
+		RelationshipAction::Block => client.block_account(access_token, account_id),
+		RelationshipAction::Unblock => client.unblock_account(access_token, account_id),
+		RelationshipAction::Mute => client.mute_account(access_token, account_id),
+		RelationshipAction::Unmute => client.unmute_account(access_token, account_id),
+		RelationshipAction::ToggleFollow => toggle_follow(client, access_token, Some(account_id.to_owned()), "").1,
+	}
+}
+
+/// Follows the account, or unfollows it or cancels the request if it's already followed or asked
+/// for. `account_id` is looked up from `acct` when it isn't known. Gives back what was done.
+pub fn toggle_follow(
+	client: &MastodonClient,
+	access_token: &str,
+	account_id: Option<String>,
+	acct: &str,
+) -> (RelationshipAction, Result<Relationship>) {
+	let current = account_id
+		.map_or_else(|| client.lookup_account(access_token, acct).map(|account| account.id), Ok)
+		.and_then(|id| Ok((fetch_relationship(client, access_token, &id)?, id)));
+	match current {
+		Ok((rel, id)) if rel.following => (RelationshipAction::Unfollow, client.unfollow_account(access_token, &id)),
+		Ok((rel, id)) if rel.requested => {
+			(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
+		}
+		Ok((_, id)) => (RelationshipAction::Follow, client.follow_account_with_options(access_token, &id, true, false)),
+		Err(err) => (RelationshipAction::ToggleFollow, Err(err)),
+	}
+}
+
+pub fn fetch_relationship(client: &MastodonClient, access_token: &str, account_id: &str) -> Result<Relationship> {
+	client.get_relationships(access_token, slice::from_ref(&account_id.to_owned())).and_then(first_relationship_result)
+}
+
+/// The tags named, skipping any that can't be fetched, each marked with whether Fedra's filter
+/// mutes it.
+pub fn fetch_tags(client: &MastodonClient, access_token: &str, names: &[String]) -> Vec<Tag> {
+	let mut tags: Vec<Tag> = names.iter().filter_map(|name| client.get_tag(access_token, name).ok()).collect();
+	if let Ok(filters) = client.get_filters(access_token)
+		&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
+	{
+		for tag in &mut tags {
+			let keyword = format!("#{}", tag.name);
+			tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
+		}
+	}
+	tags
+}
+
+pub fn mute_tag(client: &MastodonClient, access_token: &str, name: &str) -> Result<()> {
+	let filters = client.get_filters(access_token)?;
+	let keyword = format!("#{name}");
+	if let Some(filter) = filters.into_iter().find(is_muted_tags_filter) {
+		if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+			client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
+		}
+	} else {
+		client.create_filter(
+			access_token,
+			MUTED_TAGS_FILTER,
+			&[
+				FilterContext::Home,
+				FilterContext::Notifications,
+				FilterContext::Public,
+				FilterContext::Thread,
+				FilterContext::Account,
+			],
+			&FilterAction::Hide,
+			&[(keyword, true)],
+			None,
+		)?;
+	}
+	Ok(())
+}
+
+pub fn unmute_tag(client: &MastodonClient, access_token: &str, name: &str) -> Result<()> {
+	let filters = client.get_filters(access_token)?;
+	let keyword = format!("#{name}");
+	for filter in filters.iter().filter(|f| is_muted_tags_filter(f)) {
+		for kw in filter.keywords.iter().filter(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+			client.delete_filter_keyword(access_token, &kw.id)?;
+		}
+	}
+	Ok(())
+}
+
 /// Makes the request `command` stands for, and gives back the answer to hand to the UI, if any.
 fn run_command(client: &MastodonClient, access_token: &str, command: NetworkCommand) -> Option<NetworkResponse> {
 	match command {
@@ -808,147 +749,6 @@ fn run_command(client: &MastodonClient, access_token: &str, command: NetworkComm
 			);
 			Some(NetworkResponse::Replied(result))
 		}
-		NetworkCommand::FollowTag { name } => {
-			let result = client.follow_tag(access_token, &name);
-			Some(NetworkResponse::TagFollowed { name, result })
-		}
-		NetworkCommand::UnfollowTag { name } => {
-			let result = client.unfollow_tag(access_token, &name);
-			Some(NetworkResponse::TagUnfollowed { name, result })
-		}
-		NetworkCommand::FetchTagsInfo { names } => {
-			let mut tags = Vec::new();
-			for name in &names {
-				if let Ok(tag) = client.get_tag(access_token, name) {
-					tags.push(tag);
-				}
-			}
-			if let Ok(filters) = client.get_filters(access_token)
-				&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
-			{
-				for tag in &mut tags {
-					let keyword = format!("#{}", tag.name);
-					tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
-				}
-			}
-			let result = Ok(tags);
-			Some(NetworkResponse::TagsInfoFetched { result })
-		}
-		NetworkCommand::MuteTag { name } => {
-			let result = (|| -> Result<()> {
-				let filters = client.get_filters(access_token)?;
-				let keyword = format!("#{name}");
-				if let Some(filter) = filters.into_iter().find(is_muted_tags_filter) {
-					if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
-						client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
-					}
-				} else {
-					client.create_filter(
-						access_token,
-						MUTED_TAGS_FILTER,
-						&[
-							FilterContext::Home,
-							FilterContext::Notifications,
-							FilterContext::Public,
-							FilterContext::Thread,
-							FilterContext::Account,
-						],
-						&FilterAction::Hide,
-						&[(keyword, true)],
-						None,
-					)?;
-				}
-				Ok(())
-			})();
-			Some(NetworkResponse::TagMuted { name, result })
-		}
-		NetworkCommand::UnmuteTag { name } => {
-			let result = (|| -> Result<()> {
-				let filters = client.get_filters(access_token)?;
-				let keyword = format!("#{name}");
-				for filter in filters.iter().filter(|f| is_muted_tags_filter(f)) {
-					for kw in filter.keywords.iter().filter(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
-						client.delete_filter_keyword(access_token, &kw.id)?;
-					}
-				}
-				Ok(())
-			})();
-			Some(NetworkResponse::TagUnmuted { name, result })
-		}
-		NetworkCommand::FollowAccount { account_id, target_name, reblogs, notify, action } => {
-			let result = client.follow_account_with_options(access_token, &account_id, reblogs, notify);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
-		}
-		NetworkCommand::ToggleFollow { account_id, acct, target_name } => {
-			let current = account_id
-				.map_or_else(|| client.lookup_account(access_token, &acct).map(|account| account.id), Ok)
-				.and_then(|id| {
-					let rel = client
-						.get_relationships(access_token, slice::from_ref(&id))?
-						.pop()
-						.context("Server returned no relationship")?;
-					Ok((id, rel))
-				});
-			let (action, result) = match current {
-				Ok((id, rel)) if rel.following => {
-					(RelationshipAction::Unfollow, client.unfollow_account(access_token, &id))
-				}
-				Ok((id, rel)) if rel.requested => {
-					(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
-				}
-				Ok((id, _)) => {
-					(RelationshipAction::Follow, client.follow_account_with_options(access_token, &id, true, false))
-				}
-				Err(err) => (RelationshipAction::ToggleFollow, Err(err)),
-			};
-			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
-		}
-		NetworkCommand::UnfollowAccount { account_id, target_name, action } => {
-			let result = client.unfollow_account(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
-		}
-		NetworkCommand::AuthorizeFollowRequest { account_id, target_name } => {
-			let result = client.authorize_follow_request(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated {
-				target_name,
-				action: RelationshipAction::AcceptFollowRequest,
-				result,
-			})
-		}
-		NetworkCommand::RejectFollowRequest { account_id, target_name } => {
-			let result = client.reject_follow_request(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated {
-				target_name,
-				action: RelationshipAction::RejectFollowRequest,
-				result,
-			})
-		}
-		NetworkCommand::BlockAccount { account_id, target_name } => {
-			let result = client.block_account(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Block, result })
-		}
-		NetworkCommand::UnblockAccount { account_id, target_name } => {
-			let result = client.unblock_account(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unblock, result })
-		}
-		NetworkCommand::MuteAccount { account_id, target_name } => {
-			let result = client.mute_account(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Mute, result })
-		}
-		NetworkCommand::UnmuteAccount { account_id, target_name } => {
-			let result = client.unmute_account(access_token, &account_id);
-			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unmute, result })
-		}
-		NetworkCommand::FetchRelationship { account_id } => {
-			let result = client
-				.get_relationships(access_token, slice::from_ref(&account_id))
-				.and_then(first_relationship_result);
-			Some(NetworkResponse::RelationshipLoaded { _account_id: account_id, result })
-		}
-		NetworkCommand::FetchAccount { account_id } => {
-			let result = client.get_account(access_token, &account_id);
-			Some(NetworkResponse::AccountFetched { result })
-		}
 		NetworkCommand::VotePoll { poll_id, choices } => {
 			let result = client.vote_poll(access_token, &poll_id, &choices);
 			Some(NetworkResponse::PollVoted { result })
@@ -978,38 +778,6 @@ fn run_command(client: &MastodonClient, access_token: &str, command: NetworkComm
 		NetworkCommand::Search { query, search_type, limit, offset } => {
 			let result = client.search(access_token, &query, search_type, limit, offset);
 			Some(NetworkResponse::SearchLoaded { query, search_type, result, offset })
-		}
-		NetworkCommand::FetchLists => {
-			let result = client.get_lists(access_token);
-			Some(NetworkResponse::ListsFetched { result })
-		}
-		NetworkCommand::CreateList { title, policy, exclusive } => {
-			let result = client.create_list(access_token, &title, &policy, exclusive);
-			Some(NetworkResponse::ListCreated { result })
-		}
-		NetworkCommand::UpdateList { id, title, policy, exclusive } => {
-			let result = client.update_list(access_token, &id, &title, &policy, exclusive);
-			Some(NetworkResponse::ListUpdated { result })
-		}
-		NetworkCommand::DeleteList { id } => {
-			let result = client.delete_list(access_token, &id);
-			Some(NetworkResponse::ListDeleted { result })
-		}
-		NetworkCommand::FetchListAccounts { list_id } => {
-			let result = client.get_list_accounts(access_token, &list_id);
-			Some(NetworkResponse::ListAccountsFetched { list_id, result })
-		}
-		NetworkCommand::FetchAccountLists { account_id } => {
-			let result = client.get_account_lists(access_token, &account_id);
-			Some(NetworkResponse::AccountListsFetched { account_id, result })
-		}
-		NetworkCommand::AddListAccount { list_id, account_id } => {
-			let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-			Some(NetworkResponse::ListAccountAdded { result })
-		}
-		NetworkCommand::RemoveListAccount { list_id, account_id } => {
-			let result = client.remove_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-			Some(NetworkResponse::ListAccountRemoved { result })
 		}
 		NetworkCommand::FetchNotificationPolicy => {
 			let result = client.get_notification_policy(access_token);

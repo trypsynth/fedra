@@ -5,8 +5,9 @@ use wxdragon::prelude::*;
 use super::FollowList;
 use crate::{
 	mastodon::{Account, Relationship},
-	network::{NetworkCommand, NetworkSender, RelationshipAction},
-	ui::commands::UiCommand,
+	network::{FollowOptions, RelationshipAction, change_relationship},
+	responses::relationship_updated,
+	ui::commands::{Requests, UiCommand},
 	ui_wake::UiCommandSender,
 };
 
@@ -129,21 +130,14 @@ pub fn handle_action(
 	account: &Account,
 	relationship: Option<&Relationship>,
 	parent: &dyn WxWidget,
-	net_tx: &NetworkSender,
+	requests: &Requests,
 	ui_tx: &UiCommandSender,
 ) {
-	let account_id = account.id.clone();
-	let target_name = account.display_name_or_username().to_string();
-	let current_reblogs = relationship.is_none_or(|r| r.showing_reblogs);
-	let current_notifying = relationship.is_some_and(|r| r.notifying);
-	let follow = |reblogs, notify, action| NetworkCommand::FollowAccount {
-		account_id: account_id.clone(),
-		target_name: target_name.clone(),
-		reblogs,
-		notify,
-		action,
+	let current = FollowOptions {
+		reblogs: relationship.is_none_or(|r| r.showing_reblogs),
+		notify: relationship.is_some_and(|r| r.notifying),
 	};
-	let cmd = match id {
+	let (action, options) = match id {
 		ID_ACTION_OPEN_BROWSER => {
 			let _ = wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
 			return;
@@ -154,11 +148,11 @@ pub fn handle_action(
 			return;
 		}
 		ID_ACTION_ADD_TO_LIST => {
-			let _ = ui_tx.send(UiCommand::AddUserToList(account_id));
+			let _ = ui_tx.send(UiCommand::AddUserToList(account.id.clone()));
 			return;
 		}
 		ID_ACTION_REMOVE_FROM_LIST => {
-			let _ = ui_tx.send(UiCommand::RemoveUserFromList(account_id));
+			let _ = ui_tx.send(UiCommand::RemoveUserFromList(account.id.clone()));
 			return;
 		}
 		ID_ACTION_SET_ALIAS => {
@@ -169,34 +163,38 @@ pub fn handle_action(
 			let _ = ui_tx.send(UiCommand::SendDirectMessage(Box::new(account.clone())));
 			return;
 		}
-		ID_ACTION_FOLLOW => follow(true, false, RelationshipAction::Follow),
-		ID_ACTION_SHOW_BOOSTS => follow(true, current_notifying, RelationshipAction::ShowBoosts),
-		ID_ACTION_HIDE_BOOSTS => follow(false, current_notifying, RelationshipAction::HideBoosts),
-		ID_ACTION_ENABLE_NOTIFICATIONS => follow(current_reblogs, true, RelationshipAction::EnableNotifications),
-		ID_ACTION_DISABLE_NOTIFICATIONS => follow(current_reblogs, false, RelationshipAction::DisableNotifications),
-		ID_ACTION_UNFOLLOW => NetworkCommand::UnfollowAccount {
-			account_id,
-			target_name,
-			action: if relationship.is_some_and(|r| !r.following && r.requested) {
-				RelationshipAction::CancelFollowRequest
-			} else {
-				RelationshipAction::Unfollow
-			},
-		},
+		ID_ACTION_FOLLOW => (RelationshipAction::Follow, FollowOptions::default()),
+		ID_ACTION_SHOW_BOOSTS => (RelationshipAction::ShowBoosts, FollowOptions { reblogs: true, ..current }),
+		ID_ACTION_HIDE_BOOSTS => (RelationshipAction::HideBoosts, FollowOptions { reblogs: false, ..current }),
+		ID_ACTION_ENABLE_NOTIFICATIONS => {
+			(RelationshipAction::EnableNotifications, FollowOptions { notify: true, ..current })
+		}
+		ID_ACTION_DISABLE_NOTIFICATIONS => {
+			(RelationshipAction::DisableNotifications, FollowOptions { notify: false, ..current })
+		}
+		ID_ACTION_UNFOLLOW if relationship.is_some_and(|r| !r.following && r.requested) => {
+			(RelationshipAction::CancelFollowRequest, current)
+		}
+		ID_ACTION_UNFOLLOW => (RelationshipAction::Unfollow, current),
 		ID_ACTION_BLOCK => {
 			if !wx_utils::confirm(parent, "Are you sure you want to block this user?", "Block User") {
 				return;
 			}
-			NetworkCommand::BlockAccount { account_id, target_name }
+			(RelationshipAction::Block, current)
 		}
-		ID_ACTION_UNBLOCK => NetworkCommand::UnblockAccount { account_id, target_name },
-		ID_ACTION_MUTE => NetworkCommand::MuteAccount { account_id, target_name },
-		ID_ACTION_UNMUTE => NetworkCommand::UnmuteAccount { account_id, target_name },
-		ID_ACTION_ACCEPT_FOLLOW_REQUEST => NetworkCommand::AuthorizeFollowRequest { account_id, target_name },
-		ID_ACTION_REJECT_FOLLOW_REQUEST => NetworkCommand::RejectFollowRequest { account_id, target_name },
+		ID_ACTION_UNBLOCK => (RelationshipAction::Unblock, current),
+		ID_ACTION_MUTE => (RelationshipAction::Mute, current),
+		ID_ACTION_UNMUTE => (RelationshipAction::Unmute, current),
+		ID_ACTION_ACCEPT_FOLLOW_REQUEST => (RelationshipAction::AcceptFollowRequest, current),
+		ID_ACTION_REJECT_FOLLOW_REQUEST => (RelationshipAction::RejectFollowRequest, current),
 		_ => return,
 	};
-	net_tx.send(cmd);
+	let account_id = account.id.clone();
+	let target_name = account.display_name_or_username().to_string();
+	requests.request(
+		move |client, token| change_relationship(client, token, &account_id, action, options),
+		move |ctx, result| relationship_updated(ctx, &target_name, action, result),
+	);
 }
 
 pub fn setup_actions_button(
@@ -204,7 +202,7 @@ pub fn setup_actions_button(
 	button: Button,
 	account: Rc<RefCell<Account>>,
 	relationship: Rc<RefCell<Option<Relationship>>>,
-	net_tx: NetworkSender,
+	requests: Requests,
 	ui_tx: UiCommandSender,
 ) {
 	let relationship_click = relationship.clone();
@@ -216,6 +214,6 @@ pub fn setup_actions_button(
 		// Copied out so nothing stays borrowed while the block confirmation runs its own event loop.
 		let account = account.borrow().clone();
 		let relationship = relationship.borrow().clone();
-		handle_action(event.get_id(), &account, relationship.as_ref(), &panel, &net_tx, &ui_tx);
+		handle_action(event.get_id(), &account, relationship.as_ref(), &panel, &requests, &ui_tx);
 	});
 }

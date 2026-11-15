@@ -5,9 +5,12 @@ use super::NetworkResponseContext;
 use crate::{
 	AppState, UiCommand,
 	mastodon::{Account, InstanceInfo, Relationship},
-	network::{NetworkCommand, RelationshipAction},
+	network::{NetworkCommand, RelationshipAction, fetch_relationship},
 	timeline::TimelineType,
-	ui::dialogs::{self, UserLookupAction},
+	ui::{
+		commands::Requests,
+		dialogs::{self, UserLookupAction},
+	},
 };
 
 pub(super) fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
@@ -34,19 +37,18 @@ pub fn open_account(ctx: &mut NetworkResponseContext<'_>, account: &Account, act
 	match action {
 		UserLookupAction::Timeline => ctx.dispatch(UiCommand::OpenTimeline(timeline_type)),
 		UserLookupAction::Profile => {
-			let Some(net) = &ctx.state.network_handle else {
+			let Some(requests) = ctx.requests() else {
 				ctx.announce("Network not available");
 				return;
 			};
-			net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-			let net_tx = net.command_tx.clone();
+			fill_in_profile(&requests, &account.id, false);
 			let ui_tx_timeline = ctx.ui_tx.clone();
 			let ui_tx_close = ctx.ui_tx.clone();
 			let dlg = dialogs::ProfileDialog::new(
 				ctx.frame,
 				account.clone(),
 				ctx.state.current_user_id.as_deref(),
-				net_tx,
+				requests,
 				ctx.ui_tx.clone(),
 				move || {
 					let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -61,7 +63,32 @@ pub fn open_account(ctx: &mut NetworkResponseContext<'_>, account: &Account, act
 	}
 }
 
-pub(super) fn relationship_updated(
+/// Fills the open profile dialog in with the relationship to `account_id`, and with the account
+/// itself when `refresh_account` says what's shown may be out of date.
+pub fn fill_in_profile(requests: &Requests, account_id: &str, refresh_account: bool) {
+	let id = account_id.to_owned();
+	requests.request(
+		move |client, token| fetch_relationship(client, token, &id),
+		|ctx, result| {
+			if let (Ok(relationship), Some(dlg)) = (result, &ctx.state.profile_dialog) {
+				dlg.update_relationship(&relationship);
+			}
+		},
+	);
+	if refresh_account {
+		let id = account_id.to_owned();
+		requests.request(
+			move |client, token| client.get_account(token, &id),
+			|ctx, result| {
+				if let (Ok(account), Some(dlg)) = (result, &ctx.state.profile_dialog) {
+					dlg.update_account(&account);
+				}
+			},
+		);
+	}
+}
+
+pub fn relationship_updated(
 	ctx: &NetworkResponseContext<'_>,
 	target_name: &str,
 	action: RelationshipAction,

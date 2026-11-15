@@ -6,6 +6,7 @@ use crate::{
 	accounts::{apply_refresh_interval, apply_streaming_setting, update_window_title},
 	config::ContentWarningDisplay,
 	network::NetworkCommand,
+	responses::lists,
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, menu::relabel_menus, timeline_list::TimelineList},
 	ui_wake::UiCommandSender,
@@ -340,24 +341,19 @@ pub(super) fn message_requests(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn manage_lists(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let frame = ctx.frame;
-	let live_region = ctx.live_region;
-	let ui_tx = ctx.ui_tx;
-	if let Some(handle) = &state.network_handle {
-		if let Some(dlg) = &state.manage_lists_dialog {
-			dlg.show();
-		} else {
-			let net_tx = handle.command_tx.clone();
-			let ui_tx_close = ui_tx.clone();
-			let dlg = dialogs::ManageListsDialog::new(frame, Vec::new(), net_tx, move || {
-				let _ = ui_tx_close.send(UiCommand::ManageListsDialogClosed);
-			});
-			dlg.show();
-			state.manage_lists_dialog = Some(dlg);
-			handle.send(NetworkCommand::FetchLists);
-		}
-	} else {
-		live_region.announce("Network not available");
+	let Some(requests) = ctx.requests() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	if let Some(dlg) = &ctx.state.manage_lists_dialog {
+		dlg.show();
+		return;
 	}
+	let ui_tx_close = ctx.ui_tx.clone();
+	let dlg = dialogs::ManageListsDialog::new(ctx.frame, Vec::new(), requests.clone(), move || {
+		let _ = ui_tx_close.send(UiCommand::ManageListsDialogClosed);
+	});
+	dlg.show();
+	ctx.state.manage_lists_dialog = Some(dlg);
+	lists::fetch(&requests);
 }

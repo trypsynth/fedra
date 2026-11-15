@@ -3,8 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use wxdragon::prelude::*;
 
 use crate::{
-	network::{NetworkCommand, NetworkSender},
-	ui::dialogs::show_list_edit_dialog,
+	responses::lists,
+	ui::{commands::Requests, dialogs::show_list_edit_dialog},
 };
 
 #[derive(Clone)]
@@ -18,7 +18,7 @@ pub struct ManageListsDialog {
 }
 
 impl ManageListsDialog {
-	pub fn new<F>(frame: &Frame, lists: Vec<crate::mastodon::List>, net_tx: NetworkSender, on_close: F) -> Self
+	pub fn new<F>(frame: &Frame, lists: Vec<crate::mastodon::List>, requests: Requests, on_close: F) -> Self
 	where
 		F: Fn() + 'static + Clone,
 	{
@@ -63,57 +63,54 @@ impl ManageListsDialog {
 			members_btn_select.enable(has_selection);
 			remove_btn_select.enable(has_selection);
 		});
-		let net_tx_add = net_tx.clone();
+		let requests_add = requests.clone();
 		let dialog_add = handle.dialog;
 		add_button.on_click(move |_| {
 			if let Some((title, policy, exclusive)) = show_list_edit_dialog(&dialog_add, None, None, false) {
-				net_tx_add.send(NetworkCommand::CreateList { title, policy, exclusive });
+				lists::create(&requests_add, title, policy, exclusive);
 			}
 		});
 		let lists_edit = handle.lists.clone();
 		let list_ctrl_edit = handle.lists_ctrl;
-		let net_tx_edit = net_tx.clone();
+		let requests_edit = requests.clone();
 		let dialog_edit = handle.dialog;
 		edit_button.on_click(move |_| {
-			if let Some(sel) = list_ctrl_edit.get_selection() {
-				let idx = sel as usize;
-				let lists = lists_edit.borrow();
-				if let Some(list) = lists.get(idx)
-					&& let Some((title, policy, exclusive)) = show_list_edit_dialog(
-						&dialog_edit,
-						Some(&list.title),
-						list.replies_policy.as_deref(),
-						list.exclusive,
-					) {
-					net_tx_edit.send(NetworkCommand::UpdateList { id: list.id.clone(), title, policy, exclusive });
-				}
+			// Copied out so nothing stays borrowed while the edit dialog runs its own event loop, in
+			// which a refreshed set of lists can arrive.
+			let Some(list) =
+				list_ctrl_edit.get_selection().and_then(|sel| lists_edit.borrow().get(sel as usize).cloned())
+			else {
+				return;
+			};
+			if let Some((title, policy, exclusive)) =
+				show_list_edit_dialog(&dialog_edit, Some(&list.title), list.replies_policy.as_deref(), list.exclusive)
+			{
+				lists::update(&requests_edit, list.id, title, policy, exclusive);
 			}
 		});
 		let lists_members = handle.lists.clone();
 		let list_ctrl_members = handle.lists_ctrl;
-		let net_tx_members = net_tx.clone();
+		let requests_members = requests.clone();
 		members_button.on_click(move |_| {
-			if let Some(sel) = list_ctrl_members.get_selection() {
-				let idx = sel as usize;
-				let lists = lists_members.borrow();
-				if let Some(list) = lists.get(idx) {
-					net_tx_members.send(NetworkCommand::FetchListAccounts { list_id: list.id.clone() });
-				}
+			let list_id = list_ctrl_members
+				.get_selection()
+				.and_then(|sel| lists_members.borrow().get(sel as usize).map(|l| l.id.clone()));
+			if let Some(list_id) = list_id {
+				lists::fetch_members(&requests_members, list_id);
 			}
 		});
 		let lists_remove = handle.lists.clone();
 		let list_ctrl_remove = handle.lists_ctrl;
-		let net_tx_remove = net_tx;
 		let parent_remove = handle.dialog;
 		remove_button.on_click(move |_| {
-			if let Some(sel) = list_ctrl_remove.get_selection() {
-				let idx = sel as usize;
-				let lists = lists_remove.borrow();
-				if let Some(list) = lists.get(idx)
-					&& wx_utils::confirm(&parent_remove, "Are you sure you want to delete this list?", "Delete List")
-				{
-					net_tx_remove.send(NetworkCommand::DeleteList { id: list.id.clone() });
-				}
+			// Copied out so nothing stays borrowed while the confirmation runs its own event loop.
+			let list_id = list_ctrl_remove
+				.get_selection()
+				.and_then(|sel| lists_remove.borrow().get(sel as usize).map(|l| l.id.clone()));
+			if let Some(list_id) = list_id
+				&& wx_utils::confirm(&parent_remove, "Are you sure you want to delete this list?", "Delete List")
+			{
+				lists::delete(&requests, list_id);
 			}
 		});
 		let dlg_close = handle.dialog;

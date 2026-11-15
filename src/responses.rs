@@ -1,16 +1,20 @@
 mod accounts;
 mod helpers;
-mod lists;
+pub mod lists;
 mod statuses;
 mod stream;
 mod tags;
 mod timeline_updates;
 mod timelines;
 
-pub use accounts::open_account;
+pub use accounts::{fill_in_profile, open_account, relationship_updated};
 pub use helpers::spoken_failure;
 pub use statuses::action as status_acted;
 pub use stream::process_stream_events;
+pub use tags::{
+	following_changed as tag_following_changed, info_fetched as tags_fetched, muted_changed as tag_muted_changed,
+};
+pub use timelines::search;
 
 use self::helpers::summarize_api_error;
 use crate::{
@@ -93,7 +97,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => statuses::edited(ctx, &status),
 		NetworkResponse::StatusEdited { result: Err(err), .. } => ctx.announce_failure("Failed to edit", &err),
 		NetworkResponse::PollVoted { result } => statuses::poll_voted(ctx, result),
-		NetworkResponse::TagFollowed { name, result } => tags::following_changed(ctx, &name, &result, true),
 		NetworkResponse::InstanceInfoFetched(Ok(info)) => accounts::instance_info_fetched(ctx.state, info),
 		NetworkResponse::MarkersLoaded(Ok(markers)) => crate::read_position::apply_markers(ctx.state, markers),
 		// Servers before Mastodon 4.3 have no notification policy, and so no requests.
@@ -109,30 +112,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 			}
 			if let Some(menu_bar) = ctx.frame.get_menu_bar() {
 				update_menu_labels(&menu_bar, ctx.state);
-			}
-		}
-		NetworkResponse::TagUnfollowed { name, result } => tags::following_changed(ctx, &name, &result, false),
-		NetworkResponse::TagMuted { name, result } => tags::muted_changed(ctx, &name, &result, true),
-		NetworkResponse::TagUnmuted { name, result } => tags::muted_changed(ctx, &name, &result, false),
-		NetworkResponse::TagsInfoFetched { result: Ok(tags) } => tags::info_fetched(ctx, tags),
-		NetworkResponse::TagsInfoFetched { result: Err(err) } => {
-			ctx.announce_failure("Failed to load hashtags", &err);
-		}
-		NetworkResponse::RelationshipUpdated { target_name, action, result } => {
-			accounts::relationship_updated(ctx, &target_name, action, result);
-		}
-		NetworkResponse::RelationshipLoaded { _account_id: _, result } => {
-			if let Ok(rel) = result
-				&& let Some(dlg) = &ctx.state.profile_dialog
-			{
-				dlg.update_relationship(&rel);
-			}
-		}
-		NetworkResponse::AccountFetched { result } => {
-			if let Ok(account) = result
-				&& let Some(dlg) = &ctx.state.profile_dialog
-			{
-				dlg.update_account(&account);
 			}
 		}
 		NetworkResponse::CredentialsFetched { result: Ok(account), max_profile_fields } => {
@@ -151,29 +130,5 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::SearchLoaded { query, search_type, result: Err(err), .. } => {
 			timelines::search_failed(ctx, &query, search_type, &err);
 		}
-		NetworkResponse::ListsFetched { result: Ok(lists) } => lists::fetched(ctx, lists),
-		NetworkResponse::ListsFetched { result: Err(err) } => ctx.announce_failure("Failed to fetch lists", &err),
-		NetworkResponse::ListCreated { result: Ok(list) } => {
-			lists::changed(ctx, &format!("List '{}' created", list.title));
-		}
-		NetworkResponse::ListUpdated { result: Ok(list) } => {
-			lists::changed(ctx, &format!("List '{}' updated", list.title));
-		}
-		NetworkResponse::ListDeleted { result: Ok(()) } => lists::changed(ctx, "List deleted"),
-		NetworkResponse::ListAccountsFetched { list_id, result: Ok(members) } => {
-			lists::accounts_fetched(ctx, list_id, members);
-		}
-		NetworkResponse::AccountListsFetched { account_id, result: Ok(lists) } => {
-			lists::account_lists_fetched(ctx, account_id, &lists);
-		}
-		NetworkResponse::ListAccountAdded { result: Ok(()) } => lists::membership_changed(ctx, "Member added"),
-		NetworkResponse::ListAccountRemoved { result: Ok(()) } => lists::membership_changed(ctx, "Member removed"),
-		NetworkResponse::ListCreated { result: Err(err) }
-		| NetworkResponse::ListUpdated { result: Err(err) }
-		| NetworkResponse::ListDeleted { result: Err(err) }
-		| NetworkResponse::ListAccountsFetched { result: Err(err), .. }
-		| NetworkResponse::AccountListsFetched { result: Err(err), .. }
-		| NetworkResponse::ListAccountAdded { result: Err(err) }
-		| NetworkResponse::ListAccountRemoved { result: Err(err) } => lists::operation_failed(ctx, &err),
 	}
 }

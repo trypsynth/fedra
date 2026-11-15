@@ -5,7 +5,8 @@ use wxdragon::prelude::*;
 use super::prompt_for_account_search;
 use crate::{
 	mastodon::{Account, SearchType},
-	network::{NetworkCommand, NetworkSender},
+	responses::{lists, search},
+	ui::commands::Requests,
 };
 #[derive(Clone)]
 pub struct ManageListMembersDialog {
@@ -22,7 +23,7 @@ impl ManageListMembersDialog {
 		list_id: String,
 		list_title: &str,
 		members: Vec<Account>,
-		net_tx: NetworkSender,
+		requests: Requests,
 		on_close: F,
 	) -> Self
 	where
@@ -59,31 +60,21 @@ impl ManageListMembersDialog {
 			remove_btn_select.enable(list_select.get_selection().is_some());
 		});
 		let dialog_add = handle.dialog;
-		let net_tx_search = net_tx.clone();
+		let requests_search = requests.clone();
 		add_button.on_click(move |_| {
 			if let Some(query) = prompt_for_account_search(&dialog_add) {
-				net_tx_search.send(NetworkCommand::Search {
-					query,
-					search_type: SearchType::Accounts,
-					limit: Some(20),
-					offset: None,
-				});
+				search(&requests_search, query, SearchType::Accounts, Some(20), None);
 			}
 		});
 		let members_remove = handle.members.clone();
 		let list_remove = handle.members_list;
-		let net_tx_remove = net_tx;
 		let list_id_remove = list_id;
 		remove_button.on_click(move |_| {
-			if let Some(sel) = list_remove.get_selection() {
-				let idx = sel as usize;
-				let members = members_remove.borrow();
-				if let Some(member) = members.get(idx) {
-					net_tx_remove.send(NetworkCommand::RemoveListAccount {
-						list_id: list_id_remove.clone(),
-						account_id: member.id.clone(),
-					});
-				}
+			let member_id = list_remove
+				.get_selection()
+				.and_then(|sel| members_remove.borrow().get(sel as usize).map(|m| m.id.clone()));
+			if let Some(member_id) = member_id {
+				lists::remove_member(&requests, list_id_remove.clone(), member_id);
 			}
 		});
 		let dlg_close = handle.dialog;

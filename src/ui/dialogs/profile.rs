@@ -6,8 +6,9 @@ use wxdragon::prelude::*;
 use super::user_actions;
 use crate::{
 	mastodon::{Account as MastodonAccount, Mention, Tag},
-	network::{NetworkCommand, NetworkSender},
-	ui::dialogs::UserLookupAction,
+	network::{mute_tag, unmute_tag},
+	responses::{tag_following_changed, tag_muted_changed},
+	ui::{commands::Requests, dialogs::UserLookupAction},
 };
 
 pub struct ProfileDialog {
@@ -23,7 +24,7 @@ impl ProfileDialog {
 		frame: &Frame,
 		account: MastodonAccount,
 		current_user_id: Option<&str>,
-		net_tx: NetworkSender,
+		requests: Requests,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
@@ -69,7 +70,7 @@ impl ProfileDialog {
 			actions_button,
 			account_rc.clone(),
 			relationship.clone(),
-			net_tx,
+			requests,
 			ui_tx,
 		);
 		let dlg_timeline = dialog;
@@ -316,7 +317,7 @@ impl HashtagDialog {
 	pub fn new<F>(
 		frame: &Frame,
 		tags: Vec<Tag>,
-		net_tx: NetworkSender,
+		requests: Requests,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_close: F,
 	) -> Self
@@ -421,37 +422,42 @@ impl HashtagDialog {
 		});
 		let tags_action = tags_rc.clone();
 		let list_action = tag_list;
-		let net_tx_action = net_tx.clone();
+		let requests_action = requests.clone();
 		action_button.on_click(move |_| {
-			if let Some(sel) = list_action.get_selection() {
-				let index = sel as usize;
-				let tags_borrow = tags_action.borrow();
-				if let Some(tag) = tags_borrow.get(index) {
-					let cmd = if tag.following {
-						NetworkCommand::UnfollowTag { name: tag.name.clone() }
-					} else {
-						NetworkCommand::FollowTag { name: tag.name.clone() }
-					};
-					net_tx_action.send(cmd);
-				}
-			}
+			let Some(tag) = list_action.get_selection().and_then(|sel| tags_action.borrow().get(sel as usize).cloned())
+			else {
+				return;
+			};
+			let name = tag.name;
+			let follow = !tag.following;
+			requests_action.request(
+				{
+					let name = name.clone();
+					move |client, token| {
+						if follow { client.follow_tag(token, &name) } else { client.unfollow_tag(token, &name) }
+					}
+				},
+				move |ctx, result| tag_following_changed(ctx, &name, &result, follow),
+			);
 		});
 		let tags_mute = tags_rc;
 		let list_mute = tag_list;
-		let net_tx_mute = net_tx;
 		mute_button.on_click(move |_| {
-			if let Some(sel) = list_mute.get_selection() {
-				let index = sel as usize;
-				let tags_borrow = tags_mute.borrow();
-				if let Some(tag) = tags_borrow.get(index) {
-					let cmd = if tag.muted {
-						NetworkCommand::UnmuteTag { name: tag.name.clone() }
-					} else {
-						NetworkCommand::MuteTag { name: tag.name.clone() }
-					};
-					net_tx_mute.send(cmd);
-				}
-			}
+			let Some(tag) = list_mute.get_selection().and_then(|sel| tags_mute.borrow().get(sel as usize).cloned())
+			else {
+				return;
+			};
+			let name = tag.name;
+			let mute = !tag.muted;
+			requests.request(
+				{
+					let name = name.clone();
+					move |client, token| {
+						if mute { mute_tag(client, token, &name) } else { unmute_tag(client, token, &name) }
+					}
+				},
+				move |ctx, result| tag_muted_changed(ctx, &name, &result, mute),
+			);
 		});
 		let dlg = dialog;
 		close_button.on_click(move |_| {

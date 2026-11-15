@@ -7,7 +7,7 @@ use super::user_actions;
 use crate::{
 	AppState, UiCommand,
 	mastodon::{Account, MastodonClient, Relationship},
-	network::NetworkSender,
+	ui::commands::Requests,
 };
 
 /// The two account lists a profile can show. They differ only in wording and in
@@ -112,7 +112,7 @@ impl FollowListDialog {
 		title: &str,
 		label: &str,
 		total_count: u64,
-		net_tx: NetworkSender,
+		requests: Requests,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
@@ -190,7 +190,7 @@ impl FollowListDialog {
 		panel.on_context_menu(move |_| show_menu());
 		panel.on_menu_selected(move |event| {
 			if let Some((account, relationship)) = selected() {
-				user_actions::handle_action(event.get_id(), &account, relationship.as_ref(), &panel, &net_tx, &ui_tx);
+				user_actions::handle_action(event.get_id(), &account, relationship.as_ref(), &panel, &requests, &ui_tx);
 			}
 		});
 		let accounts_btn = accounts_rc.clone();

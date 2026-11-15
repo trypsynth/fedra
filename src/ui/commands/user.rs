@@ -13,8 +13,8 @@ use super::{
 use crate::{
 	html,
 	mastodon::{Account, MastodonClient, Status},
-	network::{NetworkCommand, Session},
-	responses::spoken_failure,
+	network::{self, NetworkCommand, Session, fetch_tags},
+	responses::{fill_in_profile, lists, relationship_updated, spoken_failure, tags_fetched},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs::{self, FollowList},
@@ -32,6 +32,7 @@ pub(super) fn open_user_timeline(ctx: &mut UiCommandContext<'_>) {
 
 /// Opens someone the selected item is about, asking which one when there's more than one.
 fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::UserLookupAction) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -81,20 +82,18 @@ fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::User
 		TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
 	match action {
 		dialogs::UserLookupAction::Profile => {
-			let Some(net) = &state.network_handle else {
+			let Some(requests) = requests else {
 				live_region.announce("Network not available");
 				return;
 			};
-			net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-			net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
-			let net_tx = net.command_tx.clone();
+			fill_in_profile(&requests, &account.id, true);
 			let ui_tx_timeline = ui_tx.clone();
 			let ui_tx_close = ui_tx.clone();
 			let dlg = dialogs::ProfileDialog::new(
 				frame,
 				account,
 				state.current_user_id.as_deref(),
-				net_tx,
+				requests,
 				ui_tx.clone(),
 				move || {
 					let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -253,11 +252,11 @@ pub(super) fn view_hashtags(ctx: &mut UiCommandContext<'_>) {
 		return;
 	}
 	let names: Vec<String> = target.tags.iter().map(|t| t.name.clone()).collect();
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchTagsInfo { names });
-	} else {
+	let Some(session) = state.session() else {
 		live_region.announce("Network not available");
-	}
+		return;
+	};
+	ctx.handles.request(&session, move |client, token| fetch_tags(client, token, &names), tags_fetched);
 }
 
 pub(super) fn view_boosts(ctx: &mut UiCommandContext<'_>) {
@@ -320,11 +319,10 @@ where
 /// Opens a dialog that fills with `account`'s followers or follows a page at a time. It appears
 /// once the first page is in, and closing it stops the loading.
 pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account, list: FollowList) {
-	let (Some(session), Some(net)) = (ctx.state.session(), &ctx.state.network_handle) else {
+	let (Some(session), Some(requests)) = (ctx.state.session(), ctx.requests()) else {
 		ctx.live_region.announce("Network not available");
 		return;
 	};
-	let net_tx = net.command_tx.clone();
 	let profile_dialog = ctx.state.profile_dialog.as_ref().map(dialogs::ProfileDialog::dialog_handle);
 	let parent: &dyn WxWidget = profile_dialog.as_ref().map_or(ctx.frame as _, |d| d as _);
 	let ui_tx_timeline = ctx.ui_tx.clone();
@@ -334,7 +332,7 @@ pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account
 		list.title(),
 		list.label(),
 		list.total(account),
-		net_tx,
+		requests,
 		ctx.ui_tx.clone(),
 		move |account| {
 			let timeline_type =
@@ -484,34 +482,34 @@ pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 	} else {
 		return;
 	};
-	if let Some(net) = &state.network_handle {
-		net.send(NetworkCommand::ToggleFollow {
-			account_id: if selected_user.id.is_empty() { None } else { Some(selected_user.id) },
-			acct: selected_user.acct.clone(),
-			target_name: selected_user.username,
-		});
-	} else {
+	let Some(session) = state.session() else {
 		live_region.announce("Network not available");
-	}
+		return;
+	};
+	let account_id = Some(selected_user.id).filter(|id| !id.is_empty());
+	let target_name = selected_user.username;
+	ctx.handles.request(
+		&session,
+		move |client, token| network::toggle_follow(client, token, account_id, &selected_user.acct),
+		move |ctx, (action, result)| relationship_updated(ctx, &target_name, action, result),
+	);
 }
 
 pub(super) fn add_user_to_list(ctx: &mut UiCommandContext<'_>, account_id: String) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	state.pending_add_to_list_user = Some(account_id);
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchLists);
-	} else {
-		live_region.announce("Network not available");
-	}
+	let Some(requests) = ctx.requests() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	ctx.state.pending_add_to_list_user = Some(account_id);
+	lists::fetch(&requests);
 }
 
 pub(super) fn remove_user_from_list(ctx: &mut UiCommandContext<'_>, account_id: String) {
-	if let Some(handle) = &ctx.state.network_handle {
-		handle.send(NetworkCommand::FetchAccountLists { account_id });
-	} else {
+	let Some(requests) = ctx.requests() else {
 		ctx.live_region.announce("Network not available");
-	}
+		return;
+	};
+	lists::fetch_account_lists(&requests, account_id);
 }
 
 pub(super) fn set_alias(ctx: &mut UiCommandContext<'_>, account: &Account) {

@@ -18,7 +18,8 @@ use crate::{
 	accounts::{start_streaming_for_timeline, update_window_title},
 	config::{SortOrder, TimelineSound},
 	mastodon::Status,
-	network::NetworkCommand,
+	network::{FollowOptions, NetworkCommand, RelationshipAction, change_relationship},
+	responses::{self, fill_in_profile, lists, relationship_updated},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs,
@@ -330,6 +331,7 @@ pub(super) fn load_more_background(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn load_more(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let live_region = ctx.live_region;
 	if let Some(active) = state.timeline_manager.active_mut()
@@ -352,12 +354,16 @@ pub(super) fn load_more(ctx: &mut UiCommandContext<'_>) {
 			active.last_load_attempt = Some(now);
 			if let Some(handle) = &state.network_handle {
 				if let TimelineType::Search { ref query, search_type } = active.timeline_type {
-					handle.send(NetworkCommand::Search {
-						query: query.clone(),
-						search_type,
-						limit: Some(u32::from(state.config.fetch_limit)),
-						offset: Some(u32::try_from(active.entries.len()).unwrap()),
-					});
+					if let Some(requests) = &requests {
+						let offset = Some(u32::try_from(active.entries.len()).unwrap());
+						responses::search(
+							requests,
+							query.clone(),
+							search_type,
+							Some(u32::from(state.config.fetch_limit)),
+							offset,
+						);
+					}
 				} else {
 					let max_id = active.next_max_id.clone().or_else(|| paging_max_id(&active.entries));
 					if let Some(max_id) = max_id {
@@ -535,6 +541,7 @@ pub(super) fn open_instance_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let timelines_selector = ctx.timelines_selector;
@@ -557,10 +564,8 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				}
 				return;
 			}
-			if let Some(net) = &state.network_handle {
-				net.send(NetworkCommand::FetchRelationship { account_id: account.id.clone() });
-				net.send(NetworkCommand::FetchAccount { account_id: account.id.clone() });
-				let net_tx = net.command_tx.clone();
+			if let Some(requests) = requests {
+				fill_in_profile(&requests, &account.id, true);
 				let ui_tx_timeline = ui_tx.clone();
 				let timeline_type =
 					TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
@@ -569,7 +574,7 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 					frame,
 					(**account).clone(),
 					state.current_user_id.as_deref(),
-					net_tx,
+					requests,
 					ui_tx.clone(),
 					move || {
 						let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type.clone()));
@@ -597,25 +602,25 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 			);
 		}
 		TimelineEntry::Notification(notification) if notification.kind == "follow_request" => {
-			let Some(handle) = &state.network_handle else {
+			let Some(requests) = requests else {
 				live_region.announce("Network not available");
 				return;
 			};
 			let actor = notification.account.display_name_or_username().to_string();
 			let prompt = format!("{} (@{}) requested to follow you.", actor, notification.account.acct);
-			match wx_utils::ask(frame, &prompt, "Follow Request", "&Accept", "&Reject") {
-				Answer::Yes => handle.send(NetworkCommand::AuthorizeFollowRequest {
-					account_id: notification.account.id.clone(),
-					target_name: actor,
-				}),
-				Answer::No => handle.send(NetworkCommand::RejectFollowRequest {
-					account_id: notification.account.id.clone(),
-					target_name: actor,
-				}),
+			let action = match wx_utils::ask(frame, &prompt, "Follow Request", "&Accept", "&Reject") {
+				Answer::Yes => RelationshipAction::AcceptFollowRequest,
+				Answer::No => RelationshipAction::RejectFollowRequest,
 				Answer::Cancel => {
 					live_region.announce("Follow request unchanged");
+					return;
 				}
-			}
+			};
+			let account_id = notification.account.id.clone();
+			requests.request(
+				move |client, token| change_relationship(client, token, &account_id, action, FollowOptions::default()),
+				move |ctx, result| relationship_updated(ctx, &actor, action, result),
+			);
 		}
 		TimelineEntry::Status(_) | TimelineEntry::Notification(_) => {
 			let Some(status) = entry.as_status() else {
@@ -708,6 +713,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn search(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let timelines_selector = ctx.timelines_selector;
@@ -717,23 +723,16 @@ pub(super) fn search(ctx: &mut UiCommandContext<'_>) {
 	if let Some((query, search_type)) = dialogs::prompt_for_search(frame) {
 		let timeline_type = TimelineType::Search { query: query.clone(), search_type };
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
-		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::Search {
-				query,
-				search_type,
-				limit: Some(u32::from(state.config.fetch_limit)),
-				offset: None,
-			});
+		if let Some(requests) = &requests {
+			responses::search(requests, query, search_type, Some(u32::from(state.config.fetch_limit)), None);
 		}
 	}
 }
 
 pub(super) fn open_list(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchLists);
-	} else {
-		live_region.announce("Network not available");
-	}
+	let Some(requests) = ctx.requests() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	lists::fetch(&requests);
 }

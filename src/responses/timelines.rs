@@ -1,6 +1,7 @@
 use super::{
 	NetworkResponseContext,
 	helpers::{merge_status_snapshots, summarize_api_error},
+	lists,
 };
 use crate::{
 	UiCommand,
@@ -8,7 +9,7 @@ use crate::{
 	network::{NetworkCommand, TimelineData},
 	read_position::{MAX_RESTORE_PAGES, is_older},
 	timeline::{Timeline, TimelineEntry, TimelineType},
-	ui::{dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
+	ui::{commands::Requests, dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
 };
 
 pub(super) fn loaded(
@@ -198,6 +199,19 @@ pub(super) fn load_failed(
 	}
 }
 
+/// Searches for `query`, then shows what's found as the search timeline or, for an account search
+/// started from a list, as people to add to it.
+pub fn search(requests: &Requests, query: String, search_type: SearchType, limit: Option<u32>, offset: Option<u32>) {
+	let asked = query.clone();
+	requests.request(
+		move |client, token| client.search(token, &asked, search_type, limit, offset),
+		move |ctx, result| match result {
+			Ok(results) => search_loaded(ctx, query, search_type, results, offset),
+			Err(err) => search_failed(ctx, &query, search_type, &err),
+		},
+	);
+}
+
 pub(super) fn search_loaded(
 	ctx: &mut NetworkResponseContext<'_>,
 	query: String,
@@ -205,6 +219,7 @@ pub(super) fn search_loaded(
 	results: SearchResults,
 	offset: Option<u32>,
 ) {
+	let requests = ctx.requests();
 	let status_snapshots = {
 		let state = &mut *ctx.state;
 		let timeline_list = &ctx.timeline_list;
@@ -218,12 +233,9 @@ pub(super) fn search_loaded(
 			let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
 			let accounts_ref: Vec<&crate::mastodon::Account> = results.accounts.iter().collect();
 			if let Some(account) = dialogs::prompt_for_account_choice(dlg.get_dialog(), &accounts_ref, &label_refs)
-				&& let Some(handle) = &state.network_handle
+				&& let Some(requests) = &requests
 			{
-				handle.send(NetworkCommand::AddListAccount {
-					list_id: dlg.get_list_id().to_string(),
-					account_id: account.id,
-				});
+				lists::add_member(requests, dlg.get_list_id().to_string(), account.id);
 			}
 			return;
 		}

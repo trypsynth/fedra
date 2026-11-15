@@ -248,6 +248,32 @@ pub struct UiCommandContext<'a> {
 	pub handles: &'a UiHandles,
 }
 
+impl UiCommandContext<'_> {
+	/// What a dialog keeps so it can make requests for the active account, if there is one.
+	pub fn requests(&self) -> Option<Requests> {
+		Some(Requests { handles: self.handles.clone(), session: self.state.session()? })
+	}
+}
+
+/// What a dialog keeps to make requests for the account it was opened for.
+#[derive(Clone)]
+pub struct Requests {
+	handles: UiHandles,
+	session: Session,
+}
+
+impl Requests {
+	/// See [`UiHandles::request`].
+	pub fn request<T, F, G>(&self, request: F, then: G)
+	where
+		F: FnOnce(&MastodonClient, &str) -> T + Send + 'static,
+		T: Send + 'static,
+		G: FnOnce(&mut UiCommandContext<'_>, T) + 'static,
+	{
+		self.handles.request(&self.session, request, then);
+	}
+}
+
 /// Everything a `UiCommandContext` is made from, which UI tasks keep so they can make one.
 #[derive(Clone)]
 pub struct UiHandles {
