@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-shipfitter = { version = "0.2.1", features = ["package"] }
+shipfitter = { version = "0.2.5", features = ["package"] }

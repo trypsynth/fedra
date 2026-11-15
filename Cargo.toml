@@ -47,7 +47,7 @@ block = "0.1.6"
 objc = "0.2.7"
 
 [build-dependencies]
-shipfitter = { version = "0.2.1", features = ["docs", "windows-resources"] }
+shipfitter = { version = "0.2.5", features = ["docs", "windows-resources"] }
 
 # Until a wxDragon release has Event::event_object_ptr, which wx-utils' tasks need.
 [patch.crates-io]
