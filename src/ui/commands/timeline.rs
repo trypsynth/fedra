@@ -18,8 +18,8 @@ use crate::{
 	accounts::{start_streaming_for_timeline, update_window_title},
 	config::{SortOrder, TimelineSound},
 	mastodon::Status,
-	network::{FollowOptions, NetworkCommand, RelationshipAction, change_relationship},
-	responses::{self, fill_in_profile, lists, relationship_updated},
+	network::{AccountQuery, FollowOptions, NetworkCommand, RelationshipAction, change_relationship},
+	responses::{self, fill_in_profile, lists, look_up, relationship_updated, statuses},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs,
@@ -558,9 +558,8 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 	match &entry {
 		TimelineEntry::Account(account) => {
 			if let Some(url) = foreign_url(state, Some(&account.url)) {
-				state.pending_user_lookup_action = Some(dialogs::UserLookupAction::Profile);
-				if let Some(net) = &state.network_handle {
-					net.send(NetworkCommand::ResolveAccount { url });
+				if let Some(requests) = &requests {
+					look_up(requests, AccountQuery::Url(url), dialogs::UserLookupAction::Profile);
 				}
 				return;
 			}
@@ -629,8 +628,8 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 			};
 			let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
 			if let Some(url) = foreign_url(state, target.url.as_ref()) {
-				if let Some(net) = &state.network_handle {
-					net.send(NetworkCommand::ResolveStatusForThread { url });
+				if let Some(requests) = &requests {
+					statuses::resolve_for_thread(requests, url);
 				}
 				return;
 			}

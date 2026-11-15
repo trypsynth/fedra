@@ -13,8 +13,8 @@ use super::{
 use crate::{
 	html,
 	mastodon::{Account, MastodonClient, Status},
-	network::{self, NetworkCommand, Session, fetch_tags},
-	responses::{fill_in_profile, lists, relationship_updated, spoken_failure, tags_fetched},
+	network::{self, AccountQuery, Session, fetch_tags},
+	responses::{fill_in_profile, lists, look_up, relationship_updated, spoken_failure, statuses, tags_fetched},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs::{self, FollowList},
@@ -72,9 +72,8 @@ fn lookup_involved_account(ctx: &mut UiCommandContext<'_>, action: dialogs::User
 		}
 	};
 	if let Some(url) = foreign_url(state, Some(&account.url)) {
-		state.pending_user_lookup_action = Some(action);
-		if let Some(net) = &state.network_handle {
-			net.send(NetworkCommand::ResolveAccount { url });
+		if let Some(requests) = &requests {
+			look_up(requests, AccountQuery::Url(url), action);
 		}
 		return;
 	}
@@ -173,6 +172,7 @@ fn add_role<'a>(involved: &mut Vec<(&'a Account, Vec<&'static str>)>, account: &
 }
 
 pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -187,9 +187,8 @@ pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 	let default_value = default_value.map(|acct| format!("@{acct}"));
 	if let Some((input, action)) = dialogs::prompt_for_user_lookup(frame, &suggestions, default_value.as_deref()) {
 		let handle: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-		if let Some(network) = &state.network_handle {
-			state.pending_user_lookup_action = Some(action);
-			network.send(NetworkCommand::LookupAccount { handle });
+		if let Some(requests) = requests {
+			look_up(&requests, AccountQuery::Handle(handle), action);
 		} else {
 			live_region.announce("Network not available");
 		}
@@ -197,6 +196,7 @@ pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -227,15 +227,13 @@ pub(super) fn view_mentions(ctx: &mut UiCommandContext<'_>) {
 		return;
 	}
 	if let Some((mention, action)) = dialogs::prompt_for_mentions(frame, &all_mentions) {
-		let Some(net) = &state.network_handle else {
+		let Some(requests) = requests else {
 			live_region.announce("Network not available");
 			return;
 		};
-		state.pending_user_lookup_action = Some(action);
-		match foreign_url(state, Some(&mention.url)) {
-			Some(url) => net.send(NetworkCommand::ResolveAccount { url }),
-			None => net.send(NetworkCommand::LookupAccount { handle: mention.full_acct() }),
-		}
+		let query = foreign_url(state, Some(&mention.url))
+			.map_or_else(|| AccountQuery::Handle(mention.full_acct()), AccountQuery::Url);
+		look_up(&requests, query, action);
 	}
 }
 
@@ -539,6 +537,7 @@ pub(super) fn set_alias(ctx: &mut UiCommandContext<'_>, account: &Account) {
 }
 
 pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Account) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -559,11 +558,11 @@ pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Accou
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
+	if let Some(requests) = requests {
 		state.pending_thread_continuation = post.continue_thread;
 		state.pending_post =
 			Some(crate::PendingPost { config, operation: crate::PostOperation::NewPost, last_result: post.clone() });
-		handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
+		statuses::post(&requests, post_result_to_data(post, None));
 	} else {
 		live_region.announce("Network not available");
 	}

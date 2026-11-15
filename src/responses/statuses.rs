@@ -8,7 +8,78 @@ use super::{
 use crate::{
 	UiCommand,
 	mastodon::{Poll, PostSubmission, Status, StatusAction, StatusSource, friendly_time_local},
+	network::{self, PostData, StatusEdit, Target, resolve_status, submit},
+	ui::commands::{Requests, run_edit_post_dialog},
 };
+
+/// Publishes or schedules `post`, a new post or a quote.
+pub fn post(requests: &Requests, post: PostData) {
+	requests.request(move |client, token| submit(client, token, &post, None), post_complete);
+}
+
+pub fn reply(requests: &Requests, target: Target, post: PostData) {
+	requests.request(move |client, token| network::reply(client, token, target, &post), replied);
+}
+
+pub fn edit(requests: &Requests, status_id: String, changes: StatusEdit) {
+	requests.request(
+		move |client, token| network::edit(client, token, &status_id, changes),
+		|ctx, result| match result {
+			Ok(status) => edited(ctx, &status),
+			Err(err) => ctx.announce_failure("Failed to edit", &err),
+		},
+	);
+}
+
+pub fn delete(requests: &Requests, status_id: String) {
+	let id = status_id.clone();
+	requests.request(
+		move |client, token| client.delete_status(token, &id),
+		move |ctx, result| match result {
+			Ok(()) => deleted(ctx, &status_id),
+			Err(err) => ctx.announce_failure("Failed to delete", &err),
+		},
+	);
+}
+
+pub fn vote(requests: &Requests, target: Target, choices: Vec<usize>) {
+	requests.request(move |client, token| network::vote(client, token, target, &choices), poll_voted);
+}
+
+/// Fetches the text `status` was written as, then opens it for editing.
+pub fn fetch_source(requests: &Requests, status: Status) {
+	let id = status.id.clone();
+	requests.request(
+		move |client, token| client.fetch_status_source(token, &id),
+		move |ctx, result| source_fetched(ctx, status, result),
+	);
+}
+
+/// Finds a post from elsewhere on the account's instance, then offers to quote it.
+pub fn resolve_for_quote(requests: &Requests, url: String) {
+	requests.request(
+		move |client, token| resolve_status(client, token, &url),
+		|ctx, result| match result {
+			Ok(focus) => {
+				let _ = ctx.ui_tx.send(UiCommand::PromptForQuote(Box::new(focus)));
+			}
+			Err(err) => ctx.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err))),
+		},
+	);
+}
+
+/// Finds a post from elsewhere on the account's instance, then opens its thread.
+pub fn resolve_for_thread(requests: &Requests, url: String) {
+	requests.request(
+		move |client, token| resolve_status(client, token, &url),
+		|ctx, result| match result {
+			Ok(focus) => {
+				let _ = ctx.ui_tx.send(UiCommand::ViewResolvedThread(Box::new(focus)));
+			}
+			Err(err) => ctx.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err))),
+		},
+	);
+}
 
 /// One of the toggle actions a post supports, and how to fold the server's
 /// answer back into every copy of that post already on screen.
@@ -131,7 +202,7 @@ pub fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction, result
 	}
 }
 
-pub(super) fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: Status, result: Result<StatusSource>) {
+fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: Status, result: Result<StatusSource>) {
 	let source_text = match result {
 		Ok(source) => {
 			if !source.spoiler_text.is_empty() {
@@ -147,10 +218,10 @@ pub(super) fn source_fetched(ctx: &mut NetworkResponseContext<'_>, mut status: S
 			None
 		}
 	};
-	crate::ui::commands::run_edit_post_dialog(ctx.frame, ctx.state, &status, source_text.as_deref());
+	run_edit_post_dialog(ctx, &status, source_text.as_deref());
 }
 
-pub(super) fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
+fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
 	match result {
 		Ok(PostSubmission::Published(status)) => {
 			ctx.state.pending_post = None;
@@ -170,7 +241,7 @@ pub(super) fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result
 	}
 }
 
-pub(super) fn replied(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
+fn replied(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>) {
 	match result {
 		Ok(PostSubmission::Published(status)) => {
 			ctx.state.pending_post = None;
@@ -197,20 +268,20 @@ fn continue_thread_if_pending(ctx: &mut NetworkResponseContext<'_>, status: Box<
 	}
 }
 
-pub(super) fn deleted(ctx: &mut NetworkResponseContext<'_>, status_id: &str) {
+fn deleted(ctx: &mut NetworkResponseContext<'_>, status_id: &str) {
 	remove_status_from_timelines(ctx.state, status_id);
 	ctx.refresh_active_timeline();
 	ctx.announce("Deleted");
 }
 
-pub(super) fn edited(ctx: &mut NetworkResponseContext<'_>, status: &Status) {
+fn edited(ctx: &mut NetworkResponseContext<'_>, status: &Status) {
 	let snapshot = status.clone();
 	update_status_in_timelines(ctx.state, &status.id, |s| *s = snapshot.clone());
 	ctx.refresh_active_timeline();
 	ctx.announce("Edited");
 }
 
-pub(super) fn poll_voted(ctx: &mut NetworkResponseContext<'_>, result: Result<Poll>) {
+fn poll_voted(ctx: &mut NetworkResponseContext<'_>, result: Result<Poll>) {
 	match result {
 		Ok(poll) => {
 			update_poll_in_timelines(ctx.state, &poll);

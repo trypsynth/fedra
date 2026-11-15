@@ -1,13 +1,13 @@
 mod accounts;
 mod helpers;
 pub mod lists;
-mod statuses;
+pub mod statuses;
 mod stream;
 mod tags;
 mod timeline_updates;
 mod timelines;
 
-pub use accounts::{fill_in_profile, open_account, relationship_updated};
+pub use accounts::{edit_profile, fill_in_profile, look_up, open_account, relationship_updated};
 pub use helpers::spoken_failure;
 pub use statuses::action as status_acted;
 pub use stream::process_stream_events;
@@ -16,7 +16,6 @@ pub use tags::{
 };
 pub use timelines::search;
 
-use self::helpers::summarize_api_error;
 use crate::{
 	UiCommand,
 	network::NetworkResponse,
@@ -70,33 +69,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::TimelineLoaded { timeline_type, result: Err(err), max_id } => {
 			timelines::load_failed(ctx, &timeline_type, &err, max_id.is_some());
 		}
-		NetworkResponse::StatusResolvedForThread { result: Ok(focus) } => {
-			ctx.ui_tx.send(UiCommand::ViewResolvedThread(Box::new(focus))).unwrap();
-		}
-		NetworkResponse::StatusResolvedForThread { result: Err(err) } => {
-			ctx.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err)));
-		}
-		NetworkResponse::StatusResolvedForQuote { result: Ok(focus) } => {
-			ctx.ui_tx.send(UiCommand::PromptForQuote(Box::new(focus))).unwrap();
-		}
-		NetworkResponse::StatusResolvedForQuote { result: Err(err) } => {
-			ctx.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err)));
-		}
-		NetworkResponse::StatusSourceFetched { status, result } => statuses::source_fetched(ctx, *status, result),
-		NetworkResponse::AccountLookupResult { handle: _, result: Ok(account) } => {
-			accounts::lookup_succeeded(ctx, &account);
-		}
-		NetworkResponse::AccountLookupResult { handle, result: Err(err) } => {
-			ctx.state.pending_user_lookup_action = None;
-			ctx.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
-		}
-		NetworkResponse::PostComplete(result) => statuses::post_complete(ctx, result),
-		NetworkResponse::Replied(result) => statuses::replied(ctx, result),
-		NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => statuses::deleted(ctx, &status_id),
-		NetworkResponse::StatusDeleted { result: Err(err), .. } => ctx.announce_failure("Failed to delete", &err),
-		NetworkResponse::StatusEdited { _status_id: _, result: Ok(status) } => statuses::edited(ctx, &status),
-		NetworkResponse::StatusEdited { result: Err(err), .. } => ctx.announce_failure("Failed to edit", &err),
-		NetworkResponse::PollVoted { result } => statuses::poll_voted(ctx, result),
 		NetworkResponse::InstanceInfoFetched(Ok(info)) => accounts::instance_info_fetched(ctx.state, info),
 		NetworkResponse::MarkersLoaded(Ok(markers)) => crate::read_position::apply_markers(ctx.state, markers),
 		// Servers before Mastodon 4.3 have no notification policy, and so no requests.
@@ -113,16 +85,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 			if let Some(menu_bar) = ctx.frame.get_menu_bar() {
 				update_menu_labels(&menu_bar, ctx.state);
 			}
-		}
-		NetworkResponse::CredentialsFetched { result: Ok(account), max_profile_fields } => {
-			accounts::credentials_fetched(ctx, &account, max_profile_fields);
-		}
-		NetworkResponse::CredentialsFetched { result: Err(err), .. } => {
-			ctx.announce_failure("Failed to fetch profile", &err);
-		}
-		NetworkResponse::ProfileUpdated { result: Ok(account) } => accounts::profile_updated(ctx, account),
-		NetworkResponse::ProfileUpdated { result: Err(err) } => {
-			ctx.announce_failure("Failed to update profile", &err);
 		}
 		NetworkResponse::SearchLoaded { query, search_type, result: Ok(results), offset } => {
 			timelines::search_loaded(ctx, query, search_type, results, offset);

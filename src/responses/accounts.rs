@@ -1,11 +1,11 @@
 use anyhow::Result;
 use url::Url;
 
-use super::NetworkResponseContext;
+use super::{NetworkResponseContext, helpers::summarize_api_error};
 use crate::{
 	AppState, UiCommand,
 	mastodon::{Account, InstanceInfo, Relationship},
-	network::{NetworkCommand, RelationshipAction, fetch_relationship},
+	network::{AccountQuery, RelationshipAction, fetch_credentials, fetch_relationship, find_account, update_profile},
 	timeline::TimelineType,
 	ui::{
 		commands::Requests,
@@ -25,9 +25,24 @@ pub(super) fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
 	}
 }
 
-pub(super) fn lookup_succeeded(ctx: &mut NetworkResponseContext<'_>, account: &Account) {
-	let action = ctx.state.pending_user_lookup_action.take().unwrap_or(UserLookupAction::Timeline);
-	open_account(ctx, account, action);
+/// Finds the account `query` names, then opens it as `action` says.
+pub fn look_up(requests: &Requests, query: AccountQuery, action: UserLookupAction) {
+	let asked = query.clone();
+	requests.request(
+		move |client, token| find_account(client, token, &asked),
+		move |ctx, result| match result {
+			Ok(account) => open_account(ctx, &account, action),
+			Err(err) => ctx.announce(&format!("Failed to find user {query}: {}", summarize_api_error(&err))),
+		},
+	);
+}
+
+/// Fetches the signed-in account, then opens it for editing.
+pub fn edit_profile(requests: &Requests) {
+	requests.request(fetch_credentials, |ctx, result| match result {
+		Ok((account, max_profile_fields)) => credentials_fetched(ctx, &account, max_profile_fields),
+		Err(err) => ctx.announce_failure("Failed to fetch profile", &err),
+	});
 }
 
 /// Shows an account either as a profile dialog or as its own timeline.
@@ -151,19 +166,21 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 	}
 }
 
-pub(super) fn credentials_fetched(
-	ctx: &NetworkResponseContext<'_>,
-	account: &Account,
-	max_profile_fields: Option<usize>,
-) {
+fn credentials_fetched(ctx: &NetworkResponseContext<'_>, account: &Account, max_profile_fields: Option<usize>) {
 	if let Some(update) = dialogs::show_profile_edit_dialog(ctx.frame, account, max_profile_fields)
-		&& let Some(handle) = &ctx.state.network_handle
+		&& let Some(requests) = ctx.requests()
 	{
-		handle.send(NetworkCommand::UpdateProfile { update });
+		requests.request(
+			move |client, token| update_profile(client, token, &update),
+			|ctx, result| match result {
+				Ok(account) => profile_updated(ctx, account),
+				Err(err) => ctx.announce_failure("Failed to update profile", &err),
+			},
+		);
 	}
 }
 
-pub(super) fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {
+fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {
 	ctx.announce("Profile updated");
 	if let Some(active) = ctx.state.active_account_mut() {
 		active.default_post_visibility = account.source.and_then(|s| s.privacy);

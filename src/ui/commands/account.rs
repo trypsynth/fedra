@@ -9,7 +9,7 @@ use crate::{
 	auth,
 	config::Account,
 	mastodon::MastodonClient,
-	network::NetworkCommand,
+	responses,
 	ui::dialogs,
 };
 
@@ -174,11 +174,9 @@ pub(super) fn cancel_auth(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn edit_profile(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchCredentials);
+	if let Some(requests) = ctx.requests() {
+		responses::edit_profile(&requests);
 	} else {
-		live_region.announce("Network not available");
+		ctx.live_region.announce("Network not available");
 	}
 }

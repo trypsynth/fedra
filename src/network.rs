@@ -1,6 +1,6 @@
 use std::{
 	collections::{HashMap, HashSet},
-	slice,
+	fmt, slice,
 	sync::{
 		atomic::{AtomicU64, Ordering},
 		mpsc::{self, Receiver, Sender},
@@ -13,7 +13,7 @@ use wx_utils::tasks::{Background, Queue, background_blocking};
 
 use crate::{
 	mastodon::{
-		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification,
+		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification, Poll,
 		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusContext, Tag,
 	},
 	timeline::TimelineType,
@@ -53,89 +53,14 @@ pub struct PostData {
 	pub scheduled_at: Option<String>,
 }
 
-#[derive(Debug)]
-pub enum ForeignInteraction {
-	Vote(Vec<usize>),
-	Reply(Box<PostData>),
-}
-
 pub enum NetworkCommand {
-	FetchTimeline {
-		timeline_type: TimelineType,
-		limit: Option<u32>,
-		max_id: Option<String>,
-	},
-	FetchThread {
-		timeline_type: TimelineType,
-		focus: Box<Status>,
-	},
-	FetchStatusSource {
-		status: Box<Status>,
-	},
-	ResolveStatusForThread {
-		url: String,
-	},
-	ResolveStatusForQuote {
-		url: String,
-	},
-	ResolveAndInteract {
-		url: String,
-		interaction: ForeignInteraction,
-	},
-	ResolveAccount {
-		url: String,
-	},
-	LookupAccount {
-		handle: String,
-	},
-	PostStatus {
-		post: PostData,
-	},
-	Reply {
-		in_reply_to_id: String,
-		content: String,
-		visibility: String,
-		sensitive: bool,
-		spoiler_text: Option<String>,
-		content_type: Option<String>,
-		language: Option<String>,
-		media: Vec<MediaUpload>,
-		poll: Option<PollData>,
-		scheduled_at: Option<String>,
-	},
-	VotePoll {
-		poll_id: String,
-		choices: Vec<usize>,
-	},
-	DeleteStatus {
-		status_id: String,
-	},
-	EditStatus {
-		status_id: String,
-		content: String,
-		sensitive: bool,
-		spoiler_text: Option<String>,
-		language: Option<String>,
-		media: Vec<EditMedia>,
-		poll: Option<PollData>,
-	},
-	FetchCredentials,
-	UpdateProfile {
-		update: ProfileUpdate,
-	},
-	Search {
-		query: String,
-		search_type: SearchType,
-		limit: Option<u32>,
-		offset: Option<u32>,
-	},
+	FetchTimeline { timeline_type: TimelineType, limit: Option<u32>, max_id: Option<String> },
+	FetchThread { timeline_type: TimelineType, focus: Box<Status> },
+	Search { query: String, search_type: SearchType, limit: Option<u32>, offset: Option<u32> },
 	FetchInstanceInfo,
 	FetchMarkers,
 	FetchNotificationPolicy,
-	SaveMarker {
-		timeline: &'static str,
-		last_read_id: String,
-	},
+	SaveMarker { timeline: &'static str, last_read_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -174,20 +99,9 @@ pub struct PollData {
 #[derive(Debug)]
 pub enum NetworkResponse {
 	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
-	StatusResolvedForThread { result: Result<Status> },
-	StatusResolvedForQuote { result: Result<Status> },
-	StatusSourceFetched { status: Box<Status>, result: Result<crate::mastodon::StatusSource> },
-	AccountLookupResult { handle: String, result: Result<Account> },
-	PostComplete(Result<PostSubmission>),
-	Replied(Result<PostSubmission>),
-	StatusDeleted { status_id: String, result: Result<()> },
-	StatusEdited { _status_id: String, result: Result<Status> },
 	InstanceInfoFetched(Result<InstanceInfo>),
 	MarkersLoaded(Result<crate::mastodon::Markers>),
 	NotificationPolicyLoaded(Result<crate::mastodon::NotificationPolicy>),
-	PollVoted { result: Result<crate::mastodon::Poll> },
-	CredentialsFetched { result: Result<Account>, max_profile_fields: Option<usize> },
-	ProfileUpdated { result: Result<Account> },
 	SearchLoaded { query: String, search_type: SearchType, result: Result<SearchResults>, offset: Option<u32> },
 }
 
@@ -205,82 +119,140 @@ fn is_muted_tags_filter(filter: &Filter) -> bool {
 	filter.title == MUTED_TAGS_FILTER && filter.action == FilterAction::Hide
 }
 
-fn post_with_media(
-	client: &MastodonClient,
-	access_token: &str,
-	content: &str,
-	visibility: &str,
-	sensitive: bool,
-	spoiler_text: Option<&str>,
-	content_type: Option<&str>,
-	language: Option<&str>,
-	media: Vec<MediaUpload>,
-	poll: Option<&PollData>,
-	in_reply_to_id: Option<&str>,
-	quoted_status_id: Option<&str>,
-	scheduled_at: Option<&str>,
-) -> Result<PostSubmission> {
-	let mut media_ids = Vec::new();
-	let mut upload_failed = None;
-	for item in media {
-		match client.upload_media(access_token, &item.path, item.description.as_deref()) {
-			Ok(id) => media_ids.push(id),
-			Err(err) => {
-				upload_failed = Some(err);
-				break;
-			}
+/// An account to find: by its handle, or by the URL of its profile on another instance, which
+/// the account's own instance has to look up.
+#[derive(Debug, Clone)]
+pub enum AccountQuery {
+	Handle(String),
+	Url(String),
+}
+
+impl fmt::Display for AccountQuery {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Handle(text) | Self::Url(text) => f.write_str(text),
 		}
 	}
-	if let Some(err) = upload_failed {
-		return Err(err);
+}
+
+pub fn find_account(client: &MastodonClient, access_token: &str, query: &AccountQuery) -> Result<Account> {
+	match query {
+		AccountQuery::Handle(handle) => client.lookup_account(access_token, handle),
+		AccountQuery::Url(url) => client
+			.search(access_token, url, SearchType::Accounts, Some(1), None)
+			.and_then(|mut res| res.accounts.pop().context("Account not found on local instance")),
 	}
-	client.post_status_with_media(
+}
+
+/// The signed-in account, and how many profile fields its instance allows.
+pub fn fetch_credentials(client: &MastodonClient, access_token: &str) -> Result<(Account, Option<usize>)> {
+	let account = client.verify_credentials(access_token)?;
+	Ok((account, client.get_max_profile_fields()))
+}
+
+pub fn update_profile(client: &MastodonClient, access_token: &str, update: &ProfileUpdate) -> Result<Account> {
+	client.update_credentials(
 		access_token,
-		content,
-		visibility,
-		sensitive,
-		spoiler_text,
-		&media_ids,
-		content_type,
-		language,
-		poll,
-		in_reply_to_id,
-		quoted_status_id,
-		scheduled_at,
+		update.display_name.as_deref(),
+		update.note.as_deref(),
+		update.avatar.as_deref(),
+		update.header.as_deref(),
+		update.locked,
+		update.bot,
+		update.discoverable,
+		update.fields_attributes.as_deref(),
+		update.source.as_ref().and_then(|s| s.privacy.as_deref()),
+		update.source.as_ref().and_then(|s| s.sensitive),
+		update.source.as_ref().and_then(|s| s.language.as_deref()),
 	)
 }
 
-fn edit_with_media(
+/// The parts of a post an edit can change.
+#[derive(Debug, Clone)]
+pub struct StatusEdit {
+	pub content: String,
+	pub sensitive: bool,
+	pub spoiler_text: Option<String>,
+	pub language: Option<String>,
+	pub media: Vec<EditMedia>,
+	pub poll: Option<PollData>,
+}
+
+/// A post to reply to or vote in: one on the account's own instance, by its id, or one from
+/// elsewhere, by its URL, which is found on the account's instance first.
+#[derive(Debug, Clone)]
+pub enum Target {
+	Id(String),
+	Url(String),
+}
+
+/// Uploads the post's media, then publishes or schedules it, as a reply to `in_reply_to_id` if
+/// there is one.
+pub fn submit(
 	client: &MastodonClient,
 	access_token: &str,
-	status_id: &str,
-	content: &str,
-	sensitive: bool,
-	spoiler_text: Option<&str>,
-	language: Option<&str>,
-	media: Vec<EditMedia>,
-	poll: Option<&PollData>,
-) -> Result<Status> {
-	let mut media_ids = Vec::new();
-	let mut upload_failed = None;
-	for item in media {
-		match item {
-			EditMedia::New(upload) => {
-				match client.upload_media(access_token, &upload.path, upload.description.as_deref()) {
-					Ok(id) => media_ids.push(id),
-					Err(err) => {
-						upload_failed = Some(err);
-						break;
-					}
-				}
-			}
-			EditMedia::Existing(id) => media_ids.push(id),
-		}
-	}
-	if let Some(err) = upload_failed {
-		return Err(err);
-	}
-	client.edit_status(access_token, status_id, content, sensitive, spoiler_text, language, &media_ids, poll)
+	post: &PostData,
+	in_reply_to_id: Option<&str>,
+) -> Result<PostSubmission> {
+	let media_ids = post
+		.media
+		.iter()
+		.map(|item| client.upload_media(access_token, &item.path, item.description.as_deref()))
+		.collect::<Result<Vec<_>>>()?;
+	client.post_status_with_media(
+		access_token,
+		&post.content,
+		&post.visibility,
+		post.sensitive,
+		post.spoiler_text.as_deref(),
+		&media_ids,
+		post.content_type.as_deref(),
+		post.language.as_deref(),
+		post.poll.as_ref(),
+		in_reply_to_id,
+		post.quoted_status_id.as_deref(),
+		post.scheduled_at.as_deref(),
+	)
+}
+
+/// Replies to `target` with `post`.
+pub fn reply(client: &MastodonClient, access_token: &str, target: Target, post: &PostData) -> Result<PostSubmission> {
+	let in_reply_to_id = match target {
+		Target::Id(id) => id,
+		Target::Url(url) => resolve_status(client, access_token, &url)?.id,
+	};
+	submit(client, access_token, post, Some(&in_reply_to_id))
+}
+
+/// Uploads the edit's new media, then changes the post to match.
+pub fn edit(client: &MastodonClient, access_token: &str, status_id: &str, edit: StatusEdit) -> Result<Status> {
+	let media_ids = edit
+		.media
+		.into_iter()
+		.map(|item| match item {
+			EditMedia::New(upload) => client.upload_media(access_token, &upload.path, upload.description.as_deref()),
+			EditMedia::Existing(id) => Ok(id),
+		})
+		.collect::<Result<Vec<_>>>()?;
+	client.edit_status(
+		access_token,
+		status_id,
+		&edit.content,
+		edit.sensitive,
+		edit.spoiler_text.as_deref(),
+		edit.language.as_deref(),
+		&media_ids,
+		edit.poll.as_ref(),
+	)
+}
+
+/// Votes in the poll of `target`, a poll's id or the URL of a post with one.
+pub fn vote(client: &MastodonClient, access_token: &str, target: Target, choices: &[usize]) -> Result<Poll> {
+	let poll_id = match target {
+		Target::Id(id) => id,
+		Target::Url(url) => resolve_status(client, access_token, &url)?.poll.context("Post has no poll")?.id,
+	};
+	client.vote_poll(access_token, &poll_id, choices)
 }
 
 /// An account's client and token, for tasks on the UI thread that call the server themselves.
@@ -632,148 +604,6 @@ fn run_command(client: &MastodonClient, access_token: &str, command: NetworkComm
 				.get_status_context(access_token, &focus.id)
 				.map(|context| prepare_thread_timeline(*focus, context));
 			Some(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None })
-		}
-		NetworkCommand::FetchStatusSource { status } => {
-			let result = client.fetch_status_source(access_token, &status.id);
-			Some(NetworkResponse::StatusSourceFetched { status, result })
-		}
-		NetworkCommand::ResolveStatusForThread { url } => {
-			let result = resolve_status(client, access_token, &url);
-			Some(NetworkResponse::StatusResolvedForThread { result })
-		}
-		NetworkCommand::ResolveStatusForQuote { url } => {
-			let result = resolve_status(client, access_token, &url);
-			Some(NetworkResponse::StatusResolvedForQuote { result })
-		}
-		NetworkCommand::ResolveAndInteract { url, interaction } => {
-			let status = resolve_status(client, access_token, &url);
-			let response = match interaction {
-				ForeignInteraction::Vote(choices) => NetworkResponse::PollVoted {
-					result: status.and_then(|status| {
-						let poll = status.poll.context("Post has no poll")?;
-						client.vote_poll(access_token, &poll.id, &choices)
-					}),
-				},
-				ForeignInteraction::Reply(post) => NetworkResponse::Replied(status.and_then(|status| {
-					post_with_media(
-						client,
-						access_token,
-						&post.content,
-						&post.visibility,
-						post.sensitive,
-						post.spoiler_text.as_deref(),
-						post.content_type.as_deref(),
-						post.language.as_deref(),
-						post.media,
-						post.poll.as_ref(),
-						Some(&status.id),
-						None,
-						post.scheduled_at.as_deref(),
-					)
-				})),
-			};
-			Some(response)
-		}
-		NetworkCommand::ResolveAccount { url } => {
-			let result = client
-				.search(access_token, &url, SearchType::Accounts, Some(1), None)
-				.and_then(|mut res| res.accounts.pop().context("Account not found on local instance"));
-			Some(NetworkResponse::AccountLookupResult { handle: url, result })
-		}
-		NetworkCommand::LookupAccount { handle } => {
-			let result = client.lookup_account(access_token, &handle);
-			Some(NetworkResponse::AccountLookupResult { handle, result })
-		}
-		NetworkCommand::PostStatus { post } => {
-			let result = post_with_media(
-				client,
-				access_token,
-				&post.content,
-				&post.visibility,
-				post.sensitive,
-				post.spoiler_text.as_deref(),
-				post.content_type.as_deref(),
-				post.language.as_deref(),
-				post.media,
-				post.poll.as_ref(),
-				None,
-				post.quoted_status_id.as_deref(),
-				post.scheduled_at.as_deref(),
-			);
-			Some(NetworkResponse::PostComplete(result))
-		}
-		NetworkCommand::EditStatus { status_id, content, sensitive, spoiler_text, language, media, poll } => {
-			let result = edit_with_media(
-				client,
-				access_token,
-				&status_id,
-				&content,
-				sensitive,
-				spoiler_text.as_deref(),
-				language.as_deref(),
-				media,
-				poll.as_ref(),
-			);
-			Some(NetworkResponse::StatusEdited { _status_id: status_id, result })
-		}
-		NetworkCommand::DeleteStatus { status_id } => {
-			let result = client.delete_status(access_token, &status_id);
-			Some(NetworkResponse::StatusDeleted { status_id, result })
-		}
-		NetworkCommand::Reply {
-			in_reply_to_id,
-			content,
-			visibility,
-			sensitive,
-			spoiler_text,
-			content_type,
-			language,
-			media,
-			poll,
-			scheduled_at,
-		} => {
-			let result = post_with_media(
-				client,
-				access_token,
-				&content,
-				&visibility,
-				sensitive,
-				spoiler_text.as_deref(),
-				content_type.as_deref(),
-				language.as_deref(),
-				media,
-				poll.as_ref(),
-				Some(&in_reply_to_id),
-				None,
-				scheduled_at.as_deref(),
-			);
-			Some(NetworkResponse::Replied(result))
-		}
-		NetworkCommand::VotePoll { poll_id, choices } => {
-			let result = client.vote_poll(access_token, &poll_id, &choices);
-			Some(NetworkResponse::PollVoted { result })
-		}
-		NetworkCommand::FetchCredentials => {
-			let result = client.verify_credentials(access_token);
-			let max_profile_fields = if result.is_ok() { client.get_max_profile_fields() } else { None };
-			Some(NetworkResponse::CredentialsFetched { result, max_profile_fields })
-		}
-		NetworkCommand::UpdateProfile { update } => {
-			let result = client.update_credentials(
-				access_token,
-				update.display_name.as_deref(),
-				update.note.as_deref(),
-				update.avatar.as_deref(),
-				update.header.as_deref(),
-				update.locked,
-				update.bot,
-				update.discoverable,
-				update.fields_attributes.as_deref(),
-				update.source.as_ref().and_then(|s| s.privacy.as_deref()),
-				update.source.as_ref().and_then(|s| s.sensitive),
-				update.source.as_ref().and_then(|s| s.language.as_deref()),
-			);
-			Some(NetworkResponse::ProfileUpdated { result })
 		}
 		NetworkCommand::Search { query, search_type, limit, offset } => {
 			let result = client.search(access_token, &query, search_type, limit, offset);

@@ -11,8 +11,8 @@ use crate::{
 	config::ContentWarningDisplay,
 	html,
 	mastodon::{Status, StatusAction},
-	network::{self, ForeignInteraction, NetworkCommand, resolve_status},
-	responses::status_acted,
+	network::{self, Target, resolve_status},
+	responses::{status_acted, statuses},
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, timeline_view::list_index_to_entry_index},
 };
@@ -38,6 +38,45 @@ pub(super) fn post_result_to_data(post: dialogs::PostResult, quoted_status_id: O
 		}),
 		quoted_status_id,
 		scheduled_at: post.scheduled_at,
+	}
+}
+
+/// The changes an edit dialog's result makes to a post. Attachments it already had stay as they
+/// are, and new ones are uploaded.
+fn status_edit(post: dialogs::PostResult) -> network::StatusEdit {
+	network::StatusEdit {
+		content: post.content,
+		sensitive: post.sensitive,
+		spoiler_text: post.spoiler_text,
+		language: post.language,
+		media: post
+			.media
+			.into_iter()
+			.map(|item| {
+				if item.is_existing {
+					network::EditMedia::Existing(item.path)
+				} else {
+					network::EditMedia::New(network::MediaUpload { path: item.path, description: item.description })
+				}
+			})
+			.collect(),
+		poll: post.poll.map(|poll| network::PollData {
+			options: poll.options,
+			expires_in: poll.expires_in,
+			multiple: poll.multiple,
+			hide_totals: poll.hide_totals,
+		}),
+	}
+}
+
+/// Where a reply or vote on `target` goes: the post itself, or, on another instance's timeline,
+/// its URL, since its id there means nothing to the account's own instance.
+fn reply_target(state: &AppState, target: &Status) -> Target {
+	let is_foreign =
+		matches!(state.timeline_manager.active().map(|t| &t.timeline_type), Some(TimelineType::InstanceLocal { .. }));
+	match &target.url {
+		Some(url) if is_foreign => Target::Url(url.clone()),
+		_ => Target::Id(target.id.clone()),
 	}
 }
 
@@ -78,61 +117,34 @@ fn send_status_action(
 	);
 }
 
-pub fn run_edit_post_dialog(
-	frame: &Frame,
-	state: &mut AppState,
-	target: &crate::mastodon::Status,
-	source_text: Option<&str>,
-) {
-	let max_post_chars = state.max_post_chars;
-	let enter_to_send = state.config.enter_to_send;
+pub fn run_edit_post_dialog(ctx: &mut UiCommandContext<'_>, target: &Status, source_text: Option<&str>) {
+	let Some(requests) = ctx.requests() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let state = &mut *ctx.state;
 	let Some((edit, config)) = dialogs::prompt_for_edit(
-		frame,
+		ctx.frame,
 		target,
 		source_text,
-		max_post_chars,
+		state.max_post_chars,
 		state.max_media_description_chars,
 		&state.poll_limits,
-		enter_to_send,
+		state.config.enter_to_send,
 		dialogs::MentionSource::from_state(state),
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
-		state.pending_post = Some(crate::PendingPost {
-			config,
-			operation: crate::PostOperation::Edit { status_id: target.id.clone() },
-			last_result: edit.clone(),
-		});
-		let media = edit
-			.media
-			.into_iter()
-			.map(|item| {
-				if item.is_existing {
-					network::EditMedia::Existing(item.path)
-				} else {
-					network::EditMedia::New(network::MediaUpload { path: item.path, description: item.description })
-				}
-			})
-			.collect();
-		handle.send(NetworkCommand::EditStatus {
-			status_id: target.id.clone(),
-			content: edit.content,
-			sensitive: edit.sensitive,
-			spoiler_text: edit.spoiler_text,
-			language: edit.language,
-			media,
-			poll: edit.poll.map(|poll| network::PollData {
-				options: poll.options,
-				expires_in: poll.expires_in,
-				multiple: poll.multiple,
-				hide_totals: poll.hide_totals,
-			}),
-		});
-	}
+	state.pending_post = Some(crate::PendingPost {
+		config,
+		operation: crate::PostOperation::Edit { status_id: target.id.clone() },
+		last_result: edit.clone(),
+	});
+	statuses::edit(&requests, target.id.clone(), status_edit(edit));
 }
 
 pub(super) fn new_post(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -165,17 +177,18 @@ pub(super) fn new_post(ctx: &mut UiCommandContext<'_>) {
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
+	if let Some(requests) = requests {
 		state.pending_thread_continuation = post.continue_thread;
 		state.pending_post =
 			Some(crate::PendingPost { config, operation: crate::PostOperation::NewPost, last_result: post.clone() });
-		handle.send(NetworkCommand::PostStatus { post: post_result_to_data(post, None) });
+		statuses::post(&requests, post_result_to_data(post, None));
 	} else {
 		live_region.announce("Network not available");
 	}
 }
 
 pub(super) fn continue_thread(ctx: &mut UiCommandContext<'_>, mut status: Box<Status>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -198,32 +211,21 @@ pub(super) fn continue_thread(ctx: &mut UiCommandContext<'_>, mut status: Box<St
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
+	if let Some(requests) = requests {
 		state.pending_thread_continuation = reply.continue_thread;
 		state.pending_post = Some(crate::PendingPost {
 			config,
 			operation: crate::PostOperation::Reply { in_reply_to_id: status.id.clone() },
 			last_result: reply.clone(),
 		});
-		let post_data = post_result_to_data(reply, None);
-		handle.send(NetworkCommand::Reply {
-			in_reply_to_id: status.id.clone(),
-			content: post_data.content,
-			visibility: post_data.visibility,
-			sensitive: post_data.sensitive,
-			spoiler_text: post_data.spoiler_text,
-			content_type: post_data.content_type,
-			language: post_data.language,
-			media: post_data.media,
-			poll: post_data.poll,
-			scheduled_at: post_data.scheduled_at,
-		});
+		statuses::reply(&requests, Target::Id(status.id.clone()), post_result_to_data(reply, None));
 	} else {
 		live_region.announce("Network not available");
 	}
 }
 
 pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -249,43 +251,21 @@ pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
+	if let Some(requests) = requests {
 		state.pending_thread_continuation = reply.continue_thread;
 		state.pending_post = Some(crate::PendingPost {
 			config,
 			operation: crate::PostOperation::Reply { in_reply_to_id: target.id.clone() },
 			last_result: reply.clone(),
 		});
-		let post_data = post_result_to_data(reply, None);
-		let is_foreign = matches!(
-			state.timeline_manager.active().map(|t| &t.timeline_type),
-			Some(TimelineType::InstanceLocal { .. })
-		);
-		if is_foreign && let Some(url) = &target.url {
-			handle.send(NetworkCommand::ResolveAndInteract {
-				url: url.clone(),
-				interaction: ForeignInteraction::Reply(Box::new(post_data)),
-			});
-			return;
-		}
-		handle.send(NetworkCommand::Reply {
-			in_reply_to_id: target.id.clone(),
-			content: post_data.content,
-			visibility: post_data.visibility,
-			sensitive: post_data.sensitive,
-			spoiler_text: post_data.spoiler_text,
-			content_type: post_data.content_type,
-			language: post_data.language,
-			media: post_data.media,
-			poll: post_data.poll,
-			scheduled_at: post_data.scheduled_at,
-		});
+		statuses::reply(&requests, reply_target(state, target), post_result_to_data(reply, None));
 	} else {
 		live_region.announce("Network not available");
 	}
 }
 
 pub(super) fn quote(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let live_region = ctx.live_region;
 	let status = get_selected_status(state).cloned();
@@ -299,8 +279,8 @@ pub(super) fn quote(ctx: &mut UiCommandContext<'_>) {
 		return;
 	}
 	if let Some(url) = foreign_url(state, target.url.as_ref()) {
-		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::ResolveStatusForQuote { url });
+		if let Some(requests) = requests {
+			statuses::resolve_for_quote(&requests, url);
 		} else {
 			live_region.announce("Network not available");
 		}
@@ -310,6 +290,7 @@ pub(super) fn quote(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn prompt_for_quote(ctx: &mut UiCommandContext<'_>, target: Box<Status>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -331,21 +312,21 @@ pub(super) fn prompt_for_quote(ctx: &mut UiCommandContext<'_>, target: Box<Statu
 	) else {
 		return;
 	};
-	if let Some(handle) = &state.network_handle {
+	if let Some(requests) = requests {
 		state.pending_thread_continuation = post.continue_thread;
 		state.pending_post = Some(crate::PendingPost {
 			config,
 			operation: crate::PostOperation::Quote { quoted_status_id: target_id.clone() },
 			last_result: post.clone(),
 		});
-		let post_data = post_result_to_data(post, Some(target_id));
-		handle.send(NetworkCommand::PostStatus { post: post_data });
+		statuses::post(&requests, post_result_to_data(post, Some(target_id)));
 	} else {
 		live_region.announce("Network not available");
 	}
 }
 
 pub(super) fn delete_post(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -364,8 +345,8 @@ pub(super) fn delete_post(ctx: &mut UiCommandContext<'_>) {
 		return;
 	}
 	if wx_utils::confirm(frame, "Are you sure you want to delete this post?", "Delete Post") {
-		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::DeleteStatus { status_id: target.id.clone() });
+		if let Some(requests) = requests {
+			statuses::delete(&requests, target.id.clone());
 		} else {
 			live_region.announce("Network not available");
 		}
@@ -373,6 +354,7 @@ pub(super) fn delete_post(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn edit_post(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let live_region = ctx.live_region;
 	let status = get_selected_status(state).cloned();
@@ -390,8 +372,8 @@ pub(super) fn edit_post(ctx: &mut UiCommandContext<'_>) {
 		live_region.announce("Could not tell whether this post is yours");
 		return;
 	}
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchStatusSource { status: Box::new(target.clone()) });
+	if let Some(requests) = requests {
+		statuses::fetch_source(&requests, target.clone());
 	} else {
 		live_region.announce("Network not available");
 	}
@@ -688,6 +670,7 @@ pub(super) fn view_in_browser(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn vote(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let live_region = ctx.live_region;
@@ -702,19 +685,12 @@ pub(super) fn vote(ctx: &mut UiCommandContext<'_>) {
 	};
 	let post_text = target.display_text();
 	if let Some(choices) = dialogs::prompt_for_vote(frame, poll, post_text) {
-		if let Some(handle) = &state.network_handle {
-			let is_foreign = matches!(
-				state.timeline_manager.active().map(|t| &t.timeline_type),
-				Some(TimelineType::InstanceLocal { .. })
-			);
-			if is_foreign && let Some(url) = &target.url {
-				handle.send(NetworkCommand::ResolveAndInteract {
-					url: url.clone(),
-					interaction: ForeignInteraction::Vote(choices),
-				});
-				return;
-			}
-			handle.send(NetworkCommand::VotePoll { poll_id: poll.id.clone(), choices });
+		if let Some(requests) = requests {
+			let poll_target = match reply_target(state, target) {
+				Target::Url(url) => Target::Url(url),
+				Target::Id(_) => Target::Id(poll.id.clone()),
+			};
+			statuses::vote(&requests, poll_target, choices);
 		} else {
 			live_region.announce("Network not available");
 		}
@@ -736,6 +712,7 @@ pub(super) fn view_post(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn recover_draft(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let Some(pending) = state.pending_post.take() else { return };
 	let mut config = pending.config;
@@ -762,53 +739,24 @@ pub(super) fn recover_draft(ctx: &mut UiCommandContext<'_>) {
 		crate::PostOperation::Quote { quoted_status_id } => Some(quoted_status_id.clone()),
 		_ => None,
 	};
-	let post_data = post_result_to_data(new_post.clone(), quoted_id);
-	let cmd = match pending.operation {
-		crate::PostOperation::Reply { ref in_reply_to_id } => NetworkCommand::Reply {
-			in_reply_to_id: in_reply_to_id.clone(),
-			content: post_data.content,
-			visibility: post_data.visibility,
-			sensitive: post_data.sensitive,
-			spoiler_text: post_data.spoiler_text,
-			content_type: post_data.content_type,
-			language: post_data.language,
-			media: post_data.media,
-			poll: post_data.poll,
-			scheduled_at: post_data.scheduled_at,
-		},
-		crate::PostOperation::Edit { ref status_id } => {
-			let media = new_post
-				.media
-				.clone()
-				.into_iter()
-				.map(|item| {
-					if item.is_existing {
-						network::EditMedia::Existing(item.path)
-					} else {
-						network::EditMedia::New(network::MediaUpload { path: item.path, description: item.description })
-					}
-				})
-				.collect();
-			NetworkCommand::EditStatus {
-				status_id: status_id.clone(),
-				content: post_data.content,
-				sensitive: post_data.sensitive,
-				spoiler_text: post_data.spoiler_text,
-				language: post_data.language,
-				media,
-				poll: post_data.poll,
-			}
+	let Some(requests) = requests else {
+		ctx.timeline_list.announce("Network not available");
+		return;
+	};
+	match &pending.operation {
+		crate::PostOperation::Reply { in_reply_to_id } => statuses::reply(
+			&requests,
+			Target::Id(in_reply_to_id.clone()),
+			post_result_to_data(new_post.clone(), quoted_id),
+		),
+		crate::PostOperation::Edit { status_id } => {
+			statuses::edit(&requests, status_id.clone(), status_edit(new_post.clone()));
 		}
 		crate::PostOperation::NewPost | crate::PostOperation::Quote { .. } => {
-			NetworkCommand::PostStatus { post: post_data }
+			statuses::post(&requests, post_result_to_data(new_post.clone(), quoted_id));
 		}
-	};
+	}
 	state.pending_thread_continuation = new_post.continue_thread;
 	state.pending_post =
 		Some(crate::PendingPost { config: new_config, operation: pending.operation, last_result: new_post });
-	if let Some(handle) = &state.network_handle {
-		handle.send(cmd);
-	} else {
-		ctx.timeline_list.announce("Network not available");
-	}
 }
