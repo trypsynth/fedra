@@ -143,12 +143,16 @@ fn loaded(
 				} else {
 					let existing_ids: std::collections::HashSet<&str> =
 						timeline.entries.iter().map(crate::timeline::TimelineEntry::id).collect();
-					let mut fresh: Vec<TimelineEntry> =
+					let fresh: Vec<TimelineEntry> =
 						new_entries.into_iter().filter(|entry| !existing_ids.contains(entry.id())).collect();
-					if !fresh.is_empty() {
-						fresh.extend(std::mem::take(&mut timeline.entries));
-						timeline.entries = fresh;
-					}
+					// A user timeline starts with its pinned posts, which new posts go after. Elsewhere
+					// `pinned` only marks the user's own pins, which don't lead the timeline.
+					let pinned = if matches!(timeline_type, TimelineType::User { .. }) {
+						timeline.entries.iter().take_while(|entry| entry.as_status().is_some_and(|s| s.pinned)).count()
+					} else {
+						0
+					};
+					timeline.entries.splice(pinned..pinned, fresh);
 				}
 				// Only the initial load adopts the new pagination cursor; a merge keeps the
 				// existing (older) cursor, which still points past the combined list's oldest
