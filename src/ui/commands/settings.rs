@@ -52,6 +52,9 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			filters: state.config.filters.clone(),
 			find_loading_mode: state.config.find_loading_mode,
 			window_title_template: state.config.window_title_template.clone(),
+			spell_check: state.config.spell_check,
+			spell_check_announce: state.config.spell_check_announce,
+			spell_language: state.config.spell_language.clone(),
 		},
 	) {
 		let dialogs::OptionsDialogResult {
@@ -85,6 +88,9 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 			filters,
 			find_loading_mode,
 			window_title_template,
+			spell_check: spell_check_on,
+			spell_check_announce,
+			spell_language,
 		} = options;
 		let needs_refresh = state.config.sort_order != sort_order
 			|| state.config.content_warning_display != content_warning_display
@@ -127,6 +133,14 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		state.config.notification_preference = notification_preference;
 		state.config.disabled_notification_types = disabled_notification_types;
 		state.config.silent_notification_types = silent_notification_types;
+		state.config.spell_check = spell_check_on;
+		state.config.spell_check_announce = spell_check_announce;
+		state.config.spell_language = spell_language;
+		crate::ui::spell_check::configure(
+			state.config.spell_check,
+			state.config.spell_check_announce,
+			&state.config.spell_language,
+		);
 		state.config.global_keys = global_keys;
 		state.config.repeat_at_timeline_edges = repeat_at_timeline_edges;
 		state.config.shortcuts = shortcuts;

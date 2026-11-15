@@ -11,7 +11,7 @@ use super::{
 use crate::{
 	config::ContentWarningDisplay,
 	mastodon::{PollLimits, Status},
-	ui::keys,
+	ui::{keys, spell_check},
 };
 
 const DEFAULT_MAX_POST_CHARS: usize = 500;
@@ -154,6 +154,7 @@ fn prompt_for_poll(
 	let remove_button = Button::builder(&panel).with_label("Remove Option").build();
 	let option_label = StaticText::builder(&panel).with_label("Selected option text:").build();
 	let option_text = TextCtrl::builder(&panel).build();
+	spell_check::install(&option_text, spell_check::announcer(&panel));
 	let limits = limits.clone();
 	let presets_secs: Vec<u32> = DURATION_PRESETS
 		.iter()
@@ -327,6 +328,7 @@ fn prompt_for_poll(
 	let options_edit = options.clone();
 	let poll_list_edit = poll_list_select;
 	option_text_select.on_text_changed(move |_| {
+		spell_check::text_changed(&option_text_select);
 		let selection = poll_list_edit.get_selection().map(|sel| sel as usize);
 		let updated = if let Some(index) = selection {
 			let value = option_text_select.get_value();
@@ -356,6 +358,7 @@ fn prompt_for_poll(
 	});
 	dialog.centre();
 	let result = dialog.show_modal();
+	spell_check::detach(&option_text);
 	let mut options = options.borrow().clone();
 	let selected_preset = duration_choice.get_selection().and_then(|i| presets_secs.get(i as usize).copied());
 	let multiple = multiple_checkbox.get_value();
@@ -402,6 +405,7 @@ fn prompt_for_media(
 	let desc_label = StaticText::builder(&panel).with_label("&Description for selected media:").build();
 	let desc_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
 	desc_text.set_min_size(Size::new(-1, 80));
+	spell_check::install(&desc_text, spell_check::announcer(&panel));
 	let buttons_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	let ok_button = Button::builder(&panel).with_id(ID_MEDIA_OK).with_label("Done").build();
 	ok_button.set_default();
@@ -574,6 +578,7 @@ fn prompt_for_media(
 	let media_list_desc = media_list_select;
 	let update_title_desc = update_title;
 	desc_text_select.on_text_changed(move |_| {
+		spell_check::text_changed(&desc_text_select);
 		let selection = media_list_desc.get_selection().map(|sel| sel as usize);
 		let mut items = items_desc.borrow_mut();
 		if let Some(index) = selection
@@ -618,6 +623,7 @@ fn prompt_for_media(
 
 	dialog.centre();
 	let result = dialog.show_modal();
+	spell_check::detach(&desc_text);
 	let media = (items.borrow().clone(), sensitive_checkbox.get_value());
 	dialog.destroy();
 	(result == ID_OK).then_some(media)
@@ -867,12 +873,14 @@ pub fn prompt_for_compose(
 	}
 	let content_label = StaticText::builder(&panel).with_label("&What's on your mind?").build();
 	let content_text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).build();
+	spell_check::install(&content_text, spell_check::announcer(&panel));
 	// Only for sighted users: focus stays in the text, and the highlighted suggestion is spoken.
 	let mention_list = ListBox::builder(&panel).build();
 	mention_list.set_min_size(Size::new(-1, 120));
 	let cw_checkbox = CheckBox::builder(&panel).with_label("&Content warning").build();
 	let cw_label = StaticText::builder(&panel).with_label("Warning text:").build();
 	let cw_text = TextCtrl::builder(&panel).build();
+	spell_check::install(&cw_text, spell_check::announcer(&panel));
 	cw_label.show(false);
 	cw_text.show(false);
 	let content_type_label = StaticText::builder(&panel).with_label("Content &type:").build();
@@ -1076,8 +1084,11 @@ pub fn prompt_for_compose(
 			bell();
 		}
 		update_title_on_change();
+		spell_check::text_changed(&content_text);
 		mentions_changed.refresh();
 	});
+	spell_check::refresh(&content_text);
+	cw_text.on_text_changed(move |_| spell_check::text_changed(&cw_text));
 	if let Some(cw) = initial_cw.as_deref().map(str::trim)
 		&& !cw.is_empty()
 	{
@@ -1178,6 +1189,8 @@ pub fn prompt_for_compose(
 		content_text.set_insertion_point_end();
 	}
 	let result = dialog.show_modal();
+	spell_check::detach(&content_text);
+	spell_check::detach(&cw_text);
 	mention_timer.stop();
 	if result != ID_OK {
 		dialog.destroy();
