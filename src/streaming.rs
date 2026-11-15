@@ -10,11 +10,16 @@ use std::{
 };
 
 use serde::Deserialize;
-use tungstenite::{Message, client::IntoClientRequest, client_tls_with_config, http::Uri};
+use tungstenite::{
+	Message,
+	client::IntoClientRequest,
+	client_tls_with_config,
+	http::{HeaderValue, Uri, header},
+};
 use url::Url;
 
 use crate::{
-	mastodon::{Conversation, Notification, Status},
+	mastodon::{Conversation, Notification, Status, USER_AGENT},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
 };
@@ -132,7 +137,8 @@ fn connect_and_stream(
 	retry_count: &mut u32,
 	stop: &AtomicBool,
 ) -> Result<(), String> {
-	let request = url.as_str().into_client_request().map_err(|e| format!("WebSocket request failed: {e}"))?;
+	let mut request = url.as_str().into_client_request().map_err(|e| format!("WebSocket request failed: {e}"))?;
+	request.headers_mut().insert(header::USER_AGENT, HeaderValue::from_static(USER_AGENT));
 	let uri = request.uri().clone();
 	let tcp = connect_tcp_stream(&uri)?;
 	let (mut socket, _response) =

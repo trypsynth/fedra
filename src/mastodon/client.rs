@@ -18,6 +18,8 @@ use reqwest::{
 use serde::de::DeserializeOwned;
 pub use timelines::Markers;
 
+use super::USER_AGENT;
+
 pub const DEFAULT_SCOPES: &str = "read write follow";
 
 #[derive(Debug, Clone)]
@@ -34,7 +36,7 @@ pub struct AppCredentials {
 
 impl MastodonClient {
 	pub fn new(base_url: Url) -> Result<Self> {
-		let http = Client::builder().user_agent("Fedra/0.1").build().context("Failed to create HTTP client")?;
+		let http = Client::builder().user_agent(USER_AGENT).build().context("Failed to create HTTP client")?;
 		Ok(Self { base_url, http })
 	}
 

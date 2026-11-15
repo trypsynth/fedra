@@ -20,9 +20,9 @@ use wx_utils::{
 };
 use wxdragon::prelude::*;
 
-use crate::audio;
 #[cfg(target_os = "macos")]
 use crate::ui::keys;
+use crate::{audio, mastodon::USER_AGENT};
 
 // Background threads never touch wxWidgets handles or Rc-based state directly, since those aren't
 // `Send`. They only send plain `Send` data to the main thread via `wxdragon::call_after`, and the
@@ -183,7 +183,7 @@ fn unique_temp_path() -> PathBuf {
 /// Downloads `url` to `dest`, reporting the bytes so far and the total (0 if unknown) after each
 /// chunk. Fails once `cancel` is set, so nothing goes on to use the partial file.
 fn download(url: &str, dest: &Path, cancel: &AtomicBool, mut report: impl FnMut(u64, u64)) -> anyhow::Result<()> {
-	let client = reqwest::blocking::Client::builder().user_agent("Fedra/0.1").build()?;
+	let client = reqwest::blocking::Client::builder().user_agent(USER_AGENT).build()?;
 	let mut resp = client.get(url).send()?.error_for_status()?;
 	let total = resp.content_length().unwrap_or(0);
 	let mut file = std::fs::File::create(dest)?;

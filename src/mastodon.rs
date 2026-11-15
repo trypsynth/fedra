@@ -26,3 +26,7 @@ pub use status::{
 };
 pub use tag::Tag;
 pub use time::friendly_time_local;
+
+/// Sent with every request Fedra makes. Some firewalls in front of instances, such as Prot.li,
+/// turn away a short one, or none at all.
+pub const USER_AGENT: &str = concat!("Fedra/", env!("CARGO_PKG_VERSION"), " (+https://github.com/trypsynth/fedra)");
