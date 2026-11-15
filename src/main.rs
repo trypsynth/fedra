@@ -59,11 +59,11 @@ use crate::{
 	accounts::{apply_refresh_interval, start_add_account_flow, switch_to_account},
 	config::Config,
 	mastodon::{MastodonClient, PollLimits},
-	network::{NetworkHandle, Session},
-	responses::{process_network_responses, process_stream_events},
+	network::Session,
+	responses::process_stream_events,
 	timeline::TimelineManager,
 	ui::{
-		commands::{UiCommand, UiCommandContext, UiHandles, handle_ui_command},
+		commands::{Requests, UiCommand, UiCommandContext, UiHandles, handle_ui_command},
 		menu::{PostMenuState, relabel_menus},
 		timeline_list::TimelineList,
 		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
@@ -98,7 +98,6 @@ pub(crate) struct AppState {
 	pub(crate) timeline_manager: TimelineManager,
 	pub(crate) account_timelines: HashMap<String, TimelineManager>,
 	pub(crate) account_cw_expanded: HashMap<String, HashSet<String>>,
-	pub(crate) network_handle: Option<NetworkHandle>,
 	pub(crate) streaming_url: Option<url::Url>,
 	pub(crate) access_token: Option<String>,
 	pub(crate) max_post_chars: Option<usize>,
@@ -113,6 +112,8 @@ pub(crate) struct AppState {
 	pub(crate) pending_auth_dialog: Option<Dialog>,
 	pub(crate) client: Option<MastodonClient>,
 	pub(crate) session: Option<Session>,
+	/// Set once the main window's handles exist, before the first account is shown.
+	pub(crate) handles: Option<UiHandles>,
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
 	pub(crate) app_shell: Option<Rc<ui::app_shell::AppShell>>,
@@ -137,7 +138,6 @@ impl AppState {
 			timeline_manager: TimelineManager::new(),
 			account_timelines: HashMap::new(),
 			account_cw_expanded: HashMap::new(),
-			network_handle: None,
 			streaming_url: None,
 			access_token: None,
 			max_post_chars: None,
@@ -152,6 +152,7 @@ impl AppState {
 			pending_auth_dialog: None,
 			client: None,
 			session: None,
+			handles: None,
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
 			app_shell: None,
@@ -172,6 +173,11 @@ impl AppState {
 
 	pub(crate) fn session(&self) -> Option<Session> {
 		self.session.clone()
+	}
+
+	/// What to make the active account's requests with, once there is one.
+	pub(crate) fn requests(&self) -> Option<Requests> {
+		Some(Requests::new(self.handles.clone()?, self.session.clone()?))
 	}
 
 	pub(crate) fn active_account(&self) -> Option<&config::Account> {
@@ -333,27 +339,13 @@ fn main() {
 		if let Some(mb) = frame.get_menu_bar() {
 			relabel_menus(&mb, &state);
 		}
-		switch_to_account(&mut state, &frame, timelines_selector, &timeline_list, &suppress_selection, false, None);
-		let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
-		let app_shell_close = app_shell.clone();
-		state.app_shell = Some(app_shell);
-		ui::commands::register_hotkeys(&state, &ui_tx, &timeline_list);
-		if state.config.check_for_updates_on_startup {
-			crate::ui::update_check::run_update_check(frame, true, ui_tx.clone());
-		}
-		let shutdown_wake = is_shutting_down.clone();
-		let suppress_wake = suppress_selection.clone();
-		let busy_wake = wake_busy;
-		let reschedule_wake = wake_reschedule;
 		let timeline_list_wake = timeline_list.clone();
-		let start_maximized = state.config.start_maximized;
-		let post_menu_state_for_handlers = state.post_menu_state.clone();
 		let state: SharedState = Rc::new(RefCell::new(state));
 		let handles = UiHandles {
-			state: state.clone(),
+			state: Rc::downgrade(&state),
 			frame,
 			timelines_selector,
-			timeline_list,
+			timeline_list: timeline_list.clone(),
 			suppress_selection: suppress_selection.clone(),
 			quick_action_keys_enabled: quick_action_keys_enabled.clone(),
 			autoload_mode: autoload_mode.clone(),
@@ -363,6 +355,24 @@ fn main() {
 			ui_tx: ui_tx.clone(),
 			is_shutting_down: is_shutting_down.clone(),
 		};
+		// Nothing else can be using the state yet: the wake handler isn't bound and no task has run.
+		let (app_shell_close, start_maximized, post_menu_state_for_handlers) = {
+			let mut state = state.borrow_mut();
+			state.handles = Some(handles.clone());
+			switch_to_account(&mut state, &frame, timelines_selector, &timeline_list, &suppress_selection, false, None);
+			let app_shell = Rc::new(ui::app_shell::install_app_shell(&frame, ui_tx.clone()));
+			let app_shell_close = app_shell.clone();
+			state.app_shell = Some(app_shell);
+			ui::commands::register_hotkeys(&state, &ui_tx, &timeline_list);
+			if state.config.check_for_updates_on_startup {
+				crate::ui::update_check::run_update_check(frame, true, ui_tx.clone());
+			}
+			(app_shell_close, state.config.start_maximized, state.post_menu_state.clone())
+		};
+		let shutdown_wake = is_shutting_down.clone();
+		let suppress_wake = suppress_selection.clone();
+		let busy_wake = wake_busy;
+		let reschedule_wake = wake_reschedule;
 		let ui_waker_handler = ui_waker.clone();
 		let mut last_ui_refresh = Instant::now();
 		frame.bind_with_id_internal(EventType::MENU, ID_UI_WAKE, move |_| {
@@ -392,7 +402,6 @@ fn main() {
 				return;
 			}
 			process_stream_events(ctx.state, &timeline_list_wake, &suppress_wake, &frame);
-			process_network_responses(&mut ctx);
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
 				ctx.state.redraw_active_timeline(&timeline_list_wake, &suppress_wake);
 				last_ui_refresh = Instant::now();
@@ -412,7 +421,7 @@ fn main() {
 			&window_parts,
 			ui_tx.clone(),
 			is_shutting_down.clone(),
-			suppress_selection.clone(),
+			suppress_selection,
 			&quick_action_keys_enabled,
 			autoload_mode,
 			sort_order_cell,

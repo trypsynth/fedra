@@ -1,10 +1,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	fmt, slice,
-	sync::{
-		atomic::{AtomicU64, Ordering},
-		mpsc::{self, Receiver, Sender},
-	},
+	sync::atomic::{AtomicU64, Ordering},
 };
 
 use anyhow::{Context, Result};
@@ -13,11 +10,10 @@ use wx_utils::tasks::{Background, Queue, background_blocking};
 
 use crate::{
 	mastodon::{
-		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification, Poll,
-		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusContext, Tag,
+		Account, Conversation, Filter, FilterAction, FilterContext, MastodonClient, Notification, Poll, PostSubmission,
+		Relationship, SearchType, Status, StatusContext, Tag,
 	},
 	timeline::TimelineType,
-	ui_wake::UiWaker,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,16 +49,6 @@ pub struct PostData {
 	pub scheduled_at: Option<String>,
 }
 
-pub enum NetworkCommand {
-	FetchTimeline { timeline_type: TimelineType, limit: Option<u32>, max_id: Option<String> },
-	FetchThread { timeline_type: TimelineType, focus: Box<Status> },
-	Search { query: String, search_type: SearchType, limit: Option<u32>, offset: Option<u32> },
-	FetchInstanceInfo,
-	FetchMarkers,
-	FetchNotificationPolicy,
-	SaveMarker { timeline: &'static str, last_read_id: String },
-}
-
 #[derive(Debug, Clone)]
 pub struct ProfileUpdate {
 	pub display_name: Option<String>,
@@ -94,15 +80,6 @@ pub struct PollData {
 	pub expires_in: u32,
 	pub multiple: bool,
 	pub hide_totals: bool,
-}
-
-#[derive(Debug)]
-pub enum NetworkResponse {
-	TimelineLoaded { timeline_type: TimelineType, result: Result<TimelineData>, max_id: Option<String> },
-	InstanceInfoFetched(Result<InstanceInfo>),
-	MarkersLoaded(Result<crate::mastodon::Markers>),
-	NotificationPolicyLoaded(Result<crate::mastodon::NotificationPolicy>),
-	SearchLoaded { query: String, search_type: SearchType, result: Result<SearchResults>, offset: Option<u32> },
 }
 
 #[derive(Debug)]
@@ -298,59 +275,62 @@ impl Session {
 	}
 }
 
-/// Hands commands to an account's request queue, which makes them one at a time in the order they
-/// were sent, behind any of the account's other queued requests. Dialogs keep clones of it.
-#[derive(Clone)]
-pub struct NetworkSender {
-	session: Session,
-	responses: Sender<NetworkResponse>,
-	ui_waker: UiWaker,
-}
-
-impl NetworkSender {
-	pub fn send(&self, command: NetworkCommand) {
-		let (responses, ui_waker) = (self.responses.clone(), self.ui_waker.clone());
-		let (client, token) = (self.session.client.clone(), self.session.token.clone());
-		self.session.writes.push(move || {
-			if let Some(response) = run_command(&client, &token, command) {
-				send_response(&responses, &ui_waker, response);
-			}
-		});
-	}
-}
-
-/// An account's commands and the answers to them, which the wake handler takes in turn.
-pub struct NetworkHandle {
-	pub command_tx: NetworkSender,
-	response_rx: Receiver<NetworkResponse>,
-}
-
-impl NetworkHandle {
-	pub fn send(&self, command: NetworkCommand) {
-		self.command_tx.send(command);
-	}
-
-	pub fn try_recv(&self) -> Option<NetworkResponse> {
-		self.response_rx.try_recv().ok()
-	}
-
-	pub fn drain(&self) -> Vec<NetworkResponse> {
-		let mut responses = Vec::new();
-		while let Some(resp) = self.try_recv() {
-			responses.push(resp);
+/// A page of `timeline_type`, the newest unless `max_id` asks for the posts older than it.
+pub fn fetch_timeline(
+	client: &MastodonClient,
+	access_token: &str,
+	timeline_type: &TimelineType,
+	limit: Option<u32>,
+	max_id: Option<&str>,
+) -> Result<TimelineData> {
+	let mut result = match timeline_type {
+		TimelineType::Notifications | TimelineType::Mentions => client
+			.get_notifications(access_token, timeline_type, limit, max_id)
+			.map(|(n, next)| TimelineData::Notifications(n, next)),
+		TimelineType::Direct => {
+			client.get_conversations(access_token, limit, max_id).map(|(c, next)| TimelineData::Conversations(c, next))
 		}
-		responses
+		TimelineType::Thread { id, .. } => client.get_status(access_token, id).and_then(|focus| {
+			client.get_status_context(access_token, id).map(|context| prepare_thread_timeline(focus, context))
+		}),
+		_ => {
+			let mut statuses = Vec::new();
+			if let TimelineType::User { id, .. } = timeline_type
+				&& max_id.is_none()
+				&& let Ok(mut pinned) = client.get_pinned_statuses(access_token, id)
+			{
+				for p in &mut pinned {
+					p.pinned = true;
+				}
+				statuses.extend(pinned);
+			}
+			match client.get_timeline(access_token, timeline_type, limit, max_id) {
+				Ok((page, next)) => {
+					let mut seen: HashSet<String> = statuses.iter().map(|st| st.id.clone()).collect();
+					statuses.extend(page.into_iter().filter(|st| seen.insert(st.id.clone())));
+					Ok(TimelineData::Statuses(statuses, next))
+				}
+				// The pinned posts still show when the rest fail.
+				Err(e) if statuses.is_empty() => Err(e),
+				Err(_) => Ok(TimelineData::Statuses(statuses, None)),
+			}
+		}
+	};
+	// Remote instances fetch anonymously, so their statuses never carry our filter matches.
+	if let TimelineType::InstanceLocal { .. } = timeline_type
+		&& let Ok(TimelineData::Statuses(statuses, _)) = &mut result
+		&& let Ok(filters) = client.get_filters(access_token)
+	{
+		for status in statuses {
+			status.apply_filters(&filters);
+		}
 	}
+	result
 }
 
-pub fn start_network(session: Session, ui_waker: UiWaker) -> NetworkHandle {
-	let (responses, response_rx) = mpsc::channel();
-	NetworkHandle { command_tx: NetworkSender { session, responses, ui_waker }, response_rx }
-}
-
-fn send_response(responses: &Sender<NetworkResponse>, ui_waker: &UiWaker, response: NetworkResponse) {
-	let _ = responses.send(response);
-	ui_waker.wake();
+/// The thread around `focus`, which is already known, so only its context is fetched.
+pub fn fetch_thread(client: &MastodonClient, access_token: &str, focus: Status) -> Result<TimelineData> {
+	client.get_status_context(access_token, &focus.id).map(|context| prepare_thread_timeline(focus, context))
 }
 
 fn prepare_thread_timeline(focus: Status, context: StatusContext) -> TimelineData {
@@ -536,91 +516,4 @@ pub fn unmute_tag(client: &MastodonClient, access_token: &str, name: &str) -> Re
 		}
 	}
 	Ok(())
-}
-
-/// Makes the request `command` stands for, and gives back the answer to hand to the UI, if any.
-fn run_command(client: &MastodonClient, access_token: &str, command: NetworkCommand) -> Option<NetworkResponse> {
-	match command {
-		NetworkCommand::FetchTimeline { timeline_type, limit, max_id } => {
-			let mut result = match timeline_type {
-				TimelineType::Notifications | TimelineType::Mentions => client
-					.get_notifications(access_token, &timeline_type, limit, max_id.as_deref())
-					.map(|(n, next)| TimelineData::Notifications(n, next)),
-				TimelineType::Direct => client
-					.get_conversations(access_token, limit, max_id.as_deref())
-					.map(|(c, next)| TimelineData::Conversations(c, next)),
-				TimelineType::Thread { ref id, .. } => client.get_status(access_token, id).and_then(|focus| {
-					client.get_status_context(access_token, id).map(|context| prepare_thread_timeline(focus, context))
-				}),
-				_ => {
-					let mut statuses = Vec::new();
-					if let TimelineType::User { ref id, .. } = timeline_type
-						&& max_id.is_none()
-						&& let Ok(mut pinned) = client.get_pinned_statuses(access_token, id)
-					{
-						for p in &mut pinned {
-							p.pinned = true;
-						}
-						statuses.extend(pinned);
-					}
-					let res = client.get_timeline(access_token, &timeline_type, limit, max_id.as_deref());
-					match res {
-						Ok((s, n)) => {
-							let mut seen = std::collections::HashSet::new();
-							for st in &statuses {
-								seen.insert(st.id.clone());
-							}
-							for st in s {
-								if !seen.contains(&st.id) {
-									seen.insert(st.id.clone());
-									statuses.push(st);
-								}
-							}
-							Ok(TimelineData::Statuses(statuses, n))
-						}
-						Err(e) => {
-							if statuses.is_empty() {
-								Err(e)
-							} else {
-								Ok(TimelineData::Statuses(statuses, None))
-							}
-						}
-					}
-				}
-			};
-			// Remote instances fetch anonymously, so their statuses never carry our filter matches.
-			if let TimelineType::InstanceLocal { .. } = timeline_type
-				&& let Ok(TimelineData::Statuses(statuses, _)) = &mut result
-				&& let Ok(filters) = client.get_filters(access_token)
-			{
-				for status in statuses {
-					status.apply_filters(&filters);
-				}
-			}
-			Some(NetworkResponse::TimelineLoaded { timeline_type, result, max_id })
-		}
-		NetworkCommand::FetchThread { timeline_type, focus } => {
-			let result = client
-				.get_status_context(access_token, &focus.id)
-				.map(|context| prepare_thread_timeline(*focus, context));
-			Some(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None })
-		}
-		NetworkCommand::Search { query, search_type, limit, offset } => {
-			let result = client.search(access_token, &query, search_type, limit, offset);
-			Some(NetworkResponse::SearchLoaded { query, search_type, result, offset })
-		}
-		NetworkCommand::FetchNotificationPolicy => {
-			let result = client.get_notification_policy(access_token);
-			Some(NetworkResponse::NotificationPolicyLoaded(result))
-		}
-		NetworkCommand::FetchInstanceInfo => Some(NetworkResponse::InstanceInfoFetched(client.get_instance_info())),
-		NetworkCommand::FetchMarkers => {
-			let result = client.get_markers(access_token);
-			Some(NetworkResponse::MarkersLoaded(result))
-		}
-		NetworkCommand::SaveMarker { timeline, last_read_id } => {
-			let _ = client.set_marker(access_token, timeline, &last_read_id);
-			None
-		}
-	}
 }

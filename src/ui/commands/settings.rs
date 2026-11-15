@@ -5,8 +5,7 @@ use crate::{
 	AppState,
 	accounts::{apply_refresh_interval, apply_streaming_setting, update_window_title},
 	config::ContentWarningDisplay,
-	network::NetworkCommand,
-	responses::lists,
+	responses::{fetch_notification_policy, lists, timelines},
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, menu::relabel_menus, timeline_list::TimelineList},
 	ui_wake::UiCommandSender,
@@ -323,17 +322,13 @@ pub(super) fn message_requests(ctx: &mut UiCommandContext<'_>) {
 		selected = Some(index);
 	}
 	state.pending_message_requests = None;
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchNotificationPolicy);
+	if let Some(requests) = state.requests() {
+		fetch_notification_policy(&requests);
 		// Accepted requests' notifications join the rest, so the timelines holding them refetch.
 		if accepted {
 			for timeline_type in [TimelineType::Notifications, TimelineType::Direct] {
 				if state.timeline_manager.index_of(&timeline_type).is_some() {
-					handle.send(NetworkCommand::FetchTimeline {
-						timeline_type,
-						limit: Some(u32::from(state.config.fetch_limit)),
-						max_id: None,
-					});
+					timelines::refresh(state, timeline_type);
 				}
 			}
 		}

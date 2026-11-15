@@ -7,7 +7,8 @@ use crate::{
 	AppState, UiCommand, auth,
 	config::Account,
 	mastodon::{MastodonClient, PollLimits},
-	network::{self, NetworkCommand, Session},
+	network::Session,
+	responses::{fetch_instance_info, fetch_markers, fetch_notification_policy, search, timelines},
 	streaming,
 	timeline::TimelineType,
 	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
@@ -118,7 +119,6 @@ pub fn switch_to_account(
 		state.config.active_account_id = Some(new_id);
 		let _ = state.save_config();
 	}
-	state.network_handle = None;
 	state.session = None;
 	let active_id =
 		state.config.active_account_id.clone().or_else(|| state.config.accounts.first().map(|a| a.id.clone()));
@@ -145,11 +145,10 @@ pub fn switch_to_account(
 	state.poll_limits = PollLimits::default();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
-		let session = Session::new(client.clone(), token.clone());
-		state.session = Some(session.clone());
-		let network = network::start_network(session, state.ui_waker.clone());
-		network.send(NetworkCommand::FetchInstanceInfo);
-		state.network_handle = Some(network);
+		state.session = Some(Session::new(client.clone(), token.clone()));
+		if let Some(requests) = state.requests() {
+			fetch_instance_info(&requests);
+		}
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none()
@@ -178,11 +177,11 @@ pub fn switch_to_account(
 		.unwrap_or_default();
 	if first_load {
 		// Asked for before any timeline, so the markers arrive first and restoring can use them.
-		if let Some(handle) = &state.network_handle {
+		if let Some(requests) = state.requests() {
 			if state.config.sync_read_position {
-				handle.send(NetworkCommand::FetchMarkers);
+				fetch_markers(&requests);
 			}
-			handle.send(NetworkCommand::FetchNotificationPolicy);
+			fetch_notification_policy(&requests);
 		}
 		let mut loaded_saved = false;
 		let default_timelines = state.config.default_timelines.clone();
@@ -218,24 +217,13 @@ pub fn switch_to_account(
 					}
 				}
 				state.timeline_manager.open(t.clone());
-				if let Some(handle) = &state.network_handle {
-					match t.clone() {
-						TimelineType::Search { query, search_type } => {
-							handle.send(NetworkCommand::Search {
-								query,
-								search_type,
-								limit: Some(u32::from(state.config.fetch_limit)),
-								offset: None,
-							});
-						}
-						_ => {
-							handle.send(NetworkCommand::FetchTimeline {
-								timeline_type: t,
-								limit: Some(u32::from(state.config.fetch_limit)),
-								max_id: None,
-							});
+				match t {
+					TimelineType::Search { query, search_type } => {
+						if let Some(requests) = state.requests() {
+							search(&requests, query, search_type, Some(u32::from(state.config.fetch_limit)), None);
 						}
 					}
+					_ => timelines::refresh(state, t),
 				}
 			}
 			loaded_saved = state.config.restore_open_timelines;
@@ -258,14 +246,8 @@ pub fn switch_to_account(
 				types_to_load.push(timeline_type);
 			}
 			for t in types_to_load {
-				if state.timeline_manager.open(t.clone())
-					&& let Some(handle) = &state.network_handle
-				{
-					handle.send(NetworkCommand::FetchTimeline {
-						timeline_type: t,
-						limit: Some(u32::from(state.config.fetch_limit)),
-						max_id: None,
-					});
+				if state.timeline_manager.open(t.clone()) {
+					timelines::refresh(state, t);
 				}
 			}
 		}

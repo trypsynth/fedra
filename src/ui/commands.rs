@@ -24,7 +24,7 @@ mod user;
 use std::{
 	cell::{Cell, RefCell},
 	future::pending,
-	rc::Rc,
+	rc::{Rc, Weak},
 };
 
 pub use post::run_edit_post_dialog;
@@ -35,7 +35,7 @@ use wx_utils::tasks::{sleep, spawn_for};
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, STATE_BUSY_RETRY, SharedState, auth,
+	AppState, STATE_BUSY_RETRY, auth,
 	config::{ActionId, AutoloadMode, ShortcutsConfig, SortOrder},
 	mastodon::{Account, MastodonClient, Status},
 	network::Session,
@@ -251,7 +251,7 @@ pub struct UiCommandContext<'a> {
 impl UiCommandContext<'_> {
 	/// What a dialog keeps so it can make requests for the active account, if there is one.
 	pub fn requests(&self) -> Option<Requests> {
-		Some(Requests { handles: self.handles.clone(), session: self.state.session()? })
+		Some(Requests::new(self.handles.clone(), self.state.session()?))
 	}
 }
 
@@ -263,6 +263,10 @@ pub struct Requests {
 }
 
 impl Requests {
+	pub const fn new(handles: UiHandles, session: Session) -> Self {
+		Self { handles, session }
+	}
+
 	/// See [`UiHandles::request`].
 	pub fn request<T, F, G>(&self, request: F, then: G)
 	where
@@ -277,7 +281,8 @@ impl Requests {
 /// Everything a `UiCommandContext` is made from, which UI tasks keep so they can make one.
 #[derive(Clone)]
 pub struct UiHandles {
-	pub state: SharedState,
+	/// Weak, since the state keeps a copy of these handles.
+	pub state: Weak<RefCell<AppState>>,
 	pub frame: Frame,
 	pub timelines_selector: ListBox,
 	pub timeline_list: TimelineList,
@@ -339,10 +344,10 @@ impl UiHandles {
 	/// along with the main window.
 	pub async fn with_ctx<R>(&self, f: impl FnOnce(&mut UiCommandContext<'_>) -> R) -> R {
 		loop {
-			if self.is_shutting_down.get() {
+			let Some(state) = self.state.upgrade().filter(|_| !self.is_shutting_down.get()) else {
 				return pending().await;
-			}
-			if let Ok(mut state) = self.state.try_borrow_mut() {
+			};
+			if let Ok(mut state) = state.try_borrow_mut() {
 				return f(&mut self.context(&mut state));
 			}
 			sleep(STATE_BUSY_RETRY).await;

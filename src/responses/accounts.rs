@@ -4,8 +4,10 @@ use url::Url;
 use super::{NetworkResponseContext, helpers::summarize_api_error};
 use crate::{
 	AppState, UiCommand,
-	mastodon::{Account, InstanceInfo, Relationship},
+	mastodon::{Account, InstanceInfo, MastodonClient, Relationship},
 	network::{AccountQuery, RelationshipAction, fetch_credentials, fetch_relationship, find_account, update_profile},
+	notifications::notify_message_requests,
+	read_position::apply_markers,
 	timeline::TimelineType,
 	ui::{
 		commands::Requests,
@@ -13,7 +15,44 @@ use crate::{
 	},
 };
 
-pub(super) fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
+/// Fetches what the account's instance allows, such as how long a post can be, and where it
+/// streams from.
+pub fn fetch_instance_info(requests: &Requests) {
+	requests.request(
+		|client, _| client.get_instance_info(),
+		|ctx, result| {
+			if let Ok(info) = result {
+				instance_info_fetched(ctx.state, info);
+			}
+		},
+	);
+}
+
+/// Fetches where the account last read up to, for timelines to restore.
+pub fn fetch_markers(requests: &Requests) {
+	requests.request(MastodonClient::get_markers, |ctx, result| {
+		if let Ok(markers) = result {
+			apply_markers(ctx.state, markers);
+		}
+	});
+}
+
+/// Fetches how many message requests are waiting. The first check after launch or an account
+/// switch only sets the baseline, which the File menu shows, so requests that were already waiting
+/// don't sound like new ones.
+pub fn fetch_notification_policy(requests: &Requests) {
+	// Servers before Mastodon 4.3 have no notification policy, and so no requests.
+	requests.request(MastodonClient::get_notification_policy, |ctx, result| {
+		let Ok(policy) = result else { return };
+		let count = policy.summary.pending_requests_count;
+		if ctx.state.pending_message_requests.replace(count).is_some_and(|previous| count > previous) {
+			notify_message_requests(ctx.state, count);
+		}
+		ctx.refresh_menu_labels();
+	});
+}
+
+fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
 	state.max_post_chars = Some(info.max_post_chars);
 	state.max_media_description_chars = Some(info.max_media_description_chars);
 	state.poll_limits = info.poll_limits;

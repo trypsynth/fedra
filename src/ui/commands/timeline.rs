@@ -18,8 +18,10 @@ use crate::{
 	accounts::{start_streaming_for_timeline, update_window_title},
 	config::{SortOrder, TimelineSound},
 	mastodon::Status,
-	network::{AccountQuery, FollowOptions, NetworkCommand, RelationshipAction, change_relationship},
-	responses::{self, fill_in_profile, lists, look_up, relationship_updated, statuses},
+	network::{AccountQuery, FollowOptions, RelationshipAction, change_relationship},
+	responses::{
+		self, fetch_notification_policy, fill_in_profile, lists, look_up, relationship_updated, statuses, timelines,
+	},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs,
@@ -34,17 +36,10 @@ pub(super) fn refresh_timeline(state: &AppState, live_region: &crate::ui::timeli
 		Some(t) => t.timeline_type.clone(),
 		None => return,
 	};
-	match &state.network_handle {
-		Some(handle) => {
-			handle.send(NetworkCommand::FetchTimeline {
-				timeline_type,
-				limit: Some(u32::from(state.config.fetch_limit)),
-				max_id: None,
-			});
-		}
-		None => {
-			live_region.announce("Network not available");
-		}
+	if state.requests().is_some() {
+		timelines::refresh(state, timeline_type);
+	} else {
+		live_region.announce("Network not available");
 	}
 }
 
@@ -54,14 +49,9 @@ pub(super) fn refresh_timeline(state: &AppState, live_region: &crate::ui::timeli
 /// duplicate traffic. Timelines on instances without working streaming never
 /// report connected, so they are the ones this covers.
 pub(super) fn poll_streamable_timelines(state: &AppState) {
-	let Some(handle) = &state.network_handle else { return };
 	for timeline in state.timeline_manager.timelines() {
 		if !timeline.stream_connected && timeline.timeline_type.stream_params().is_some() {
-			handle.send(NetworkCommand::FetchTimeline {
-				timeline_type: timeline.timeline_type.clone(),
-				limit: Some(u32::from(state.config.fetch_limit)),
-				max_id: None,
-			});
+			timelines::refresh(state, timeline.timeline_type.clone());
 		}
 	}
 }
@@ -99,13 +89,7 @@ pub(super) fn open_timeline(
 		selector.set_selection(u32::try_from(new_index).unwrap(), true);
 	});
 	if !matches!(timeline_type, TimelineType::Thread { .. } | TimelineType::Search { .. }) {
-		if let Some(handle) = &state.network_handle {
-			handle.send(NetworkCommand::FetchTimeline {
-				timeline_type: timeline_type.clone(),
-				limit: Some(u32::from(state.config.fetch_limit)),
-				max_id: None,
-			});
-		}
+		timelines::refresh(state, timeline_type.clone());
 		start_streaming_for_timeline(state, timeline_type);
 	}
 	with_suppressed_selection(suppress_selection, || {
@@ -167,8 +151,8 @@ pub(super) fn poll_streamable(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	poll_streamable_timelines(state);
 	crate::read_position::sync(state);
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchNotificationPolicy);
+	if let Some(requests) = state.requests() {
+		fetch_notification_policy(&requests);
 	}
 }
 
@@ -352,26 +336,16 @@ pub(super) fn load_more(ctx: &mut UiCommandContext<'_>) {
 		if can_load {
 			active.loading_more = true;
 			active.last_load_attempt = Some(now);
-			if let Some(handle) = &state.network_handle {
+			if let Some(requests) = &requests {
 				if let TimelineType::Search { ref query, search_type } = active.timeline_type {
-					if let Some(requests) = &requests {
-						let offset = Some(u32::try_from(active.entries.len()).unwrap());
-						responses::search(
-							requests,
-							query.clone(),
-							search_type,
-							Some(u32::from(state.config.fetch_limit)),
-							offset,
-						);
-					}
+					let offset = Some(u32::try_from(active.entries.len()).unwrap());
+					let limit = Some(u32::from(state.config.fetch_limit));
+					responses::search(requests, query.clone(), search_type, limit, offset);
 				} else {
 					let max_id = active.next_max_id.clone().or_else(|| paging_max_id(&active.entries));
 					if let Some(max_id) = max_id {
-						handle.send(NetworkCommand::FetchTimeline {
-							timeline_type: active.timeline_type.clone(),
-							limit: Some(u32::from(state.config.fetch_limit)),
-							max_id: Some(max_id),
-						});
+						let limit = Some(u32::from(state.config.fetch_limit));
+						timelines::fetch(requests, active.timeline_type.clone(), limit, Some(max_id));
 					} else {
 						active.loading_more = false;
 						live_region.announce("No more posts available");
@@ -645,16 +619,17 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				live_region,
 				frame,
 			);
-			let Some(handle) = &state.network_handle else {
+			let Some(requests) = &requests else {
 				live_region.announce("Network not available");
 				return;
 			};
-			handle.send(NetworkCommand::FetchThread { timeline_type, focus: Box::new(target.clone()) });
+			timelines::load_thread(requests, timeline_type, target.clone());
 		}
 	}
 }
 
 pub(super) fn view_resolved_thread(ctx: &mut UiCommandContext<'_>, focus: Box<Status>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let timelines_selector = ctx.timelines_selector;
@@ -665,12 +640,13 @@ pub(super) fn view_resolved_thread(ctx: &mut UiCommandContext<'_>, focus: Box<St
 	let timeline_type = TimelineType::Thread { id: focus.id.clone(), name };
 	state.pending_restore_post_id = Some((timeline_type.clone(), focus.id.clone()));
 	open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchThread { timeline_type, focus });
+	if let Some(requests) = &requests {
+		timelines::load_thread(requests, timeline_type, *focus);
 	}
 }
 
 pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
+	let requests = ctx.requests();
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	let timelines_selector = ctx.timelines_selector;
@@ -699,7 +675,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 	if let Some((timeline_type, status_id)) = quoted_info {
 		state.pending_restore_post_id = Some((timeline_type.clone(), status_id));
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
-		let Some(handle) = &state.network_handle else {
+		let Some(requests) = &requests else {
 			live_region.announce("Network not available");
 			return;
 		};
@@ -707,7 +683,7 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 		// carry its own nested quote data, so fetch the full status fresh by id instead of
 		// reusing it as the thread focus (otherwise the quote inside it looked broken until the
 		// thread was manually refreshed).
-		handle.send(NetworkCommand::FetchTimeline { timeline_type, limit: None, max_id: None });
+		timelines::fetch(requests, timeline_type, None, None);
 	}
 }
 

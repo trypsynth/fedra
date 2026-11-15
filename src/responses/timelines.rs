@@ -4,15 +4,47 @@ use super::{
 	lists,
 };
 use crate::{
-	UiCommand,
+	AppState, UiCommand,
 	mastodon::{SearchResults, SearchType, Status},
-	network::{NetworkCommand, TimelineData},
+	network::{TimelineData, fetch_thread, fetch_timeline},
 	read_position::{MAX_RESTORE_PAGES, is_older},
 	timeline::{Timeline, TimelineEntry, TimelineType},
 	ui::{commands::Requests, dialogs, menu::update_menu_labels, timeline_view::update_active_timeline_ui},
 };
 
-pub(super) fn loaded(
+/// Loads a page of `timeline_type`, the newest unless `max_id` asks for the posts older than it,
+/// then shows it in the open timeline.
+pub fn fetch(requests: &Requests, timeline_type: TimelineType, limit: Option<u32>, max_id: Option<String>) {
+	let (asked, asked_max_id) = (timeline_type.clone(), max_id.clone());
+	requests.request(
+		move |client, token| fetch_timeline(client, token, &asked, limit, asked_max_id.as_deref()),
+		move |ctx, result| match result {
+			Ok(data) => loaded(ctx, &timeline_type, data, max_id.as_deref()),
+			Err(err) => load_failed(ctx, &timeline_type, &err, max_id.is_some()),
+		},
+	);
+}
+
+/// Loads the newest page of `timeline_type`, as many posts as the user asked for, if there's an
+/// account to load it for.
+pub fn refresh(state: &AppState, timeline_type: TimelineType) {
+	if let Some(requests) = state.requests() {
+		fetch(&requests, timeline_type, Some(u32::from(state.config.fetch_limit)), None);
+	}
+}
+
+/// Loads the thread around `focus`, which is already known.
+pub fn load_thread(requests: &Requests, timeline_type: TimelineType, focus: Status) {
+	requests.request(
+		move |client, token| fetch_thread(client, token, focus),
+		move |ctx, result| match result {
+			Ok(data) => loaded(ctx, &timeline_type, data, None),
+			Err(err) => load_failed(ctx, &timeline_type, &err, false),
+		},
+	);
+}
+
+fn loaded(
 	ctx: &mut NetworkResponseContext<'_>,
 	timeline_type: &TimelineType,
 	data: TimelineData,
@@ -155,12 +187,9 @@ pub(super) fn loaded(
 		match restore {
 			Some(Some(older_than)) => {
 				state.restore_pages += 1;
-				if let Some(handle) = &state.network_handle {
-					handle.send(NetworkCommand::FetchTimeline {
-						timeline_type: timeline_type.clone(),
-						limit: Some(u32::from(state.config.fetch_limit)),
-						max_id: Some(older_than),
-					});
+				if let Some(requests) = state.requests() {
+					let limit = Some(u32::from(state.config.fetch_limit));
+					fetch(&requests, timeline_type.clone(), limit, Some(older_than));
 				}
 			}
 			Some(None) => {
@@ -183,7 +212,7 @@ pub(super) fn loaded(
 	}
 }
 
-pub(super) fn load_failed(
+fn load_failed(
 	ctx: &mut NetworkResponseContext<'_>,
 	timeline_type: &TimelineType,
 	err: &anyhow::Error,

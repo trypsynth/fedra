@@ -2,7 +2,7 @@
 
 use std::{sync::mpsc, thread, time::Duration};
 
-use crate::{AppState, mastodon::Markers, network::NetworkCommand, timeline::TimelineType};
+use crate::{AppState, mastodon::Markers, timeline::TimelineType};
 
 pub const MAX_RESTORE_PAGES: u8 = 10;
 
@@ -53,14 +53,21 @@ fn changed_positions(state: &AppState) -> Vec<(&'static str, String)> {
 
 pub fn sync(state: &mut AppState) {
 	let changed = changed_positions(state);
-	let Some(handle) = &state.network_handle else { return };
+	let Some(requests) = state.requests() else { return };
 	for (name, id) in changed {
-		handle.send(NetworkCommand::SaveMarker { timeline: name, last_read_id: id.clone() });
+		let last_read_id = id.clone();
+		requests.request(
+			move |client, token| {
+				// A position that doesn't save is saved again with the next change.
+				let _ = client.set_marker(token, name, &last_read_id);
+			},
+			|_, ()| {},
+		);
 		state.synced_markers.insert(name, id);
 	}
 }
 
-/// Saves changed positions directly, waiting up to two seconds, since the network thread may not
+/// Saves changed positions directly, waiting up to two seconds, since the request queue may not
 /// get to them before the process exits.
 pub fn sync_before_exit(state: &AppState) {
 	let changed = changed_positions(state);

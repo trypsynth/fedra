@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{AppState, mastodon::Status, network::NetworkCommand, timeline::TimelineEntry};
+use super::timelines::refresh;
+use crate::{AppState, mastodon::Status, timeline::TimelineEntry};
 
 pub(super) fn summarize_api_error(err: &anyhow::Error) -> String {
 	for cause in err.chain().skip(1) {
@@ -26,17 +27,11 @@ pub fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
 /// pinned-post ordering reflects the latest pin state.
 pub(super) fn refresh_own_user_timelines(state: &AppState) {
 	let Some(current_user_id) = &state.current_user_id else { return };
-	let Some(handle) = &state.network_handle else { return };
-	let types = state.timeline_manager.open_timeline_types();
-	for tt in types {
+	for tt in state.timeline_manager.open_timeline_types() {
 		if let crate::timeline::TimelineType::User { ref id, .. } = tt
 			&& id == current_user_id
 		{
-			handle.send(NetworkCommand::FetchTimeline {
-				timeline_type: tt,
-				limit: Some(u32::from(state.config.fetch_limit)),
-				max_id: None,
-			});
+			refresh(state, tt);
 		}
 	}
 }
