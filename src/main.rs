@@ -27,7 +27,7 @@ mod ui;
 mod ui_wake;
 
 use std::{
-	cell::Cell,
+	cell::{Cell, RefCell},
 	collections::{HashMap, HashSet},
 	fs::File,
 	io::Write,
@@ -37,6 +37,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use wx_utils::tasks::{sleep, spawn_local};
 use wxdragon::prelude::*;
 
 pub(crate) use crate::ui::ids::{
@@ -83,6 +84,14 @@ pub(crate) struct PendingPost {
 	pub operation: PostOperation,
 	pub last_result: ui::dialogs::PostResult,
 }
+
+/// Shared by the wake handler and the UI tasks that need it. Borrow it only between awaits, and never
+/// across a modal dialog: a modal's event loop keeps running tasks, and one that borrows the state
+/// while it's still borrowed further up the stack would panic.
+pub(crate) type SharedState = Rc<RefCell<AppState>>;
+
+/// How long the wake handler waits before trying again when the state is already borrowed.
+const STATE_BUSY_RETRY: Duration = Duration::from_millis(50);
 
 pub(crate) struct AppState {
 	pub(crate) config: Config,
@@ -303,7 +312,7 @@ fn main() {
 		let quick_action_keys_enabled = Rc::new(Cell::new(config.quick_action_keys));
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
-		let shortcuts_cell = Rc::new(std::cell::RefCell::new(config.shortcuts.clone()));
+		let shortcuts_cell = Rc::new(RefCell::new(config.shortcuts.clone()));
 		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
 		match audio::AudioOutput::open() {
 			Ok(output) => state.notification_sound = Some(output),
@@ -340,8 +349,8 @@ fn main() {
 		let timelines_selector_wake = timelines_selector;
 		let timeline_list_wake = timeline_list;
 		let start_maximized = state.config.start_maximized;
-		let mut state = state;
 		let post_menu_state_for_handlers = state.post_menu_state.clone();
+		let state: SharedState = Rc::new(RefCell::new(state));
 		let ui_waker_handler = ui_waker.clone();
 		let quick_action_keys_drain = quick_action_keys_enabled.clone();
 		let autoload_drain = autoload_mode.clone();
@@ -356,6 +365,18 @@ fn main() {
 				reschedule_wake.set(true);
 				return;
 			}
+			// Only reachable if something holds the state across a modal dialog. Coming back to the work
+			// later beats panicking, which would take the whole app down.
+			let Ok(mut state) = state.try_borrow_mut() else {
+				ui_waker_handler.reset();
+				let ui_waker = ui_waker_handler.clone();
+				spawn_local(async move {
+					sleep(STATE_BUSY_RETRY).await;
+					ui_waker.wake();
+				})
+				.detach();
+				return;
+			};
 			busy_wake.set(true);
 			ui_waker_handler.reset();
 			let mut ctx = UiCommandContext {
