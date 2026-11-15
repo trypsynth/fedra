@@ -1,13 +1,100 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
 
+use anyhow::Result;
 use wxdragon::{event::MenuEvents, prelude::*};
 
 use super::user_actions;
 use crate::{
-	mastodon::{Account, Relationship},
+	AppState, UiCommand,
+	mastodon::{Account, MastodonClient, Relationship},
 	network::NetworkCommand,
 };
 
+/// The two account lists a profile can show. They differ only in wording and in
+/// which endpoint and dialog slot they use.
+#[derive(Clone, Copy, Debug)]
+pub enum FollowList {
+	Followers,
+	Following,
+}
+
+impl FollowList {
+	pub const fn title(self) -> &'static str {
+		match self {
+			Self::Followers => "Followers",
+			Self::Following => "Following",
+		}
+	}
+
+	pub const fn label(self) -> &'static str {
+		match self {
+			Self::Followers => "Users who follow this person:",
+			Self::Following => "Users this person follows:",
+		}
+	}
+
+	pub const fn empty_message(self) -> &'static str {
+		match self {
+			Self::Followers => "No followers found",
+			Self::Following => "No following found",
+		}
+	}
+
+	pub const fn load_failure(self) -> &'static str {
+		match self {
+			Self::Followers => "Failed to load followers",
+			Self::Following => "Failed to load following",
+		}
+	}
+
+	pub const fn page_failure(self) -> &'static str {
+		match self {
+			Self::Followers => "Failed to load more followers",
+			Self::Following => "Failed to load more following",
+		}
+	}
+
+	pub const fn closed_command(self) -> UiCommand {
+		match self {
+			Self::Followers => UiCommand::FollowersDialogClosed,
+			Self::Following => UiCommand::FollowingDialogClosed,
+		}
+	}
+
+	pub const fn dialog_slot(self, state: &mut AppState) -> &mut Option<FollowListDialog> {
+		match self {
+			Self::Followers => &mut state.followers_dialog,
+			Self::Following => &mut state.following_dialog,
+		}
+	}
+
+	pub const fn total(self, account: &Account) -> u64 {
+		match self {
+			Self::Followers => account.followers_count,
+			Self::Following => account.following_count,
+		}
+	}
+
+	/// One page of `account`'s list, after `max_id`. A remote account's list comes whole, since
+	/// its own server can't be paged through.
+	pub fn fetch_page(
+		self,
+		client: &MastodonClient,
+		token: &str,
+		account: &Account,
+		max_id: Option<&str>,
+	) -> Result<(Vec<Account>, Option<String>)> {
+		let remote = account.acct.contains('@');
+		match self {
+			Self::Followers if remote => client.get_remote_followers(&account.acct).map(|accounts| (accounts, None)),
+			Self::Following if remote => client.get_remote_following(&account.acct).map(|accounts| (accounts, None)),
+			Self::Followers => client.get_followers_page(token, &account.id, max_id),
+			Self::Following => client.get_following_page(token, &account.id, max_id),
+		}
+	}
+}
+
+#[derive(Clone)]
 pub struct FollowListDialog {
 	dialog: Dialog,
 	account_list: ListBox,
@@ -17,7 +104,6 @@ pub struct FollowListDialog {
 	title_base: String,
 	total_count: u64,
 	loaded: Rc<RefCell<bool>>,
-	pub account_id: Option<String>,
 }
 
 impl FollowListDialog {
@@ -25,9 +111,7 @@ impl FollowListDialog {
 		parent: &dyn WxWidget,
 		title: &str,
 		label: &str,
-		first_page: &[Account],
 		total_count: u64,
-		account_id: Option<String>,
 		net_tx: Sender<NetworkCommand>,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
@@ -38,7 +122,7 @@ impl FollowListDialog {
 		C: Fn() + 'static,
 	{
 		const ID_VIEW_TIMELINE: i32 = 10044;
-		let dialog_title = Self::make_title(title, first_page.len() as u64, total_count, false);
+		let dialog_title = Self::make_title(title, 0, total_count, false);
 		let dialog = Dialog::builder(parent, &dialog_title).with_size(600, 400).build();
 		let panel = Panel::builder(&dialog).build();
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
@@ -47,13 +131,6 @@ impl FollowListDialog {
 		let profile_text = TextCtrl::builder(&panel)
 			.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly | TextCtrlStyle::DontWrap)
 			.build();
-		for account in first_page {
-			account_list.append(&Self::account_label(account));
-		}
-		if let Some(first) = first_page.first() {
-			account_list.set_selection(0, true);
-			profile_text.set_value(&first.profile_display());
-		}
 		let button_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 		let actions_button = Button::builder(&panel).with_label("&Actions...").build();
 		let timeline_button = Button::builder(&panel).with_id(ID_VIEW_TIMELINE).with_label("View &Timeline").build();
@@ -71,7 +148,7 @@ impl FollowListDialog {
 		dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
 		dialog.set_sizer(dialog_sizer, true);
 		dialog.set_escape_id(ID_CANCEL);
-		let accounts_rc: Rc<RefCell<Vec<Account>>> = Rc::new(RefCell::new(first_page.to_vec()));
+		let accounts_rc: Rc<RefCell<Vec<Account>>> = Rc::new(RefCell::new(Vec::new()));
 		let relationships_rc: Rc<RefCell<HashMap<String, Relationship>>> = Rc::new(RefCell::new(HashMap::new()));
 		let list_sel = account_list;
 		let text_sel = profile_text;
@@ -143,8 +220,11 @@ impl FollowListDialog {
 			title_base: title.to_string(),
 			total_count,
 			loaded: Rc::new(RefCell::new(false)),
-			account_id,
 		}
+	}
+
+	pub const fn dialog(&self) -> Dialog {
+		self.dialog
 	}
 
 	pub fn show(&self) {
@@ -178,7 +258,12 @@ impl FollowListDialog {
 		for account in accounts {
 			self.account_list.append(&Self::account_label(account));
 		}
+		let was_empty = self.accounts.borrow().is_empty();
 		self.accounts.borrow_mut().extend_from_slice(accounts);
+		if was_empty && let Some(first) = accounts.first() {
+			self.account_list.set_selection(0, true);
+			self.profile_text.set_value(&first.profile_display());
+		}
 		let shown = self.accounts.borrow().len() as u64;
 		let is_loaded = *self.loaded.borrow();
 		self.dialog.set_label(&Self::make_title(&self.title_base, shown, self.total_count, is_loaded));

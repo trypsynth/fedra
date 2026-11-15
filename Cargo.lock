@@ -94,6 +94,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
+name = "async-task"
+version = "4.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1848,23 +1854,21 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patois"
-version = "0.3.0"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a7b55abfc2fe4d2670c25cd9b6dc5186949c0d042c4e25c21f7e6666e452df2"
+checksum = "b72128cb4b0781eb385d0d97364376380f852337833a8db1f4ae054d0026aec4"
 dependencies = [
  "inventory",
- "miniz_oxide 0.9.1",
  "patois-macros",
  "sys-locale",
 ]
 
 [[package]]
 name = "patois-macros"
-version = "0.3.0"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03fa50d507131487ed3864428a0b5f5b8724443c9b32a8502e6e4bbb49249b07"
+checksum = "76e924bc5d3bff22fe4cccc1a7cbc5d15b1ed73443545cf447b4a1a92abc79ef"
 dependencies = [
- "miniz_oxide 0.9.1",
  "proc-macro2",
  "quote",
 ]
@@ -3014,9 +3018,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -3658,13 +3662,14 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "wx-utils"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7d51e4c928c45bd2ad36f334cd0677d5b06a95ff0099a1f4d4358f2a11859c5"
+version = "0.5.2"
+source = "git+https://github.com/accessware/wx-utils?rev=ecff718#ecff718ded50cd1f1aed40817271ed2931278673"
 dependencies = [
+ "async-task",
  "key-chord",
  "live-region",
  "patois",
+ "tokio",
  "windows",
  "wxdragon",
 ]
@@ -3672,8 +3677,7 @@ dependencies = [
 [[package]]
 name = "wxdragon"
 version = "0.9.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10bc93e4c8366136a9d1468c7bde5363be8386af52f77f133d7805e09031163"
+source = "git+https://github.com/AllenDang/wxDragon?rev=1d56121#1d5612118b839e51b58a77528307faa1599a713f"
 dependencies = [
  "bitflags 2.13.2",
  "log",
@@ -3685,8 +3689,7 @@ dependencies = [
 [[package]]
 name = "wxdragon-macros"
 version = "0.9.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07d53c29add134e7f383ebc1a3ca4bbff5f3840fd2f2d5843168691c5d3648e9"
+source = "git+https://github.com/AllenDang/wxDragon?rev=1d56121#1d5612118b839e51b58a77528307faa1599a713f"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -3697,8 +3700,7 @@ dependencies = [
 [[package]]
 name = "wxdragon-sys"
 version = "0.9.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f46998e50d71680abec6360432fca9dd2953066a1f7b64b22b69261e3ce7bf9"
+source = "git+https://github.com/AllenDang/wxDragon?rev=1d56121#1d5612118b839e51b58a77528307faa1599a713f"
 dependencies = [
  "bindgen",
  "cmake",

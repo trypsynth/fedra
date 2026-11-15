@@ -1,5 +1,7 @@
 //! Commands that act on users, profiles, and hashtags.
 
+use anyhow::Result;
+use wx_utils::tasks::spawn_for;
 use wxdragon::prelude::*;
 
 use super::{
@@ -10,10 +12,14 @@ use super::{
 };
 use crate::{
 	html,
-	mastodon::{Account, Status},
-	network::NetworkCommand,
+	mastodon::{Account, MastodonClient, Status},
+	network::{NetworkCommand, Session},
+	responses::spoken_failure,
 	timeline::{TimelineEntry, TimelineType},
-	ui::dialogs,
+	ui::{
+		dialogs::{self, FollowList},
+		timeline_list::TimelineList,
+	},
 };
 
 pub(super) fn view_profile(ctx: &mut UiCommandContext<'_>) {
@@ -255,41 +261,146 @@ pub(super) fn view_hashtags(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn view_boosts(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
+	let Some(status) = get_selected_status(ctx.state) else {
+		ctx.live_region.announce("No post selected");
 		return;
 	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+	let target = status.reblog.as_ref().map_or(status, AsRef::as_ref);
 	if target.reblogs_count == 0 {
-		live_region.announce("No boosts for this post");
+		ctx.live_region.announce("No boosts for this post");
 		return;
 	}
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchRebloggedBy { status_id: target.id.clone() });
-	} else {
-		live_region.announce("Network not available");
-	}
+	let status_id = target.id.clone();
+	let title = ("Boosts", "Users who boosted this post", "Failed to load boosts");
+	pick_account(ctx, title, move |client, token| client.get_reblogged_by(token, &status_id));
 }
 
 pub(super) fn view_favorites(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	let live_region = ctx.live_region;
-	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
+	let Some(status) = get_selected_status(ctx.state) else {
+		ctx.live_region.announce("No post selected");
 		return;
 	};
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+	let target = status.reblog.as_ref().map_or(status, AsRef::as_ref);
 	if target.favourites_count == 0 {
-		live_region.announce("No favorites for this post");
+		ctx.live_region.announce("No favorites for this post");
 		return;
 	}
-	if let Some(handle) = &state.network_handle {
-		handle.send(NetworkCommand::FetchFavoritedBy { status_id: target.id.clone() });
-	} else {
-		live_region.announce("Network not available");
+	let status_id = target.id.clone();
+	let title = ("Favorites", "Users who favorited this post", "Failed to load favorites");
+	pick_account(ctx, title, move |client, token| client.get_favourited_by(token, &status_id));
+}
+
+/// Fetches a list of accounts and lets the user pick one to open. `wording` is the dialog's
+/// title and label, and what to say if the list can't be fetched.
+fn pick_account<F>(ctx: &UiCommandContext<'_>, wording: (&'static str, &'static str, &'static str), fetch: F)
+where
+	F: FnOnce(&MastodonClient, &str) -> Result<Vec<Account>> + Send + 'static,
+{
+	let Some(session) = ctx.state.session() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let (title, label, failure) = wording;
+	let accounts = session.call(fetch);
+	let frame = *ctx.frame;
+	let live_region = ctx.live_region.clone();
+	let ui_tx = ctx.ui_tx.clone();
+	spawn_for(&frame, async move {
+		match accounts.await {
+			Ok(accounts) => {
+				if let Some((account, action)) = dialogs::prompt_for_account_list(&frame, title, label, &accounts) {
+					let _ = ui_tx.send(UiCommand::OpenAccount { account: Box::new(account), action });
+				}
+			}
+			Err(err) => live_region.announce(&spoken_failure(failure, &err)),
+		}
+	});
+}
+
+/// Opens a dialog that fills with `account`'s followers or follows a page at a time. It appears
+/// once the first page is in, and closing it stops the loading.
+pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account, list: FollowList) {
+	let (Some(session), Some(net)) = (ctx.state.session(), &ctx.state.network_handle) else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let net_tx = net.command_tx.clone();
+	let profile_dialog = ctx.state.profile_dialog.as_ref().map(dialogs::ProfileDialog::dialog_handle);
+	let parent: &dyn WxWidget = profile_dialog.as_ref().map_or(ctx.frame as _, |d| d as _);
+	let ui_tx_timeline = ctx.ui_tx.clone();
+	let ui_tx_close = ctx.ui_tx.clone();
+	let dlg = dialogs::FollowListDialog::new(
+		parent,
+		list.title(),
+		list.label(),
+		list.total(account),
+		net_tx,
+		ctx.ui_tx.clone(),
+		move |account| {
+			let timeline_type =
+				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
+			let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+		},
+		move || {
+			let _ = ui_tx_close.send(list.closed_command());
+		},
+	);
+	*list.dialog_slot(ctx.state) = Some(dlg.clone());
+	spawn_for(&dlg.dialog(), load_follow_list(dlg, session, account.clone(), list, ctx.live_region.clone()));
+}
+
+async fn load_follow_list(
+	dlg: dialogs::FollowListDialog,
+	session: Session,
+	account: Account,
+	list: FollowList,
+	live_region: TimelineList,
+) {
+	let mut max_id: Option<String> = None;
+	loop {
+		let (page_account, page_max_id) = (account.clone(), max_id.clone());
+		let page =
+			session.call(move |client, token| list.fetch_page(client, token, &page_account, page_max_id.as_deref()));
+		let first_page = max_id.is_none();
+		let (accounts, next_max_id) = match page.await {
+			Ok(page) => page,
+			Err(err) if first_page => {
+				live_region.announce(&spoken_failure(list.load_failure(), &err));
+				dlg.dialog().close(true);
+				return;
+			}
+			Err(err) => {
+				dlg.mark_loaded();
+				live_region.announce(&spoken_failure(list.page_failure(), &err));
+				return;
+			}
+		};
+		if first_page {
+			if accounts.is_empty() && next_max_id.is_none() {
+				live_region.announce(list.empty_message());
+				dlg.dialog().close(true);
+				return;
+			}
+			dlg.show();
+		}
+		dlg.append_accounts(&accounts);
+		if !accounts.is_empty() {
+			// Filled in alongside the next page rather than before it.
+			let account_ids: Vec<String> = accounts.iter().map(|a| a.id.clone()).collect();
+			let relationships = session.call(move |client, token| client.get_relationships(token, &account_ids));
+			let dlg = dlg.clone();
+			spawn_for(&dlg.dialog(), async move {
+				if let Ok(relationships) = relationships.await {
+					dlg.update_relationships(&relationships);
+				}
+			});
+		}
+		match next_max_id {
+			Some(next) if !accounts.is_empty() => max_id = Some(next),
+			_ => break,
+		}
 	}
+	dlg.mark_loaded();
 }
 
 pub(super) fn hashtag_dialog_closed(ctx: &mut UiCommandContext<'_>) {

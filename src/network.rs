@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use chrono::DateTime;
+use wx_utils::tasks::{Background, background_blocking};
 
 use crate::{
 	mastodon::{
@@ -155,39 +156,11 @@ pub enum NetworkCommand {
 	FetchRelationship {
 		account_id: String,
 	},
-	FetchRelationshipsForList {
-		account_ids: Vec<String>,
-		for_followers: bool,
-	},
 	FetchAccount {
 		account_id: String,
 	},
 	FetchTagsInfo {
 		names: Vec<String>,
-	},
-	FetchRebloggedBy {
-		status_id: String,
-	},
-	FetchFavoritedBy {
-		status_id: String,
-	},
-	FetchFollowers {
-		account_id: String,
-		acct: String,
-		total_count: u64,
-	},
-	FetchFollowing {
-		account_id: String,
-		acct: String,
-		total_count: u64,
-	},
-	FetchNextFollowersPage {
-		account_id: String,
-		max_id: String,
-	},
-	FetchNextFollowingPage {
-		account_id: String,
-		max_id: String,
 	},
 	VotePoll {
 		poll_id: String,
@@ -349,10 +322,6 @@ pub enum NetworkResponse {
 		_account_id: String,
 		result: Result<crate::mastodon::Relationship>,
 	},
-	RelationshipsForListLoaded {
-		results: Vec<crate::mastodon::Relationship>,
-		for_followers: bool,
-	},
 	AccountFetched {
 		result: Result<Account>,
 	},
@@ -369,28 +338,6 @@ pub enum NetworkResponse {
 	TagUnmuted {
 		name: String,
 		result: Result<()>,
-	},
-	RebloggedByLoaded {
-		result: Result<Vec<Account>>,
-	},
-	FavoritedByLoaded {
-		result: Result<Vec<Account>>,
-	},
-	FollowersLoaded {
-		result: Result<(Vec<Account>, Option<String>)>,
-		total_count: u64,
-		account_id: String,
-	},
-	FollowingLoaded {
-		result: Result<(Vec<Account>, Option<String>)>,
-		total_count: u64,
-		account_id: String,
-	},
-	FollowersNextPageLoaded {
-		result: Result<(Vec<Account>, Option<String>)>,
-	},
-	FollowingNextPageLoaded {
-		result: Result<(Vec<Account>, Option<String>)>,
 	},
 	CredentialsFetched {
 		result: Result<Account>,
@@ -523,6 +470,29 @@ fn edit_with_media(
 		return Err(err);
 	}
 	client.edit_status(access_token, status_id, content, sensitive, spoiler_text, language, &media_ids, poll)
+}
+
+/// An account's client and token, for tasks on the UI thread that call the server themselves.
+#[derive(Clone)]
+pub struct Session {
+	client: MastodonClient,
+	token: String,
+}
+
+impl Session {
+	pub const fn new(client: MastodonClient, token: String) -> Self {
+		Self { client, token }
+	}
+
+	/// Starts `request` on a background thread, since the client blocks.
+	pub fn call<T, F>(&self, request: F) -> Background<T>
+	where
+		F: FnOnce(&MastodonClient, &str) -> T + Send + 'static,
+		T: Send + 'static,
+	{
+		let Self { client, token } = self.clone();
+		background_blocking(move || request(&client, &token))
+	}
 }
 
 pub struct NetworkHandle {
@@ -908,46 +878,6 @@ fn network_loop(
 				})();
 				send_response(responses, ui_waker, NetworkResponse::TagUnmuted { name, result });
 			}
-			Ok(NetworkCommand::FetchRebloggedBy { status_id }) => {
-				let result = client.get_reblogged_by(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::RebloggedByLoaded { result });
-			}
-			Ok(NetworkCommand::FetchFavoritedBy { status_id }) => {
-				let result = client.get_favourited_by(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::FavoritedByLoaded { result });
-			}
-			Ok(NetworkCommand::FetchFollowers { account_id, acct, total_count }) => {
-				let result = if acct.contains('@') {
-					client.get_remote_followers(&acct).map(|accounts| (accounts, None))
-				} else {
-					client.get_followers_page(access_token, &account_id, None)
-				};
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::FollowersLoaded { result, total_count, account_id },
-				);
-			}
-			Ok(NetworkCommand::FetchFollowing { account_id, acct, total_count }) => {
-				let result = if acct.contains('@') {
-					client.get_remote_following(&acct).map(|accounts| (accounts, None))
-				} else {
-					client.get_following_page(access_token, &account_id, None)
-				};
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::FollowingLoaded { result, total_count, account_id },
-				);
-			}
-			Ok(NetworkCommand::FetchNextFollowersPage { account_id, max_id }) => {
-				let result = client.get_followers_page(access_token, &account_id, Some(&max_id));
-				send_response(responses, ui_waker, NetworkResponse::FollowersNextPageLoaded { result });
-			}
-			Ok(NetworkCommand::FetchNextFollowingPage { account_id, max_id }) => {
-				let result = client.get_following_page(access_token, &account_id, Some(&max_id));
-				send_response(responses, ui_waker, NetworkResponse::FollowingNextPageLoaded { result });
-			}
 			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, notify, action }) => {
 				let result = client.follow_account_with_options(access_token, &account_id, reblogs, notify);
 				send_response(
@@ -1056,14 +986,6 @@ fn network_loop(
 					responses,
 					ui_waker,
 					NetworkResponse::RelationshipLoaded { _account_id: account_id, result },
-				);
-			}
-			Ok(NetworkCommand::FetchRelationshipsForList { account_ids, for_followers }) => {
-				let results = client.get_relationships(access_token, &account_ids).unwrap_or_default();
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipsForListLoaded { results, for_followers },
 				);
 			}
 			Ok(NetworkCommand::FetchAccount { account_id }) => {

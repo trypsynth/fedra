@@ -18,7 +18,7 @@ pub(super) fn summarize_api_error(err: &anyhow::Error) -> String {
 	err.to_string()
 }
 
-pub(super) fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
+pub fn spoken_failure(prefix: &str, err: &anyhow::Error) -> String {
 	format!("{prefix}: {}", summarize_api_error(err))
 }
 

@@ -7,9 +7,11 @@ mod tags;
 mod timeline_updates;
 mod timelines;
 
+pub use accounts::open_account;
+pub use helpers::spoken_failure;
 pub use stream::process_stream_events;
 
-use self::helpers::{spoken_failure, summarize_api_error};
+use self::helpers::summarize_api_error;
 use crate::{
 	UiCommand,
 	network::NetworkResponse,
@@ -115,36 +117,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 		NetworkResponse::TagsInfoFetched { result: Ok(tags) } => tags::info_fetched(ctx, tags),
 		NetworkResponse::TagsInfoFetched { result: Err(err) } => {
 			ctx.announce_failure("Failed to load hashtags", &err);
-		}
-		NetworkResponse::RebloggedByLoaded { result: Ok(accounts) } => {
-			accounts::pick_from_account_list(ctx, &accounts, "Boosts", "Users who boosted this post");
-		}
-		NetworkResponse::RebloggedByLoaded { result: Err(err) } => {
-			ctx.announce_failure("Failed to load boosts", &err);
-		}
-		NetworkResponse::FavoritedByLoaded { result: Ok(accounts) } => {
-			accounts::pick_from_account_list(ctx, &accounts, "Favorites", "Users who favorited this post");
-		}
-		NetworkResponse::FavoritedByLoaded { result: Err(err) } => {
-			ctx.announce_failure("Failed to load favorites", &err);
-		}
-		NetworkResponse::FollowersLoaded { result, total_count, account_id } => {
-			accounts::follow_list_loaded(ctx, accounts::FollowList::Followers, result, total_count, account_id);
-		}
-		NetworkResponse::FollowingLoaded { result, total_count, account_id } => {
-			accounts::follow_list_loaded(ctx, accounts::FollowList::Following, result, total_count, account_id);
-		}
-		NetworkResponse::FollowersNextPageLoaded { result } => {
-			accounts::follow_list_next_page(ctx, accounts::FollowList::Followers, result);
-		}
-		NetworkResponse::FollowingNextPageLoaded { result } => {
-			accounts::follow_list_next_page(ctx, accounts::FollowList::Following, result);
-		}
-		NetworkResponse::RelationshipsForListLoaded { results, for_followers } => {
-			let dialog = if for_followers { &ctx.state.followers_dialog } else { &ctx.state.following_dialog };
-			if let Some(dlg) = dialog {
-				dlg.update_relationships(&results);
-			}
 		}
 		NetworkResponse::RelationshipUpdated { target_name, action, result } => {
 			accounts::relationship_updated(ctx, &target_name, action, result);

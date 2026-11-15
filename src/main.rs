@@ -4,6 +4,8 @@
 // rather than a lint fix. To see the list:
 //   cargo clippy --all-targets -- --force-warn clippy::too_many_arguments --force-warn clippy::too_many_lines
 #![allow(clippy::too_many_arguments, clippy::too_many_lines)]
+// UI tasks run on the UI thread and hold widgets across awaits, so their futures are never Send.
+#![allow(clippy::future_not_send)]
 #![windows_subsystem = "windows"]
 
 mod accounts;
@@ -56,7 +58,7 @@ use crate::{
 	accounts::{apply_refresh_interval, start_add_account_flow, switch_to_account},
 	config::Config,
 	mastodon::{MastodonClient, PollLimits},
-	network::NetworkHandle,
+	network::{NetworkHandle, Session},
 	responses::{process_network_responses, process_stream_events},
 	timeline::TimelineManager,
 	ui::{
@@ -157,6 +159,10 @@ impl AppState {
 			pending_post: None,
 			pending_add_to_list_user: None,
 		}
+	}
+
+	pub(crate) fn session(&self) -> Option<Session> {
+		Some(Session::new(self.client.clone()?, self.access_token.clone()?))
 	}
 
 	pub(crate) fn active_account(&self) -> Option<&config::Account> {

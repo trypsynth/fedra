@@ -33,7 +33,9 @@ use crate::{
 	AppState, auth,
 	config::{ActionId, AutoloadMode, SortOrder},
 	mastodon::{Account, Status},
+	responses::open_account,
 	timeline::TimelineType,
+	ui::dialogs::{FollowList, UserLookupAction},
 	ui_wake::UiCommandSender,
 };
 
@@ -87,6 +89,14 @@ pub enum UiCommand {
 	ProfileDialogClosed,
 	FollowersDialogClosed,
 	FollowingDialogClosed,
+	ShowFollowList {
+		account: Box<Account>,
+		list: FollowList,
+	},
+	OpenAccount {
+		account: Box<Account>,
+		action: UserLookupAction,
+	},
 	OpenLinks,
 	ViewInBrowser,
 	PlayMedia,
@@ -289,6 +299,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ProfileDialogClosed => user::profile_dialog_closed(ctx),
 		UiCommand::FollowersDialogClosed => user::followers_dialog_closed(ctx),
 		UiCommand::FollowingDialogClosed => user::following_dialog_closed(ctx),
+		UiCommand::ShowFollowList { account, list } => user::show_follow_list(ctx, &account, list),
+		UiCommand::OpenAccount { account, action } => open_account(ctx, &account, action),
 		UiCommand::OpenLinks => post::open_links(ctx),
 		UiCommand::ToggleFollow => user::toggle_follow(ctx),
 		UiCommand::PlayMedia => post::play_media(ctx),

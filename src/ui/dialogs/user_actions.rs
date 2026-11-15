@@ -2,6 +2,7 @@ use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
 
 use wxdragon::prelude::*;
 
+use super::FollowList;
 use crate::{
 	mastodon::{Account, Relationship},
 	network::{NetworkCommand, RelationshipAction},
@@ -147,16 +148,11 @@ pub fn handle_action(
 			let _ = wxdragon::utils::launch_default_browser(&account.url, wxdragon::utils::BrowserLaunchFlags::Default);
 			return;
 		}
-		ID_ACTION_VIEW_FOLLOWERS => NetworkCommand::FetchFollowers {
-			account_id,
-			acct: account.acct.clone(),
-			total_count: account.followers_count,
-		},
-		ID_ACTION_VIEW_FOLLOWING => NetworkCommand::FetchFollowing {
-			account_id,
-			acct: account.acct.clone(),
-			total_count: account.following_count,
-		},
+		ID_ACTION_VIEW_FOLLOWERS | ID_ACTION_VIEW_FOLLOWING => {
+			let list = if id == ID_ACTION_VIEW_FOLLOWERS { FollowList::Followers } else { FollowList::Following };
+			let _ = ui_tx.send(UiCommand::ShowFollowList { account: Box::new(account.clone()), list });
+			return;
+		}
 		ID_ACTION_ADD_TO_LIST => {
 			let _ = ui_tx.send(UiCommand::AddUserToList(account_id));
 			return;
