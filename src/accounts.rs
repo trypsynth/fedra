@@ -7,7 +7,7 @@ use crate::{
 	AppState, UiCommand, auth,
 	config::Account,
 	mastodon::{MastodonClient, PollLimits},
-	network::{self, NetworkCommand},
+	network::{self, NetworkCommand, Session},
 	streaming,
 	timeline::TimelineType,
 	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
@@ -119,6 +119,7 @@ pub fn switch_to_account(
 		let _ = state.save_config();
 	}
 	state.network_handle = None;
+	state.session = None;
 	let active_id =
 		state.config.active_account_id.clone().or_else(|| state.config.accounts.first().map(|a| a.id.clone()));
 	if let Some(id) = &active_id {
@@ -144,7 +145,9 @@ pub fn switch_to_account(
 	state.poll_limits = PollLimits::default();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
-		let network = network::start_network(client.clone(), token.clone(), state.ui_waker.clone());
+		let session = Session::new(client.clone(), token.clone());
+		state.session = Some(session.clone());
+		let network = network::start_network(session, state.ui_waker.clone());
 		network.send(NetworkCommand::FetchInstanceInfo);
 		state.network_handle = Some(network);
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()

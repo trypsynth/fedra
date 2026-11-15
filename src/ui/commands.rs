@@ -21,21 +21,30 @@ mod timeline;
 #[allow(clippy::needless_pass_by_ref_mut, clippy::needless_pass_by_value)]
 mod user;
 
-use std::cell::Cell;
+use std::{
+	cell::{Cell, RefCell},
+	future::pending,
+	rc::Rc,
+};
 
 pub use post::run_edit_post_dialog;
 pub use selection::{get_selected_entry, get_selected_status};
 pub use settings::register_hotkeys;
 use url::Url;
+use wx_utils::tasks::{sleep, spawn_for};
 use wxdragon::prelude::*;
 
 use crate::{
-	AppState, auth,
-	config::{ActionId, AutoloadMode, SortOrder},
-	mastodon::{Account, Status},
+	AppState, STATE_BUSY_RETRY, SharedState, auth,
+	config::{ActionId, AutoloadMode, ShortcutsConfig, SortOrder},
+	mastodon::{Account, MastodonClient, Status},
+	network::Session,
 	responses::open_account,
 	timeline::TimelineType,
-	ui::dialogs::{FollowList, UserLookupAction},
+	ui::{
+		dialogs::{FollowList, UserLookupAction},
+		timeline_list::TimelineList,
+	},
 	ui_wake::UiCommandSender,
 };
 
@@ -226,15 +235,93 @@ pub struct UiCommandContext<'a> {
 	pub state: &'a mut AppState,
 	pub frame: &'a Frame,
 	pub timelines_selector: ListBox,
-	pub timeline_list: crate::ui::timeline_list::TimelineList,
+	pub timeline_list: TimelineList,
 	pub suppress_selection: &'a Cell<bool>,
-	pub live_region: &'a crate::ui::timeline_list::TimelineList,
+	pub live_region: &'a TimelineList,
 	pub quick_action_keys_enabled: &'a Cell<bool>,
 	pub autoload_mode: &'a Cell<AutoloadMode>,
 	pub sort_order_cell: &'a Cell<SortOrder>,
 	pub tray_hidden: &'a Cell<bool>,
-	pub shortcuts_cell: &'a std::cell::RefCell<crate::config::ShortcutsConfig>,
+	pub shortcuts_cell: &'a RefCell<ShortcutsConfig>,
 	pub ui_tx: &'a UiCommandSender,
+	/// What this context was made from, for UI tasks that need one of their own later.
+	pub handles: &'a UiHandles,
+}
+
+/// Everything a `UiCommandContext` is made from, which UI tasks keep so they can make one.
+#[derive(Clone)]
+pub struct UiHandles {
+	pub state: SharedState,
+	pub frame: Frame,
+	pub timelines_selector: ListBox,
+	pub timeline_list: TimelineList,
+	pub suppress_selection: Rc<Cell<bool>>,
+	pub quick_action_keys_enabled: Rc<Cell<bool>>,
+	pub autoload_mode: Rc<Cell<AutoloadMode>>,
+	pub sort_order_cell: Rc<Cell<SortOrder>>,
+	pub tray_hidden: Rc<Cell<bool>>,
+	pub shortcuts_cell: Rc<RefCell<ShortcutsConfig>>,
+	pub ui_tx: UiCommandSender,
+	pub is_shutting_down: Rc<Cell<bool>>,
+}
+
+impl UiHandles {
+	pub fn context<'a>(&'a self, state: &'a mut AppState) -> UiCommandContext<'a> {
+		UiCommandContext {
+			state,
+			frame: &self.frame,
+			timelines_selector: self.timelines_selector,
+			timeline_list: self.timeline_list.clone(),
+			suppress_selection: &self.suppress_selection,
+			live_region: &self.timeline_list,
+			quick_action_keys_enabled: &self.quick_action_keys_enabled,
+			autoload_mode: &self.autoload_mode,
+			sort_order_cell: &self.sort_order_cell,
+			tray_hidden: &self.tray_hidden,
+			shortcuts_cell: &self.shortcuts_cell,
+			ui_tx: &self.ui_tx,
+			handles: self,
+		}
+	}
+
+	/// Queues `request` behind the account's other requests, then hands its answer to `then` along
+	/// with a context. An answer that arrives after the user has switched accounts is dropped,
+	/// since it belongs to an account that's no longer shown.
+	pub fn request<T, F, G>(&self, session: &Session, request: F, then: G)
+	where
+		F: FnOnce(&MastodonClient, &str) -> T + Send + 'static,
+		T: Send + 'static,
+		G: FnOnce(&mut UiCommandContext<'_>, T) + 'static,
+	{
+		let answer = session.queued(request);
+		let (handles, session) = (self.clone(), session.clone());
+		spawn_for(&self.frame, async move {
+			let answer = answer.await;
+			handles
+				.with_ctx(|ctx| {
+					if ctx.state.session.as_ref().is_some_and(|current| current.is(&session)) {
+						then(ctx, answer);
+					}
+				})
+				.await;
+		});
+	}
+
+	/// Runs `f` with a context once nothing else holds the state, such as a handler with a modal
+	/// dialog open. Waiting for it, rather than borrowing outright, is what keeps that from
+	/// panicking. Once the app is closing, `f` never runs, and the task waits to be cancelled
+	/// along with the main window.
+	pub async fn with_ctx<R>(&self, f: impl FnOnce(&mut UiCommandContext<'_>) -> R) -> R {
+		loop {
+			if self.is_shutting_down.get() {
+				return pending().await;
+			}
+			if let Ok(mut state) = self.state.try_borrow_mut() {
+				return f(&mut self.context(&mut state));
+			}
+			sleep(STATE_BUSY_RETRY).await;
+		}
+	}
 }
 
 /// Handles a UI command, updating state and UI as needed.

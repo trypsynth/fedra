@@ -51,7 +51,7 @@ shipfitter = { version = "0.2.1", features = ["docs", "windows-resources"] }
 
 # Until a wxDragon release has Event::event_object_ptr, which wx-utils' tasks need.
 [patch.crates-io]
-wx-utils = { git = "https://github.com/accessware/wx-utils", rev = "ecff718" }
+wx-utils = { git = "https://github.com/accessware/wx-utils", rev = "e62e956" }
 wxdragon = { git = "https://github.com/AllenDang/wxDragon", rev = "1d56121" }
 
 [profile.release]

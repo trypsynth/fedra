@@ -11,8 +11,8 @@ use crate::{
 	config::ContentWarningDisplay,
 	html,
 	mastodon::{Status, StatusAction},
-	network,
-	network::{ForeignInteraction, NetworkCommand},
+	network::{self, ForeignInteraction, NetworkCommand, resolve_status},
+	responses::status_acted,
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, timeline_view::list_index_to_entry_index},
 };
@@ -51,7 +51,7 @@ fn send_status_action(
 		ctx.live_region.announce("No post selected");
 		return;
 	};
-	let Some(handle) = &state.network_handle else {
+	let Some(session) = state.session() else {
 		ctx.live_region.announce("Network not available");
 		return;
 	};
@@ -63,11 +63,19 @@ fn send_status_action(
 			return;
 		}
 	};
-	if let Some(url) = foreign_url(state, target.url.as_ref()) {
-		handle.send(NetworkCommand::ResolveAndInteract { url, interaction: ForeignInteraction::Action(action) });
-	} else {
-		handle.send(NetworkCommand::ActOnStatus { status_id: target.id.clone(), action });
-	}
+	let foreign = foreign_url(state, target.url.as_ref());
+	let status_id = target.id.clone();
+	ctx.handles.request(
+		&session,
+		move |client, token| {
+			let status_id = match foreign {
+				Some(url) => resolve_status(client, token, &url)?.id,
+				None => status_id,
+			};
+			client.status_action(token, &status_id, action).map(|acted| (status_id, acted))
+		},
+		move |ctx, result| status_acted(ctx, action, result),
+	);
 }
 
 pub fn run_edit_post_dialog(

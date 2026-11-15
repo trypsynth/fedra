@@ -3663,7 +3663,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "wx-utils"
 version = "0.5.2"
-source = "git+https://github.com/accessware/wx-utils?rev=ecff718#ecff718ded50cd1f1aed40817271ed2931278673"
+source = "git+https://github.com/accessware/wx-utils?rev=e62e956#e62e95618324ac6d3e943c10509cf3f2b94aded5"
 dependencies = [
  "async-task",
  "key-chord",

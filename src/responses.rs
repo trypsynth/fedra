@@ -9,6 +9,7 @@ mod timelines;
 
 pub use accounts::open_account;
 pub use helpers::spoken_failure;
+pub use statuses::action as status_acted;
 pub use stream::process_stream_events;
 
 use self::helpers::summarize_api_error;
@@ -86,7 +87,6 @@ fn handle_response(ctx: &mut NetworkResponseContext<'_>, response: NetworkRespon
 			ctx.announce(&format!("Failed to find user {handle}: {}", summarize_api_error(&err)));
 		}
 		NetworkResponse::PostComplete(result) => statuses::post_complete(ctx, result),
-		NetworkResponse::StatusActed { action, result } => statuses::action(ctx, action, result),
 		NetworkResponse::Replied(result) => statuses::replied(ctx, result),
 		NetworkResponse::StatusDeleted { status_id, result: Ok(()) } => statuses::deleted(ctx, &status_id),
 		NetworkResponse::StatusDeleted { result: Err(err), .. } => ctx.announce_failure("Failed to delete", &err),

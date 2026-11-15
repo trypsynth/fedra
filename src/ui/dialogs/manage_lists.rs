@@ -1,8 +1,11 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
-use crate::{network::NetworkCommand, ui::dialogs::show_list_edit_dialog};
+use crate::{
+	network::{NetworkCommand, NetworkSender},
+	ui::dialogs::show_list_edit_dialog,
+};
 
 #[derive(Clone)]
 pub struct ManageListsDialog {
@@ -15,7 +18,7 @@ pub struct ManageListsDialog {
 }
 
 impl ManageListsDialog {
-	pub fn new<F>(frame: &Frame, lists: Vec<crate::mastodon::List>, net_tx: Sender<NetworkCommand>, on_close: F) -> Self
+	pub fn new<F>(frame: &Frame, lists: Vec<crate::mastodon::List>, net_tx: NetworkSender, on_close: F) -> Self
 	where
 		F: Fn() + 'static + Clone,
 	{
@@ -64,7 +67,7 @@ impl ManageListsDialog {
 		let dialog_add = handle.dialog;
 		add_button.on_click(move |_| {
 			if let Some((title, policy, exclusive)) = show_list_edit_dialog(&dialog_add, None, None, false) {
-				let _ = net_tx_add.send(NetworkCommand::CreateList { title, policy, exclusive });
+				net_tx_add.send(NetworkCommand::CreateList { title, policy, exclusive });
 			}
 		});
 		let lists_edit = handle.lists.clone();
@@ -82,8 +85,7 @@ impl ManageListsDialog {
 						list.replies_policy.as_deref(),
 						list.exclusive,
 					) {
-					let _ =
-						net_tx_edit.send(NetworkCommand::UpdateList { id: list.id.clone(), title, policy, exclusive });
+					net_tx_edit.send(NetworkCommand::UpdateList { id: list.id.clone(), title, policy, exclusive });
 				}
 			}
 		});
@@ -95,7 +97,7 @@ impl ManageListsDialog {
 				let idx = sel as usize;
 				let lists = lists_members.borrow();
 				if let Some(list) = lists.get(idx) {
-					let _ = net_tx_members.send(NetworkCommand::FetchListAccounts { list_id: list.id.clone() });
+					net_tx_members.send(NetworkCommand::FetchListAccounts { list_id: list.id.clone() });
 				}
 			}
 		});
@@ -110,7 +112,7 @@ impl ManageListsDialog {
 				if let Some(list) = lists.get(idx)
 					&& wx_utils::confirm(&parent_remove, "Are you sure you want to delete this list?", "Delete List")
 				{
-					let _ = net_tx_remove.send(NetworkCommand::DeleteList { id: list.id.clone() });
+					net_tx_remove.send(NetworkCommand::DeleteList { id: list.id.clone() });
 				}
 			}
 		});

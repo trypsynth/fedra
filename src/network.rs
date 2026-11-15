@@ -1,18 +1,20 @@
 use std::{
 	collections::{HashMap, HashSet},
 	slice,
-	sync::mpsc::{self, Receiver, Sender},
-	thread::{self, JoinHandle},
+	sync::{
+		atomic::{AtomicU64, Ordering},
+		mpsc::{self, Receiver, Sender},
+	},
 };
 
 use anyhow::{Context, Result};
 use chrono::DateTime;
-use wx_utils::tasks::{Background, background_blocking};
+use wx_utils::tasks::{Background, Queue, background_blocking};
 
 use crate::{
 	mastodon::{
 		Account, Conversation, Filter, FilterAction, FilterContext, InstanceInfo, MastodonClient, Notification,
-		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusAction, StatusContext,
+		PostSubmission, Relationship, SearchResults, SearchType, Status, StatusContext,
 	},
 	timeline::TimelineType,
 	ui_wake::UiWaker,
@@ -53,7 +55,6 @@ pub struct PostData {
 
 #[derive(Debug)]
 pub enum ForeignInteraction {
-	Action(StatusAction),
 	Vote(Vec<usize>),
 	Reply(Box<PostData>),
 }
@@ -89,10 +90,6 @@ pub enum NetworkCommand {
 	},
 	PostStatus {
 		post: PostData,
-	},
-	ActOnStatus {
-		status_id: String,
-		action: StatusAction,
 	},
 	Reply {
 		in_reply_to_id: String,
@@ -230,7 +227,6 @@ pub enum NetworkCommand {
 		timeline: &'static str,
 		last_read_id: String,
 	},
-	Shutdown,
 }
 
 #[derive(Debug, Clone)]
@@ -288,11 +284,6 @@ pub enum NetworkResponse {
 		result: Result<Account>,
 	},
 	PostComplete(Result<PostSubmission>),
-	/// Pairs the acted-on status id with the server's answer, which for a boost is the new wrapper.
-	StatusActed {
-		action: StatusAction,
-		result: Result<(String, Status)>,
-	},
 	Replied(Result<PostSubmission>),
 	StatusDeleted {
 		status_id: String,
@@ -473,37 +464,78 @@ fn edit_with_media(
 }
 
 /// An account's client and token, for tasks on the UI thread that call the server themselves.
+/// Signing in to an account, or switching to it, makes a new one.
 #[derive(Clone)]
 pub struct Session {
+	id: u64,
 	client: MastodonClient,
 	token: String,
+	writes: Queue,
 }
 
 impl Session {
-	pub const fn new(client: MastodonClient, token: String) -> Self {
-		Self { client, token }
+	pub fn new(client: MastodonClient, token: String) -> Self {
+		static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+		Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), client, token, writes: Queue::new() }
 	}
 
-	/// Starts `request` on a background thread, since the client blocks.
+	pub const fn is(&self, other: &Self) -> bool {
+		self.id == other.id
+	}
+
+	/// Starts `request` on a background thread, since the client blocks. Requests made this way
+	/// run side by side, so this is for reading.
 	pub fn call<T, F>(&self, request: F) -> Background<T>
 	where
 		F: FnOnce(&MastodonClient, &str) -> T + Send + 'static,
 		T: Send + 'static,
 	{
-		let Self { client, token } = self.clone();
+		let (client, token) = (self.client.clone(), self.token.clone());
 		background_blocking(move || request(&client, &token))
+	}
+
+	/// Queues `request` behind the account's other queued requests, so they reach the server in the order
+	/// the user made them, such as a favorite and the unfavorite after it.
+	pub fn queued<T, F>(&self, request: F) -> Background<T>
+	where
+		F: FnOnce(&MastodonClient, &str) -> T + Send + 'static,
+		T: Send + 'static,
+	{
+		let (client, token) = (self.client.clone(), self.token.clone());
+		self.writes.run(move || request(&client, &token))
 	}
 }
 
+/// Hands commands to an account's request queue, which makes them one at a time in the order they
+/// were sent, behind any of the account's other queued requests. Dialogs keep clones of it.
+#[derive(Clone)]
+pub struct NetworkSender {
+	session: Session,
+	responses: Sender<NetworkResponse>,
+	ui_waker: UiWaker,
+}
+
+impl NetworkSender {
+	pub fn send(&self, command: NetworkCommand) {
+		let (responses, ui_waker) = (self.responses.clone(), self.ui_waker.clone());
+		let (client, token) = (self.session.client.clone(), self.session.token.clone());
+		self.session.writes.push(move || {
+			if let Some(response) = run_command(&client, &token, command) {
+				send_response(&responses, &ui_waker, response);
+			}
+		});
+	}
+}
+
+/// An account's commands and the answers to them, which the wake handler takes in turn.
 pub struct NetworkHandle {
-	pub command_tx: Sender<NetworkCommand>,
+	pub command_tx: NetworkSender,
 	response_rx: Receiver<NetworkResponse>,
-	_thread: JoinHandle<()>,
 }
 
 impl NetworkHandle {
-	pub fn send(&self, cmd: NetworkCommand) {
-		let _ = self.command_tx.send(cmd);
+	pub fn send(&self, command: NetworkCommand) {
+		self.command_tx.send(command);
 	}
 
 	pub fn try_recv(&self) -> Option<NetworkResponse> {
@@ -517,26 +549,11 @@ impl NetworkHandle {
 		}
 		responses
 	}
-
-	pub fn shutdown(&self) {
-		let _ = self.command_tx.send(NetworkCommand::Shutdown);
-	}
 }
 
-impl Drop for NetworkHandle {
-	fn drop(&mut self) {
-		self.shutdown();
-	}
-}
-
-/// `client` is shared with the UI thread's own uses so both reuse one connection pool.
-pub fn start_network(client: MastodonClient, access_token: String, ui_waker: UiWaker) -> NetworkHandle {
-	let (cmd_tx, cmd_rx) = mpsc::channel();
-	let (resp_tx, resp_rx) = mpsc::channel();
-	let thread = thread::spawn(move || {
-		network_loop(&client, &access_token, &cmd_rx, &resp_tx, &ui_waker);
-	});
-	NetworkHandle { command_tx: cmd_tx, response_rx: resp_rx, _thread: thread }
+pub fn start_network(session: Session, ui_waker: UiWaker) -> NetworkHandle {
+	let (responses, response_rx) = mpsc::channel();
+	NetworkHandle { command_tx: NetworkSender { session, responses, ui_waker }, response_rx }
 }
 
 fn send_response(responses: &Sender<NetworkResponse>, ui_waker: &UiWaker, response: NetworkResponse) {
@@ -600,481 +617,412 @@ fn first_relationship_result(relationships: Vec<Relationship>) -> Result<Relatio
 	relationships.into_iter().next().ok_or_else(|| anyhow::anyhow!("Relationship lookup returned no results"))
 }
 
-fn network_loop(
-	client: &MastodonClient,
-	access_token: &str,
-	commands: &Receiver<NetworkCommand>,
-	responses: &Sender<NetworkResponse>,
-	ui_waker: &UiWaker,
-) {
-	loop {
-		match commands.recv() {
-			Ok(NetworkCommand::FetchTimeline { timeline_type, limit, max_id }) => {
-				let mut result = match timeline_type {
-					TimelineType::Notifications | TimelineType::Mentions => client
-						.get_notifications(access_token, &timeline_type, limit, max_id.as_deref())
-						.map(|(n, next)| TimelineData::Notifications(n, next)),
-					TimelineType::Direct => client
-						.get_conversations(access_token, limit, max_id.as_deref())
-						.map(|(c, next)| TimelineData::Conversations(c, next)),
-					TimelineType::Thread { ref id, .. } => client.get_status(access_token, id).and_then(|focus| {
-						client
-							.get_status_context(access_token, id)
-							.map(|context| prepare_thread_timeline(focus, context))
-					}),
-					_ => {
-						let mut statuses = Vec::new();
-						if let TimelineType::User { ref id, .. } = timeline_type
-							&& max_id.is_none()
-							&& let Ok(mut pinned) = client.get_pinned_statuses(access_token, id)
-						{
-							for p in &mut pinned {
-								p.pinned = true;
-							}
-							statuses.extend(pinned);
+/// Finds the post at `url` on the account's own instance, which a post from elsewhere must be
+/// before the account can act on it.
+pub fn resolve_status(client: &MastodonClient, access_token: &str, url: &str) -> Result<Status> {
+	client
+		.search(access_token, url, SearchType::Statuses, Some(1), None)
+		.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"))
+}
+
+/// Makes the request `command` stands for, and gives back the answer to hand to the UI, if any.
+fn run_command(client: &MastodonClient, access_token: &str, command: NetworkCommand) -> Option<NetworkResponse> {
+	match command {
+		NetworkCommand::FetchTimeline { timeline_type, limit, max_id } => {
+			let mut result = match timeline_type {
+				TimelineType::Notifications | TimelineType::Mentions => client
+					.get_notifications(access_token, &timeline_type, limit, max_id.as_deref())
+					.map(|(n, next)| TimelineData::Notifications(n, next)),
+				TimelineType::Direct => client
+					.get_conversations(access_token, limit, max_id.as_deref())
+					.map(|(c, next)| TimelineData::Conversations(c, next)),
+				TimelineType::Thread { ref id, .. } => client.get_status(access_token, id).and_then(|focus| {
+					client.get_status_context(access_token, id).map(|context| prepare_thread_timeline(focus, context))
+				}),
+				_ => {
+					let mut statuses = Vec::new();
+					if let TimelineType::User { ref id, .. } = timeline_type
+						&& max_id.is_none()
+						&& let Ok(mut pinned) = client.get_pinned_statuses(access_token, id)
+					{
+						for p in &mut pinned {
+							p.pinned = true;
 						}
-						let res = client.get_timeline(access_token, &timeline_type, limit, max_id.as_deref());
-						match res {
-							Ok((s, n)) => {
-								let mut seen = std::collections::HashSet::new();
-								for st in &statuses {
+						statuses.extend(pinned);
+					}
+					let res = client.get_timeline(access_token, &timeline_type, limit, max_id.as_deref());
+					match res {
+						Ok((s, n)) => {
+							let mut seen = std::collections::HashSet::new();
+							for st in &statuses {
+								seen.insert(st.id.clone());
+							}
+							for st in s {
+								if !seen.contains(&st.id) {
 									seen.insert(st.id.clone());
+									statuses.push(st);
 								}
-								for st in s {
-									if !seen.contains(&st.id) {
-										seen.insert(st.id.clone());
-										statuses.push(st);
-									}
-								}
-								Ok(TimelineData::Statuses(statuses, n))
 							}
-							Err(e) => {
-								if statuses.is_empty() {
-									Err(e)
-								} else {
-									Ok(TimelineData::Statuses(statuses, None))
-								}
+							Ok(TimelineData::Statuses(statuses, n))
+						}
+						Err(e) => {
+							if statuses.is_empty() {
+								Err(e)
+							} else {
+								Ok(TimelineData::Statuses(statuses, None))
 							}
 						}
 					}
-				};
-				// Remote instances fetch anonymously, so their statuses never carry our filter matches.
-				if let TimelineType::InstanceLocal { .. } = timeline_type
-					&& let Ok(TimelineData::Statuses(statuses, _)) = &mut result
-					&& let Ok(filters) = client.get_filters(access_token)
-				{
-					for status in statuses {
-						status.apply_filters(&filters);
-					}
 				}
-				send_response(responses, ui_waker, NetworkResponse::TimelineLoaded { timeline_type, result, max_id });
+			};
+			// Remote instances fetch anonymously, so their statuses never carry our filter matches.
+			if let TimelineType::InstanceLocal { .. } = timeline_type
+				&& let Ok(TimelineData::Statuses(statuses, _)) = &mut result
+				&& let Ok(filters) = client.get_filters(access_token)
+			{
+				for status in statuses {
+					status.apply_filters(&filters);
+				}
 			}
-			Ok(NetworkCommand::FetchThread { timeline_type, focus }) => {
-				let result = client
-					.get_status_context(access_token, &focus.id)
-					.map(|context| prepare_thread_timeline(*focus, context));
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None },
-				);
-			}
-			Ok(NetworkCommand::FetchStatusSource { status }) => {
-				let result = client.fetch_status_source(access_token, &status.id);
-				send_response(responses, ui_waker, NetworkResponse::StatusSourceFetched { status, result });
-			}
-			Ok(NetworkCommand::ResolveStatusForThread { url }) => {
-				let result = client
-					.search(access_token, &url, SearchType::Statuses, Some(1), None)
-					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
-				send_response(responses, ui_waker, NetworkResponse::StatusResolvedForThread { result });
-			}
-			Ok(NetworkCommand::ResolveStatusForQuote { url }) => {
-				let result = client
-					.search(access_token, &url, SearchType::Statuses, Some(1), None)
-					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
-				send_response(responses, ui_waker, NetworkResponse::StatusResolvedForQuote { result });
-			}
-			Ok(NetworkCommand::ResolveAndInteract { url, interaction }) => {
-				let status = client
-					.search(access_token, &url, SearchType::Statuses, Some(1), None)
-					.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"));
-				let response = match interaction {
-					ForeignInteraction::Action(action) => NetworkResponse::StatusActed {
-						action,
-						result: status.and_then(|status| {
-							client.status_action(access_token, &status.id, action).map(|result| (status.id, result))
-						}),
-					},
-					ForeignInteraction::Vote(choices) => NetworkResponse::PollVoted {
-						result: status.and_then(|status| {
-							let poll = status.poll.context("Post has no poll")?;
-							client.vote_poll(access_token, &poll.id, &choices)
-						}),
-					},
-					ForeignInteraction::Reply(post) => NetworkResponse::Replied(status.and_then(|status| {
-						post_with_media(
-							client,
-							access_token,
-							&post.content,
-							&post.visibility,
-							post.sensitive,
-							post.spoiler_text.as_deref(),
-							post.content_type.as_deref(),
-							post.language.as_deref(),
-							post.media,
-							post.poll.as_ref(),
-							Some(&status.id),
-							None,
-							post.scheduled_at.as_deref(),
-						)
-					})),
-				};
-				send_response(responses, ui_waker, response);
-			}
-			Ok(NetworkCommand::ResolveAccount { url }) => {
-				let result = client
-					.search(access_token, &url, SearchType::Accounts, Some(1), None)
-					.and_then(|mut res| res.accounts.pop().context("Account not found on local instance"));
-				send_response(responses, ui_waker, NetworkResponse::AccountLookupResult { handle: url, result });
-			}
-			Ok(NetworkCommand::LookupAccount { handle }) => {
-				let result = client.lookup_account(access_token, &handle);
-				send_response(responses, ui_waker, NetworkResponse::AccountLookupResult { handle, result });
-			}
-			Ok(NetworkCommand::PostStatus { post }) => {
-				let result = post_with_media(
-					client,
-					access_token,
-					&post.content,
-					&post.visibility,
-					post.sensitive,
-					post.spoiler_text.as_deref(),
-					post.content_type.as_deref(),
-					post.language.as_deref(),
-					post.media,
-					post.poll.as_ref(),
-					None,
-					post.quoted_status_id.as_deref(),
-					post.scheduled_at.as_deref(),
-				);
-				send_response(responses, ui_waker, NetworkResponse::PostComplete(result));
-			}
-			Ok(NetworkCommand::EditStatus { status_id, content, sensitive, spoiler_text, language, media, poll }) => {
-				let result = edit_with_media(
-					client,
-					access_token,
-					&status_id,
-					&content,
-					sensitive,
-					spoiler_text.as_deref(),
-					language.as_deref(),
-					media,
-					poll.as_ref(),
-				);
-				send_response(responses, ui_waker, NetworkResponse::StatusEdited { _status_id: status_id, result });
-			}
-			Ok(NetworkCommand::DeleteStatus { status_id }) => {
-				let result = client.delete_status(access_token, &status_id);
-				send_response(responses, ui_waker, NetworkResponse::StatusDeleted { status_id, result });
-			}
-			Ok(NetworkCommand::ActOnStatus { status_id, action }) => {
-				let result = client.status_action(access_token, &status_id, action).map(|status| (status_id, status));
-				send_response(responses, ui_waker, NetworkResponse::StatusActed { action, result });
-			}
-			Ok(NetworkCommand::Reply {
-				in_reply_to_id,
-				content,
-				visibility,
+			Some(NetworkResponse::TimelineLoaded { timeline_type, result, max_id })
+		}
+		NetworkCommand::FetchThread { timeline_type, focus } => {
+			let result = client
+				.get_status_context(access_token, &focus.id)
+				.map(|context| prepare_thread_timeline(*focus, context));
+			Some(NetworkResponse::TimelineLoaded { timeline_type, result, max_id: None })
+		}
+		NetworkCommand::FetchStatusSource { status } => {
+			let result = client.fetch_status_source(access_token, &status.id);
+			Some(NetworkResponse::StatusSourceFetched { status, result })
+		}
+		NetworkCommand::ResolveStatusForThread { url } => {
+			let result = resolve_status(client, access_token, &url);
+			Some(NetworkResponse::StatusResolvedForThread { result })
+		}
+		NetworkCommand::ResolveStatusForQuote { url } => {
+			let result = resolve_status(client, access_token, &url);
+			Some(NetworkResponse::StatusResolvedForQuote { result })
+		}
+		NetworkCommand::ResolveAndInteract { url, interaction } => {
+			let status = resolve_status(client, access_token, &url);
+			let response = match interaction {
+				ForeignInteraction::Vote(choices) => NetworkResponse::PollVoted {
+					result: status.and_then(|status| {
+						let poll = status.poll.context("Post has no poll")?;
+						client.vote_poll(access_token, &poll.id, &choices)
+					}),
+				},
+				ForeignInteraction::Reply(post) => NetworkResponse::Replied(status.and_then(|status| {
+					post_with_media(
+						client,
+						access_token,
+						&post.content,
+						&post.visibility,
+						post.sensitive,
+						post.spoiler_text.as_deref(),
+						post.content_type.as_deref(),
+						post.language.as_deref(),
+						post.media,
+						post.poll.as_ref(),
+						Some(&status.id),
+						None,
+						post.scheduled_at.as_deref(),
+					)
+				})),
+			};
+			Some(response)
+		}
+		NetworkCommand::ResolveAccount { url } => {
+			let result = client
+				.search(access_token, &url, SearchType::Accounts, Some(1), None)
+				.and_then(|mut res| res.accounts.pop().context("Account not found on local instance"));
+			Some(NetworkResponse::AccountLookupResult { handle: url, result })
+		}
+		NetworkCommand::LookupAccount { handle } => {
+			let result = client.lookup_account(access_token, &handle);
+			Some(NetworkResponse::AccountLookupResult { handle, result })
+		}
+		NetworkCommand::PostStatus { post } => {
+			let result = post_with_media(
+				client,
+				access_token,
+				&post.content,
+				&post.visibility,
+				post.sensitive,
+				post.spoiler_text.as_deref(),
+				post.content_type.as_deref(),
+				post.language.as_deref(),
+				post.media,
+				post.poll.as_ref(),
+				None,
+				post.quoted_status_id.as_deref(),
+				post.scheduled_at.as_deref(),
+			);
+			Some(NetworkResponse::PostComplete(result))
+		}
+		NetworkCommand::EditStatus { status_id, content, sensitive, spoiler_text, language, media, poll } => {
+			let result = edit_with_media(
+				client,
+				access_token,
+				&status_id,
+				&content,
 				sensitive,
-				spoiler_text,
-				content_type,
-				language,
+				spoiler_text.as_deref(),
+				language.as_deref(),
 				media,
-				poll,
-				scheduled_at,
-			}) => {
-				let result = post_with_media(
-					client,
-					access_token,
-					&content,
-					&visibility,
-					sensitive,
-					spoiler_text.as_deref(),
-					content_type.as_deref(),
-					language.as_deref(),
-					media,
-					poll.as_ref(),
-					Some(&in_reply_to_id),
-					None,
-					scheduled_at.as_deref(),
-				);
-				send_response(responses, ui_waker, NetworkResponse::Replied(result));
+				poll.as_ref(),
+			);
+			Some(NetworkResponse::StatusEdited { _status_id: status_id, result })
+		}
+		NetworkCommand::DeleteStatus { status_id } => {
+			let result = client.delete_status(access_token, &status_id);
+			Some(NetworkResponse::StatusDeleted { status_id, result })
+		}
+		NetworkCommand::Reply {
+			in_reply_to_id,
+			content,
+			visibility,
+			sensitive,
+			spoiler_text,
+			content_type,
+			language,
+			media,
+			poll,
+			scheduled_at,
+		} => {
+			let result = post_with_media(
+				client,
+				access_token,
+				&content,
+				&visibility,
+				sensitive,
+				spoiler_text.as_deref(),
+				content_type.as_deref(),
+				language.as_deref(),
+				media,
+				poll.as_ref(),
+				Some(&in_reply_to_id),
+				None,
+				scheduled_at.as_deref(),
+			);
+			Some(NetworkResponse::Replied(result))
+		}
+		NetworkCommand::FollowTag { name } => {
+			let result = client.follow_tag(access_token, &name);
+			Some(NetworkResponse::TagFollowed { name, result })
+		}
+		NetworkCommand::UnfollowTag { name } => {
+			let result = client.unfollow_tag(access_token, &name);
+			Some(NetworkResponse::TagUnfollowed { name, result })
+		}
+		NetworkCommand::FetchTagsInfo { names } => {
+			let mut tags = Vec::new();
+			for name in &names {
+				if let Ok(tag) = client.get_tag(access_token, name) {
+					tags.push(tag);
+				}
 			}
-			Ok(NetworkCommand::FollowTag { name }) => {
-				let result = client.follow_tag(access_token, &name);
-				send_response(responses, ui_waker, NetworkResponse::TagFollowed { name, result });
+			if let Ok(filters) = client.get_filters(access_token)
+				&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
+			{
+				for tag in &mut tags {
+					let keyword = format!("#{}", tag.name);
+					tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
+				}
 			}
-			Ok(NetworkCommand::UnfollowTag { name }) => {
-				let result = client.unfollow_tag(access_token, &name);
-				send_response(responses, ui_waker, NetworkResponse::TagUnfollowed { name, result });
-			}
-			Ok(NetworkCommand::FetchTagsInfo { names }) => {
-				let mut tags = Vec::new();
-				for name in &names {
-					if let Ok(tag) = client.get_tag(access_token, name) {
-						tags.push(tag);
+			let result = Ok(tags);
+			Some(NetworkResponse::TagsInfoFetched { result })
+		}
+		NetworkCommand::MuteTag { name } => {
+			let result = (|| -> Result<()> {
+				let filters = client.get_filters(access_token)?;
+				let keyword = format!("#{name}");
+				if let Some(filter) = filters.into_iter().find(is_muted_tags_filter) {
+					if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+						client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
+					}
+				} else {
+					client.create_filter(
+						access_token,
+						MUTED_TAGS_FILTER,
+						&[
+							FilterContext::Home,
+							FilterContext::Notifications,
+							FilterContext::Public,
+							FilterContext::Thread,
+							FilterContext::Account,
+						],
+						&FilterAction::Hide,
+						&[(keyword, true)],
+						None,
+					)?;
+				}
+				Ok(())
+			})();
+			Some(NetworkResponse::TagMuted { name, result })
+		}
+		NetworkCommand::UnmuteTag { name } => {
+			let result = (|| -> Result<()> {
+				let filters = client.get_filters(access_token)?;
+				let keyword = format!("#{name}");
+				for filter in filters.iter().filter(|f| is_muted_tags_filter(f)) {
+					for kw in filter.keywords.iter().filter(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
+						client.delete_filter_keyword(access_token, &kw.id)?;
 					}
 				}
-				if let Ok(filters) = client.get_filters(access_token)
-					&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
-				{
-					for tag in &mut tags {
-						let keyword = format!("#{}", tag.name);
-						tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
-					}
+				Ok(())
+			})();
+			Some(NetworkResponse::TagUnmuted { name, result })
+		}
+		NetworkCommand::FollowAccount { account_id, target_name, reblogs, notify, action } => {
+			let result = client.follow_account_with_options(access_token, &account_id, reblogs, notify);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
+		}
+		NetworkCommand::ToggleFollow { account_id, acct, target_name } => {
+			let current = account_id
+				.map_or_else(|| client.lookup_account(access_token, &acct).map(|account| account.id), Ok)
+				.and_then(|id| {
+					let rel = client
+						.get_relationships(access_token, slice::from_ref(&id))?
+						.pop()
+						.context("Server returned no relationship")?;
+					Ok((id, rel))
+				});
+			let (action, result) = match current {
+				Ok((id, rel)) if rel.following => {
+					(RelationshipAction::Unfollow, client.unfollow_account(access_token, &id))
 				}
-				let result = Ok(tags);
-				send_response(responses, ui_waker, NetworkResponse::TagsInfoFetched { result });
-			}
-			Ok(NetworkCommand::MuteTag { name }) => {
-				let result = (|| -> Result<()> {
-					let filters = client.get_filters(access_token)?;
-					let keyword = format!("#{name}");
-					if let Some(filter) = filters.into_iter().find(is_muted_tags_filter) {
-						if !filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
-							client.add_filter_keyword(access_token, &filter.id, &keyword, true)?;
-						}
-					} else {
-						client.create_filter(
-							access_token,
-							MUTED_TAGS_FILTER,
-							&[
-								FilterContext::Home,
-								FilterContext::Notifications,
-								FilterContext::Public,
-								FilterContext::Thread,
-								FilterContext::Account,
-							],
-							&FilterAction::Hide,
-							&[(keyword, true)],
-							None,
-						)?;
-					}
-					Ok(())
-				})();
-				send_response(responses, ui_waker, NetworkResponse::TagMuted { name, result });
-			}
-			Ok(NetworkCommand::UnmuteTag { name }) => {
-				let result = (|| -> Result<()> {
-					let filters = client.get_filters(access_token)?;
-					let keyword = format!("#{name}");
-					for filter in filters.iter().filter(|f| is_muted_tags_filter(f)) {
-						for kw in filter.keywords.iter().filter(|kw| kw.keyword.eq_ignore_ascii_case(&keyword)) {
-							client.delete_filter_keyword(access_token, &kw.id)?;
-						}
-					}
-					Ok(())
-				})();
-				send_response(responses, ui_waker, NetworkResponse::TagUnmuted { name, result });
-			}
-			Ok(NetworkCommand::FollowAccount { account_id, target_name, reblogs, notify, action }) => {
-				let result = client.follow_account_with_options(access_token, &account_id, reblogs, notify);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action, result },
-				);
-			}
-			Ok(NetworkCommand::ToggleFollow { account_id, acct, target_name }) => {
-				let current = account_id
-					.map_or_else(|| client.lookup_account(access_token, &acct).map(|account| account.id), Ok)
-					.and_then(|id| {
-						let rel = client
-							.get_relationships(access_token, slice::from_ref(&id))?
-							.pop()
-							.context("Server returned no relationship")?;
-						Ok((id, rel))
-					});
-				let (action, result) = match current {
-					Ok((id, rel)) if rel.following => {
-						(RelationshipAction::Unfollow, client.unfollow_account(access_token, &id))
-					}
-					Ok((id, rel)) if rel.requested => {
-						(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
-					}
-					Ok((id, _)) => {
-						(RelationshipAction::Follow, client.follow_account_with_options(access_token, &id, true, false))
-					}
-					Err(err) => (RelationshipAction::ToggleFollow, Err(err)),
-				};
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action, result },
-				);
-			}
-			Ok(NetworkCommand::UnfollowAccount { account_id, target_name, action }) => {
-				let result = client.unfollow_account(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action, result },
-				);
-			}
-			Ok(NetworkCommand::AuthorizeFollowRequest { account_id, target_name }) => {
-				let result = client.authorize_follow_request(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						target_name,
-						action: RelationshipAction::AcceptFollowRequest,
-						result,
-					},
-				);
-			}
-			Ok(NetworkCommand::RejectFollowRequest { account_id, target_name }) => {
-				let result = client.reject_follow_request(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated {
-						target_name,
-						action: RelationshipAction::RejectFollowRequest,
-						result,
-					},
-				);
-			}
-			Ok(NetworkCommand::BlockAccount { account_id, target_name }) => {
-				let result = client.block_account(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Block, result },
-				);
-			}
-			Ok(NetworkCommand::UnblockAccount { account_id, target_name }) => {
-				let result = client.unblock_account(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unblock, result },
-				);
-			}
-			Ok(NetworkCommand::MuteAccount { account_id, target_name }) => {
-				let result = client.mute_account(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Mute, result },
-				);
-			}
-			Ok(NetworkCommand::UnmuteAccount { account_id, target_name }) => {
-				let result = client.unmute_account(access_token, &account_id);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unmute, result },
-				);
-			}
-			Ok(NetworkCommand::FetchRelationship { account_id }) => {
-				let result = client
-					.get_relationships(access_token, slice::from_ref(&account_id))
-					.and_then(first_relationship_result);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::RelationshipLoaded { _account_id: account_id, result },
-				);
-			}
-			Ok(NetworkCommand::FetchAccount { account_id }) => {
-				let result = client.get_account(access_token, &account_id);
-				send_response(responses, ui_waker, NetworkResponse::AccountFetched { result });
-			}
-			Ok(NetworkCommand::VotePoll { poll_id, choices }) => {
-				let result = client.vote_poll(access_token, &poll_id, &choices);
-				send_response(responses, ui_waker, NetworkResponse::PollVoted { result });
-			}
-			Ok(NetworkCommand::FetchCredentials) => {
-				let result = client.verify_credentials(access_token);
-				let max_profile_fields = if result.is_ok() { client.get_max_profile_fields() } else { None };
-				send_response(responses, ui_waker, NetworkResponse::CredentialsFetched { result, max_profile_fields });
-			}
-			Ok(NetworkCommand::UpdateProfile { update }) => {
-				let result = client.update_credentials(
-					access_token,
-					update.display_name.as_deref(),
-					update.note.as_deref(),
-					update.avatar.as_deref(),
-					update.header.as_deref(),
-					update.locked,
-					update.bot,
-					update.discoverable,
-					update.fields_attributes.as_deref(),
-					update.source.as_ref().and_then(|s| s.privacy.as_deref()),
-					update.source.as_ref().and_then(|s| s.sensitive),
-					update.source.as_ref().and_then(|s| s.language.as_deref()),
-				);
-				send_response(responses, ui_waker, NetworkResponse::ProfileUpdated { result });
-			}
-			Ok(NetworkCommand::Search { query, search_type, limit, offset }) => {
-				let result = client.search(access_token, &query, search_type, limit, offset);
-				send_response(
-					responses,
-					ui_waker,
-					NetworkResponse::SearchLoaded { query, search_type, result, offset },
-				);
-			}
-			Ok(NetworkCommand::FetchLists) => {
-				let result = client.get_lists(access_token);
-				send_response(responses, ui_waker, NetworkResponse::ListsFetched { result });
-			}
-			Ok(NetworkCommand::CreateList { title, policy, exclusive }) => {
-				let result = client.create_list(access_token, &title, &policy, exclusive);
-				send_response(responses, ui_waker, NetworkResponse::ListCreated { result });
-			}
-			Ok(NetworkCommand::UpdateList { id, title, policy, exclusive }) => {
-				let result = client.update_list(access_token, &id, &title, &policy, exclusive);
-				send_response(responses, ui_waker, NetworkResponse::ListUpdated { result });
-			}
-			Ok(NetworkCommand::DeleteList { id }) => {
-				let result = client.delete_list(access_token, &id);
-				send_response(responses, ui_waker, NetworkResponse::ListDeleted { result });
-			}
-			Ok(NetworkCommand::FetchListAccounts { list_id }) => {
-				let result = client.get_list_accounts(access_token, &list_id);
-				send_response(responses, ui_waker, NetworkResponse::ListAccountsFetched { list_id, result });
-			}
-			Ok(NetworkCommand::FetchAccountLists { account_id }) => {
-				let result = client.get_account_lists(access_token, &account_id);
-				send_response(responses, ui_waker, NetworkResponse::AccountListsFetched { account_id, result });
-			}
-			Ok(NetworkCommand::AddListAccount { list_id, account_id }) => {
-				let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-				send_response(responses, ui_waker, NetworkResponse::ListAccountAdded { result });
-			}
-			Ok(NetworkCommand::RemoveListAccount { list_id, account_id }) => {
-				let result = client.remove_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
-				send_response(responses, ui_waker, NetworkResponse::ListAccountRemoved { result });
-			}
-			Ok(NetworkCommand::FetchNotificationPolicy) => {
-				let result = client.get_notification_policy(access_token);
-				send_response(responses, ui_waker, NetworkResponse::NotificationPolicyLoaded(result));
-			}
-			Ok(NetworkCommand::FetchInstanceInfo) => {
-				send_response(responses, ui_waker, NetworkResponse::InstanceInfoFetched(client.get_instance_info()));
-			}
-			Ok(NetworkCommand::FetchMarkers) => {
-				let result = client.get_markers(access_token);
-				send_response(responses, ui_waker, NetworkResponse::MarkersLoaded(result));
-			}
-			Ok(NetworkCommand::SaveMarker { timeline, last_read_id }) => {
-				let _ = client.set_marker(access_token, timeline, &last_read_id);
-			}
-			Ok(NetworkCommand::Shutdown) | Err(_) => {
-				break;
-			}
+				Ok((id, rel)) if rel.requested => {
+					(RelationshipAction::CancelFollowRequest, client.unfollow_account(access_token, &id))
+				}
+				Ok((id, _)) => {
+					(RelationshipAction::Follow, client.follow_account_with_options(access_token, &id, true, false))
+				}
+				Err(err) => (RelationshipAction::ToggleFollow, Err(err)),
+			};
+			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
+		}
+		NetworkCommand::UnfollowAccount { account_id, target_name, action } => {
+			let result = client.unfollow_account(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action, result })
+		}
+		NetworkCommand::AuthorizeFollowRequest { account_id, target_name } => {
+			let result = client.authorize_follow_request(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated {
+				target_name,
+				action: RelationshipAction::AcceptFollowRequest,
+				result,
+			})
+		}
+		NetworkCommand::RejectFollowRequest { account_id, target_name } => {
+			let result = client.reject_follow_request(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated {
+				target_name,
+				action: RelationshipAction::RejectFollowRequest,
+				result,
+			})
+		}
+		NetworkCommand::BlockAccount { account_id, target_name } => {
+			let result = client.block_account(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Block, result })
+		}
+		NetworkCommand::UnblockAccount { account_id, target_name } => {
+			let result = client.unblock_account(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unblock, result })
+		}
+		NetworkCommand::MuteAccount { account_id, target_name } => {
+			let result = client.mute_account(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Mute, result })
+		}
+		NetworkCommand::UnmuteAccount { account_id, target_name } => {
+			let result = client.unmute_account(access_token, &account_id);
+			Some(NetworkResponse::RelationshipUpdated { target_name, action: RelationshipAction::Unmute, result })
+		}
+		NetworkCommand::FetchRelationship { account_id } => {
+			let result = client
+				.get_relationships(access_token, slice::from_ref(&account_id))
+				.and_then(first_relationship_result);
+			Some(NetworkResponse::RelationshipLoaded { _account_id: account_id, result })
+		}
+		NetworkCommand::FetchAccount { account_id } => {
+			let result = client.get_account(access_token, &account_id);
+			Some(NetworkResponse::AccountFetched { result })
+		}
+		NetworkCommand::VotePoll { poll_id, choices } => {
+			let result = client.vote_poll(access_token, &poll_id, &choices);
+			Some(NetworkResponse::PollVoted { result })
+		}
+		NetworkCommand::FetchCredentials => {
+			let result = client.verify_credentials(access_token);
+			let max_profile_fields = if result.is_ok() { client.get_max_profile_fields() } else { None };
+			Some(NetworkResponse::CredentialsFetched { result, max_profile_fields })
+		}
+		NetworkCommand::UpdateProfile { update } => {
+			let result = client.update_credentials(
+				access_token,
+				update.display_name.as_deref(),
+				update.note.as_deref(),
+				update.avatar.as_deref(),
+				update.header.as_deref(),
+				update.locked,
+				update.bot,
+				update.discoverable,
+				update.fields_attributes.as_deref(),
+				update.source.as_ref().and_then(|s| s.privacy.as_deref()),
+				update.source.as_ref().and_then(|s| s.sensitive),
+				update.source.as_ref().and_then(|s| s.language.as_deref()),
+			);
+			Some(NetworkResponse::ProfileUpdated { result })
+		}
+		NetworkCommand::Search { query, search_type, limit, offset } => {
+			let result = client.search(access_token, &query, search_type, limit, offset);
+			Some(NetworkResponse::SearchLoaded { query, search_type, result, offset })
+		}
+		NetworkCommand::FetchLists => {
+			let result = client.get_lists(access_token);
+			Some(NetworkResponse::ListsFetched { result })
+		}
+		NetworkCommand::CreateList { title, policy, exclusive } => {
+			let result = client.create_list(access_token, &title, &policy, exclusive);
+			Some(NetworkResponse::ListCreated { result })
+		}
+		NetworkCommand::UpdateList { id, title, policy, exclusive } => {
+			let result = client.update_list(access_token, &id, &title, &policy, exclusive);
+			Some(NetworkResponse::ListUpdated { result })
+		}
+		NetworkCommand::DeleteList { id } => {
+			let result = client.delete_list(access_token, &id);
+			Some(NetworkResponse::ListDeleted { result })
+		}
+		NetworkCommand::FetchListAccounts { list_id } => {
+			let result = client.get_list_accounts(access_token, &list_id);
+			Some(NetworkResponse::ListAccountsFetched { list_id, result })
+		}
+		NetworkCommand::FetchAccountLists { account_id } => {
+			let result = client.get_account_lists(access_token, &account_id);
+			Some(NetworkResponse::AccountListsFetched { account_id, result })
+		}
+		NetworkCommand::AddListAccount { list_id, account_id } => {
+			let result = client.add_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
+			Some(NetworkResponse::ListAccountAdded { result })
+		}
+		NetworkCommand::RemoveListAccount { list_id, account_id } => {
+			let result = client.remove_list_accounts(access_token, &list_id, slice::from_ref(&account_id));
+			Some(NetworkResponse::ListAccountRemoved { result })
+		}
+		NetworkCommand::FetchNotificationPolicy => {
+			let result = client.get_notification_policy(access_token);
+			Some(NetworkResponse::NotificationPolicyLoaded(result))
+		}
+		NetworkCommand::FetchInstanceInfo => Some(NetworkResponse::InstanceInfoFetched(client.get_instance_info())),
+		NetworkCommand::FetchMarkers => {
+			let result = client.get_markers(access_token);
+			Some(NetworkResponse::MarkersLoaded(result))
+		}
+		NetworkCommand::SaveMarker { timeline, last_read_id } => {
+			let _ = client.set_marker(access_token, timeline, &last_read_id);
+			None
 		}
 	}
 }

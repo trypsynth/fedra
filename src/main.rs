@@ -63,7 +63,7 @@ use crate::{
 	responses::{process_network_responses, process_stream_events},
 	timeline::TimelineManager,
 	ui::{
-		commands::{UiCommand, UiCommandContext, handle_ui_command},
+		commands::{UiCommand, UiCommandContext, UiHandles, handle_ui_command},
 		menu::{PostMenuState, relabel_menus},
 		timeline_list::TimelineList,
 		timeline_view::{TimelineViewOptions, update_active_timeline_ui},
@@ -91,7 +91,7 @@ pub(crate) struct PendingPost {
 pub(crate) type SharedState = Rc<RefCell<AppState>>;
 
 /// How long the wake handler waits before trying again when the state is already borrowed.
-const STATE_BUSY_RETRY: Duration = Duration::from_millis(50);
+pub(crate) const STATE_BUSY_RETRY: Duration = Duration::from_millis(50);
 
 pub(crate) struct AppState {
 	pub(crate) config: Config,
@@ -112,6 +112,7 @@ pub(crate) struct AppState {
 	pub(crate) manage_list_members_dialog: Option<ui::dialogs::ManageListMembersDialog>,
 	pub(crate) pending_auth_dialog: Option<Dialog>,
 	pub(crate) client: Option<MastodonClient>,
+	pub(crate) session: Option<Session>,
 	pub(crate) pending_user_lookup_action: Option<ui::dialogs::UserLookupAction>,
 	pub(crate) cw_expanded: HashSet<String>,
 	pub(crate) current_user_id: Option<String>,
@@ -151,6 +152,7 @@ impl AppState {
 			manage_list_members_dialog: None,
 			pending_auth_dialog: None,
 			client: None,
+			session: None,
 			pending_user_lookup_action: None,
 			cw_expanded: HashSet::new(),
 			current_user_id: None,
@@ -171,7 +173,7 @@ impl AppState {
 	}
 
 	pub(crate) fn session(&self) -> Option<Session> {
-		Some(Session::new(self.client.clone()?, self.access_token.clone()?))
+		self.session.clone()
 	}
 
 	pub(crate) fn active_account(&self) -> Option<&config::Account> {
@@ -345,19 +347,25 @@ fn main() {
 		let suppress_wake = suppress_selection.clone();
 		let busy_wake = wake_busy;
 		let reschedule_wake = wake_reschedule;
-		let frame_wake = frame;
-		let timelines_selector_wake = timelines_selector;
-		let timeline_list_wake = timeline_list;
+		let timeline_list_wake = timeline_list.clone();
 		let start_maximized = state.config.start_maximized;
 		let post_menu_state_for_handlers = state.post_menu_state.clone();
 		let state: SharedState = Rc::new(RefCell::new(state));
+		let handles = UiHandles {
+			state: state.clone(),
+			frame,
+			timelines_selector,
+			timeline_list,
+			suppress_selection: suppress_selection.clone(),
+			quick_action_keys_enabled: quick_action_keys_enabled.clone(),
+			autoload_mode: autoload_mode.clone(),
+			sort_order_cell: sort_order_cell.clone(),
+			tray_hidden,
+			shortcuts_cell: shortcuts_cell.clone(),
+			ui_tx: ui_tx.clone(),
+			is_shutting_down: is_shutting_down.clone(),
+		};
 		let ui_waker_handler = ui_waker.clone();
-		let quick_action_keys_drain = quick_action_keys_enabled.clone();
-		let autoload_drain = autoload_mode.clone();
-		let sort_order_drain = sort_order_cell.clone();
-		let tray_hidden_drain = tray_hidden;
-		let shortcuts_drain = shortcuts_cell.clone();
-		let ui_tx_timer = ui_tx.clone();
 		let mut last_ui_refresh = Instant::now();
 		frame.bind_with_id_internal(EventType::MENU, ID_UI_WAKE, move |_| {
 			let is_shutting_down = shutdown_wake.get();
@@ -379,26 +387,13 @@ fn main() {
 			};
 			busy_wake.set(true);
 			ui_waker_handler.reset();
-			let mut ctx = UiCommandContext {
-				state: &mut state,
-				frame: &frame_wake,
-				timelines_selector: timelines_selector_wake,
-				timeline_list: timeline_list_wake.clone(),
-				suppress_selection: &suppress_wake,
-				live_region: &timeline_list_wake,
-				quick_action_keys_enabled: &quick_action_keys_drain,
-				autoload_mode: &autoload_drain,
-				sort_order_cell: &sort_order_drain,
-				tray_hidden: &tray_hidden_drain,
-				shortcuts_cell: &shortcuts_drain,
-				ui_tx: &ui_tx_timer,
-			};
+			let mut ctx = handles.context(&mut state);
 			drain_ui_commands(&ui_rx, &mut ctx);
 			if is_shutting_down {
 				busy_wake.set(false);
 				return;
 			}
-			process_stream_events(ctx.state, &timeline_list_wake, &suppress_wake, &frame_wake);
+			process_stream_events(ctx.state, &timeline_list_wake, &suppress_wake, &frame);
 			process_network_responses(&mut ctx);
 			if last_ui_refresh.elapsed() >= Duration::from_secs(60) {
 				ctx.state.redraw_active_timeline(&timeline_list_wake, &suppress_wake);

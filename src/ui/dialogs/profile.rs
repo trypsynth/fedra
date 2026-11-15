@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
@@ -6,7 +6,7 @@ use wxdragon::prelude::*;
 use super::user_actions;
 use crate::{
 	mastodon::{Account as MastodonAccount, Mention, Tag},
-	network::NetworkCommand,
+	network::{NetworkCommand, NetworkSender},
 	ui::dialogs::UserLookupAction,
 };
 
@@ -23,7 +23,7 @@ impl ProfileDialog {
 		frame: &Frame,
 		account: MastodonAccount,
 		current_user_id: Option<&str>,
-		net_tx: std::sync::mpsc::Sender<NetworkCommand>,
+		net_tx: NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
@@ -316,7 +316,7 @@ impl HashtagDialog {
 	pub fn new<F>(
 		frame: &Frame,
 		tags: Vec<Tag>,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_close: F,
 	) -> Self
@@ -432,7 +432,7 @@ impl HashtagDialog {
 					} else {
 						NetworkCommand::FollowTag { name: tag.name.clone() }
 					};
-					let _ = net_tx_action.send(cmd);
+					net_tx_action.send(cmd);
 				}
 			}
 		});
@@ -449,7 +449,7 @@ impl HashtagDialog {
 					} else {
 						NetworkCommand::MuteTag { name: tag.name.clone() }
 					};
-					let _ = net_tx_mute.send(cmd);
+					net_tx_mute.send(cmd);
 				}
 			}
 		});

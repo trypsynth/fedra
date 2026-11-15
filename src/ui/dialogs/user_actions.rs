@@ -1,11 +1,11 @@
-use std::{cell::RefCell, fmt::Write, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, fmt::Write, rc::Rc};
 
 use wxdragon::prelude::*;
 
 use super::FollowList;
 use crate::{
 	mastodon::{Account, Relationship},
-	network::{NetworkCommand, RelationshipAction},
+	network::{NetworkCommand, NetworkSender, RelationshipAction},
 	ui::commands::UiCommand,
 	ui_wake::UiCommandSender,
 };
@@ -129,7 +129,7 @@ pub fn handle_action(
 	account: &Account,
 	relationship: Option<&Relationship>,
 	parent: &dyn WxWidget,
-	net_tx: &Sender<NetworkCommand>,
+	net_tx: &NetworkSender,
 	ui_tx: &UiCommandSender,
 ) {
 	let account_id = account.id.clone();
@@ -196,7 +196,7 @@ pub fn handle_action(
 		ID_ACTION_REJECT_FOLLOW_REQUEST => NetworkCommand::RejectFollowRequest { account_id, target_name },
 		_ => return,
 	};
-	let _ = net_tx.send(cmd);
+	net_tx.send(cmd);
 }
 
 pub fn setup_actions_button(
@@ -204,7 +204,7 @@ pub fn setup_actions_button(
 	button: Button,
 	account: Rc<RefCell<Account>>,
 	relationship: Rc<RefCell<Option<Relationship>>>,
-	net_tx: Sender<NetworkCommand>,
+	net_tx: NetworkSender,
 	ui_tx: UiCommandSender,
 ) {
 	let relationship_click = relationship.clone();

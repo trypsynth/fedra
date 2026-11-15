@@ -1,11 +1,11 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, rc::Rc};
 
 use wxdragon::prelude::*;
 
 use super::prompt_for_account_search;
 use crate::{
 	mastodon::{Account, SearchType},
-	network::NetworkCommand,
+	network::{NetworkCommand, NetworkSender},
 };
 #[derive(Clone)]
 pub struct ManageListMembersDialog {
@@ -22,7 +22,7 @@ impl ManageListMembersDialog {
 		list_id: String,
 		list_title: &str,
 		members: Vec<Account>,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: NetworkSender,
 		on_close: F,
 	) -> Self
 	where
@@ -62,7 +62,7 @@ impl ManageListMembersDialog {
 		let net_tx_search = net_tx.clone();
 		add_button.on_click(move |_| {
 			if let Some(query) = prompt_for_account_search(&dialog_add) {
-				let _ = net_tx_search.send(NetworkCommand::Search {
+				net_tx_search.send(NetworkCommand::Search {
 					query,
 					search_type: SearchType::Accounts,
 					limit: Some(20),
@@ -79,7 +79,7 @@ impl ManageListMembersDialog {
 				let idx = sel as usize;
 				let members = members_remove.borrow();
 				if let Some(member) = members.get(idx) {
-					let _ = net_tx_remove.send(NetworkCommand::RemoveListAccount {
+					net_tx_remove.send(NetworkCommand::RemoveListAccount {
 						list_id: list_id_remove.clone(),
 						account_id: member.id.clone(),
 					});

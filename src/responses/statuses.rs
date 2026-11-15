@@ -114,7 +114,9 @@ const fn effect(action: StatusAction) -> &'static StatusEffect {
 	}
 }
 
-pub(super) fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction, result: Result<(String, Status)>) {
+/// Shows the outcome of a toggle on a post. The id is the acted-on post's, and the status is the
+/// server's answer, which for a boost is the new wrapper.
+pub fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction, result: Result<(String, Status)>) {
 	let effect = effect(action);
 	match result {
 		Ok((status_id, status)) => {

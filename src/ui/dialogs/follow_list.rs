@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc::Sender};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use anyhow::Result;
 use wxdragon::{event::MenuEvents, prelude::*};
@@ -7,7 +7,7 @@ use super::user_actions;
 use crate::{
 	AppState, UiCommand,
 	mastodon::{Account, MastodonClient, Relationship},
-	network::NetworkCommand,
+	network::NetworkSender,
 };
 
 /// The two account lists a profile can show. They differ only in wording and in
@@ -112,7 +112,7 @@ impl FollowListDialog {
 		title: &str,
 		label: &str,
 		total_count: u64,
-		net_tx: Sender<NetworkCommand>,
+		net_tx: NetworkSender,
 		ui_tx: crate::ui_wake::UiCommandSender,
 		on_view_timeline: F,
 		on_close: C,
