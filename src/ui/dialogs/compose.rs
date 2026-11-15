@@ -596,7 +596,10 @@ fn prompt_for_media(
 
 	let dialog_ok = dialog;
 	let items_ok = items.clone();
-	ok_button.on_click(move |_| {
+	ok_button.on_click(move |event| {
+		// Done is the affirmative button, so a click left to the dialog would close it with Done's
+		// own id, which the caller reads as cancelled, and skip the description check.
+		event.event.skip(false);
 		if descriptions_within_limit(dialog_ok, &items_ok.borrow(), max_desc_chars) {
 			dialog_ok.end_modal(ID_OK);
 		}
