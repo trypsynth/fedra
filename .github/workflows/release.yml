@@ -9,8 +9,32 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 jobs:
+  notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.changelog.outputs.body }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+    # Runs before the builds, so a release without a changelog fails in seconds instead of after them.
+    - name: Read this version's changelog
+      id: changelog
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        notes=$(awk -v heading="### Version $version" '$0 == heading { found = 1; next } /^### Version / { found = 0 } found' doc/readme.md | sed '/./,$!d')
+        if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+          echo "::error file=doc/readme.md::No changelog for $version. Add a '### Version $version' section before tagging."
+          exit 1
+        fi
+        {
+          echo 'body<<END_OF_NOTES'
+          printf '%s\n' "$notes"
+          echo 'END_OF_NOTES'
+        } >> "$GITHUB_OUTPUT"
   build:
     name: Build (${{ matrix.arch }})
+    needs: notes
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -70,6 +94,7 @@ jobs:
         retention-days: 90
   build-macos:
     name: Build (macOS arm64)
+    needs: notes
     runs-on: macos-latest
     # Code signing and notarization run only when their secrets are set. Without them the DMG
     # still builds, but Gatekeeper makes people allow Fedra in System Settings on first launch.
@@ -121,7 +146,7 @@ jobs:
         retention-days: 90
   release:
     name: Publish release
-    needs: [build, build-macos]
+    needs: [notes, build, build-macos]
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -144,6 +169,7 @@ jobs:
       with:
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
+        body: ${{ needs.notes.outputs.body }}
         files: dist/*
         prerelease: false
       env:
