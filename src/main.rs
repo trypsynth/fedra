@@ -121,7 +121,6 @@ pub(crate) struct AppState {
 	pub(crate) notification_sound: Option<audio::AudioOutput>,
 	pub(crate) refresh_timer: Option<Rc<Timer<Frame>>>,
 	pub(crate) ui_waker: UiWaker,
-	pub(crate) _instance_checker: Option<SingleInstanceChecker>,
 	pub(crate) pending_thread_continuation: bool,
 	pub(crate) pending_restore_post_id: Option<(crate::timeline::TimelineType, String)>,
 	pub(crate) restore_pages: u8,
@@ -132,7 +131,7 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-	fn new(config: Config, ui_waker: UiWaker, instance_checker: Option<SingleInstanceChecker>) -> Self {
+	fn new(config: Config, ui_waker: UiWaker) -> Self {
 		Self {
 			config,
 			timeline_manager: TimelineManager::new(),
@@ -160,7 +159,6 @@ impl AppState {
 			notification_sound: None,
 			refresh_timer: None,
 			ui_waker,
-			_instance_checker: instance_checker,
 			pending_thread_continuation: false,
 			pending_restore_post_id: None,
 			restore_pages: 0,
@@ -266,6 +264,16 @@ fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandConte
 }
 
 fn main() {
+	// macOS reopens the running app through on_reopen_app instead of starting another copy.
+	#[cfg(not(target_os = "macos"))]
+	let door = match doorbell::ring("fedra", &[] as &[&str]) {
+		Ok(doorbell::Ring::Delivered) => return,
+		Ok(doorbell::Ring::First(door)) => Some(door),
+		Err(e) => {
+			eprintln!("Couldn't check for a running copy of Fedra: {e}");
+			None
+		}
+	};
 	let _ = rustls::crypto::ring::default_provider().install_default();
 	panic::set_hook(Box::new(|info| {
 		let log_path = config::config_dir().join("crash.log");
@@ -280,19 +288,6 @@ fn main() {
 	#[cfg(target_os = "macos")]
 	promote_unbundled_to_regular_app();
 	let _ = wxdragon::main(|app| {
-		// macOS reopens the running app through on_reopen_app instead of starting another instance.
-		#[cfg(target_os = "macos")]
-		let instance_checker: Option<SingleInstanceChecker> = None;
-		#[cfg(not(target_os = "macos"))]
-		let instance_checker = SingleInstanceChecker::new("Fedra.SingleInstance", None);
-		if let Some(checker) = instance_checker.as_ref()
-			&& checker.is_another_running()
-		{
-			let frame = Frame::builder().with_title("Fedra").with_size(Size::new(1, 1)).build();
-			wx_utils::show_error(&frame, "Fedra is already running.", "Error");
-			frame.close(true);
-			return;
-		}
 		let window_parts = build_main_window();
 		let frame = window_parts.frame;
 		speech::init(&frame);
@@ -320,7 +315,7 @@ fn main() {
 		let autoload_mode = Rc::new(Cell::new(config.autoload));
 		let sort_order_cell = Rc::new(Cell::new(config.sort_order));
 		let shortcuts_cell = Rc::new(RefCell::new(config.shortcuts.clone()));
-		let mut state = AppState::new(config, ui_waker.clone(), instance_checker);
+		let mut state = AppState::new(config, ui_waker.clone());
 		match audio::AudioOutput::open() {
 			Ok(output) => state.notification_sound = Some(output),
 			Err(err) => eprintln!("Failed to open audio output for notification sound: {err}"),
@@ -413,6 +408,14 @@ fn main() {
 				ui_waker_handler.wake();
 			}
 		});
+		// A copy started before now waits at the door until the wake handler above can hear it.
+		#[cfg(not(target_os = "macos"))]
+		if let Some(door) = door {
+			let ui_tx_door = ui_tx.clone();
+			door.listen(move |_| {
+				let _ = ui_tx_door.send(UiCommand::ShowWindow);
+			});
+		}
 		let ui_alive_destroy = ui_alive;
 		frame.on_destroy(move |_| {
 			ui_alive_destroy.store(false, std::sync::atomic::Ordering::SeqCst);
