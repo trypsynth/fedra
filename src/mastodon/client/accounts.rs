@@ -166,9 +166,17 @@ impl MastodonClient {
 		self.post_json(access_token, url, "unblock account")
 	}
 
-	pub fn mute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+	/// Mutes for `duration` seconds, or for good when it's 0, hiding the account's notifications too if `notifications`.
+	pub fn mute_account(
+		&self,
+		access_token: &str,
+		account_id: &str,
+		notifications: bool,
+		duration: u32,
+	) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/mute"))?;
-		self.post_json(access_token, url, "mute account")
+		let params = [("notifications", notifications.to_string()), ("duration", duration.to_string())];
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&params), "mute account")
 	}
 
 	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {

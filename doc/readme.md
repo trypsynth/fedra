@@ -23,7 +23,7 @@
   - Thread mode, to write a series of replies to your own posts in one dialog.
 - Tools for people and topics:
   - Open a profile or timeline from a post, a mention, a list of boosts or favorites, or a search result.
-  - Follow, unfollow, block, and mute users. Show or hide the boosts of a user. Add users to lists.
+  - Follow, unfollow, block, and mute users. A mute can last from 5 minutes to 7 days or have no end, and can hide the user's notifications as well as their posts. Show or hide the boosts of a user. Add users to lists.
   - Accept or reject follow requests.
   - See the followers and the accounts that a user follows.
   - Give a user an alias. Fedra shows the alias in place of their display name.

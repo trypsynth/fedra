@@ -25,7 +25,7 @@ pub enum RelationshipAction {
 	RejectFollowRequest,
 	Block,
 	Unblock,
-	Mute,
+	Mute(MuteOptions),
 	Unmute,
 	ShowBoosts,
 	HideBoosts,
@@ -397,6 +397,26 @@ pub fn resolve_status(client: &MastodonClient, access_token: &str, url: &str) ->
 		.and_then(|mut res| res.statuses.pop().context("Status not found on local instance"))
 }
 
+/// How long a mute lasts, and whether it hides the account's notifications as well as its posts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MuteOptions {
+	/// Seconds, with 0 for no end.
+	pub duration: u32,
+	pub notifications: bool,
+}
+
+/// The lengths Mastodon's own web app offers, with 0 for no end.
+pub const MUTE_DURATIONS: [(u32, &str); 8] = [
+	(0, "Indefinitely"),
+	(5 * 60, "5 minutes"),
+	(30 * 60, "30 minutes"),
+	(60 * 60, "1 hour"),
+	(6 * 60 * 60, "6 hours"),
+	(24 * 60 * 60, "1 day"),
+	(3 * 24 * 60 * 60, "3 days"),
+	(7 * 24 * 60 * 60, "7 days"),
+];
+
 /// Whether a followed account's boosts and notifications come through.
 #[derive(Debug, Clone, Copy)]
 pub struct FollowOptions {
@@ -435,7 +455,9 @@ pub fn change_relationship(
 		RelationshipAction::RejectFollowRequest => client.reject_follow_request(access_token, account_id),
 		RelationshipAction::Block => client.block_account(access_token, account_id),
 		RelationshipAction::Unblock => client.unblock_account(access_token, account_id),
-		RelationshipAction::Mute => client.mute_account(access_token, account_id),
+		RelationshipAction::Mute(mute) => {
+			client.mute_account(access_token, account_id, mute.notifications, mute.duration)
+		}
 		RelationshipAction::Unmute => client.unmute_account(access_token, account_id),
 		RelationshipAction::ToggleFollow => toggle_follow(client, access_token, Some(account_id.to_owned()), "").1,
 	}

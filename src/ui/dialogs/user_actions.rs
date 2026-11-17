@@ -1,11 +1,12 @@
 use std::{cell::RefCell, fmt::Write, rc::Rc};
 
+use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
 use super::FollowList;
 use crate::{
 	mastodon::{Account, Relationship},
-	network::{FollowOptions, RelationshipAction, change_relationship},
+	network::{FollowOptions, MUTE_DURATIONS, MuteOptions, RelationshipAction, change_relationship},
 	responses::relationship_updated,
 	ui::commands::{Requests, UiCommand},
 	ui_wake::UiCommandSender,
@@ -183,7 +184,10 @@ pub fn handle_action(
 			(RelationshipAction::Block, current)
 		}
 		ID_ACTION_UNBLOCK => (RelationshipAction::Unblock, current),
-		ID_ACTION_MUTE => (RelationshipAction::Mute, current),
+		ID_ACTION_MUTE => {
+			let Some(mute) = prompt_for_mute(parent, account.display_name_or_username()) else { return };
+			(RelationshipAction::Mute(mute), current)
+		}
 		ID_ACTION_UNMUTE => (RelationshipAction::Unmute, current),
 		ID_ACTION_ACCEPT_FOLLOW_REQUEST => (RelationshipAction::AcceptFollowRequest, current),
 		ID_ACTION_REJECT_FOLLOW_REQUEST => (RelationshipAction::RejectFollowRequest, current),
@@ -195,6 +199,37 @@ pub fn handle_action(
 		move |client, token| change_relationship(client, token, &account_id, action, options),
 		move |ctx, result| relationship_updated(ctx, &target_name, action, result),
 	);
+}
+
+/// Asks how long to mute `name` for, and whether to hide their notifications as well.
+fn prompt_for_mute(parent: &dyn WxWidget, name: &str) -> Option<MuteOptions> {
+	let dialog = Dialog::builder(parent, &format!("Mute {name}")).build();
+	let panel = Panel::builder(&dialog).build();
+	let duration_label = StaticText::builder(&panel).with_label("&Duration:").build();
+	let durations = MUTE_DURATIONS.iter().map(|(_, label)| (*label).to_string()).collect();
+	let duration = Choice::builder(&panel).with_choices(durations).build();
+	duration.set_selection(0);
+	let notifications = CheckBox::builder(&panel).with_label("Also hide &notifications from this user").build();
+	notifications.set_value(true);
+	let row = BoxSizer::builder(Orientation::Horizontal).build();
+	row.add(&duration_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	row.add(&duration, 1, SizerFlag::Expand, 0);
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	main_sizer.add_sizer(&row, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&notifications, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "&Mute");
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer_and_fit(dialog_sizer, true);
+	dialog.centre();
+	duration.set_focus();
+	let result = dialog.show_modal();
+	let chosen = duration.get_selection().and_then(|i| MUTE_DURATIONS.get(i as usize)).map_or(0, |(secs, _)| *secs);
+	let mute = MuteOptions { duration: chosen, notifications: notifications.get_value() };
+	dialog.destroy();
+	(result == ID_OK).then_some(mute)
 }
 
 pub fn setup_actions_button(

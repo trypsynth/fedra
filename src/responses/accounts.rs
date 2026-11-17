@@ -5,7 +5,10 @@ use super::{NetworkResponseContext, helpers::summarize_api_error};
 use crate::{
 	AppState, UiCommand,
 	mastodon::{Account, InstanceInfo, MastodonClient, Relationship},
-	network::{AccountQuery, RelationshipAction, fetch_credentials, fetch_relationship, find_account, update_profile},
+	network::{
+		AccountQuery, MUTE_DURATIONS, RelationshipAction, fetch_credentials, fetch_relationship, find_account,
+		update_profile,
+	},
 	notifications::notify_message_requests,
 	read_position::apply_markers,
 	timeline::TimelineType,
@@ -176,7 +179,7 @@ fn relationship_failure_message(action: RelationshipAction, target_name: &str) -
 		RelationshipAction::RejectFollowRequest => format!("Could not reject the follow request from {target_name}"),
 		RelationshipAction::Block => format!("Could not block {target_name}"),
 		RelationshipAction::Unblock => format!("Could not unblock {target_name}"),
-		RelationshipAction::Mute => format!("Could not mute {target_name}"),
+		RelationshipAction::Mute(_) => format!("Could not mute {target_name}"),
 		RelationshipAction::Unmute => format!("Could not unmute {target_name}"),
 		RelationshipAction::ShowBoosts => format!("Could not show boosts from {target_name}"),
 		RelationshipAction::HideBoosts => format!("Could not hide boosts from {target_name}"),
@@ -195,7 +198,10 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 		RelationshipAction::RejectFollowRequest => format!("Rejected follow request from {target_name}"),
 		RelationshipAction::Block => format!("Blocked {target_name}"),
 		RelationshipAction::Unblock => format!("Unblocked {target_name}"),
-		RelationshipAction::Mute => format!("Muted {target_name}"),
+		RelationshipAction::Mute(mute) => match MUTE_DURATIONS.iter().find(|(secs, _)| *secs == mute.duration) {
+			Some((secs, label)) if *secs > 0 => format!("Muted {target_name} for {label}"),
+			_ => format!("Muted {target_name}"),
+		},
 		RelationshipAction::Unmute => format!("Unmuted {target_name}"),
 		RelationshipAction::ShowBoosts => format!("Showing boosts from {target_name}"),
 		RelationshipAction::HideBoosts => format!("Hiding boosts from {target_name}"),
