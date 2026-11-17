@@ -326,7 +326,7 @@ Some actions have no default global shortcut, because their keys conflict with o
 | View Author Profile | `Ctrl+Alt+Win+P` |
 | View Mentions | `Ctrl+Alt+Win+M` |
 | View Hashtags | `Ctrl+Alt+Win+H` |
-| Open Links | `Ctrl+Alt+Win+Enter` |
+| Open Poll, Media, or Links | `Ctrl+Alt+Win+Enter` |
 | Play Media | `Ctrl+Alt+Win+I` |
 | Copy Post | `Ctrl+Alt+Shift+Win+C` |
 | Copy Post Link | `Ctrl+Alt+Win+C` |
@@ -372,7 +372,8 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | View Author Profile | `Ctrl+P` | `P` |
 | View Mentions | `Ctrl+M` | `M` |
 | View Hashtags | `Ctrl+H` | `H` |
-| Open Links | `Enter` | `Enter` |
+| Open Poll, Media, or Links | `Enter` | `Enter` |
+| Open Links | None | None |
 | Play Media | `Ctrl+I` | `I` |
 | Open in Browser | `Ctrl+Shift+O` | `O` |
 | Copy Post | `Ctrl+Shift+C` | `Ctrl+Shift+C` |
@@ -515,8 +516,10 @@ Press `Ctrl+I`, or `I` in Quick Action Keys mode, on a post with media to open t
 - The results open in a new timeline, named `Search: <query>`. You can load more results.
 - To open the timeline of an account or hashtag in the results, press `Alt+Enter` on it.
 
-## Links in Posts
-Press `Enter` on a post to open its links. If the post has more than one link, or if `Always prompt to open links` is on, a dialog shows the links. Use its `Open` and `Copy` buttons. Fedra removes tracking parameters from URLs, unless you turn this off in the General options.
+## Opening Posts
+Press `Enter` on a post to open what it has: its poll, its media, or its links. If it has only one of these, Fedra opens it. If it has more, such as a poll and a link, a dialog lists them, and its `Open` button opens the one you select. For a link, `Copy` copies it. If `Always prompt to open links` is on, Fedra also asks when the only thing to open is a link. Fedra removes tracking parameters from URLs, unless you turn this off in the General options.
+
+You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Links` are in the Post menu and the context menu.
 
 ## Configuration File
 - Windows, installed: `%APPDATA%\Fedra\config.json`
@@ -535,6 +538,7 @@ Press `Enter` on a post to open its links. If the post has more than one link, o
 - Added View Edit History to the Post menu, to read every version of an edited post.
 - Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.
 - Closing a post, reply, or edit that you changed without sending it now asks first. You can turn this off on the Composing tab of the options.
+- `Enter` now opens whatever a post has: it votes in a poll, plays media, or opens a link, and asks which when the post has more than one. Open Links is still in the Post menu, without a default shortcut.
 - Every open timeline except Local and Federated now goes back to the post you were on when Fedra starts, not only the one you had open. With `Load older posts to find where you left off` on, the other timelines look for their place the first time you switch to them.
 - Fedra now uses both your Home and your Notifications positions from your server, whichever timeline was open when you exited.
 - Fixed a reply to your own post starting with a space.
@@ -546,6 +550,7 @@ Press `Enter` on a post to open its links. If the post has more than one link, o
 - The relationship part of a profile now says when someone has blocked you, when you feature them on your profile, and whether your mute hides their notifications.
 - The results of a poll that you voted in, or that has ended, now show in a text field that you can read line by line.
 - Times now follow your system's clock, so they show in 24-hour time if that's how your computer shows them.
+- Vote on Poll is now in the context menu, and the post details have a Vote button for posts with a poll.
 
 ### Version 0.8.0
 - A follow request is now answered with Accept, Reject, and Cancel buttons.

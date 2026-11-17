@@ -677,11 +677,87 @@ pub(super) fn toggle_content_warning(ctx: &mut UiCommandContext<'_>) {
 	state.redraw_active_timeline(timeline_list, suppress_selection);
 }
 
-pub(super) fn open_links(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
+/// What Open does with a choice, once the post's choices are known.
+enum OpenTarget {
+	Command(UiCommand),
+	Link(String),
+}
+
+/// Does what the selected post has: votes in its poll, plays its media, or opens its link, or asks which when it has
+/// more than one, so the user needn't remember which key does what for which post.
+pub(super) fn open_post(ctx: &mut UiCommandContext<'_>) {
+	let state = &*ctx.state;
 	let live_region = ctx.live_region;
-	let Some(status) = get_selected_status(state) else { return };
-	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+	let Some(status) = get_selected_status(state) else {
+		live_region.announce("No post selected");
+		return;
+	};
+	let target = status.reblog.as_deref().unwrap_or(status);
+	let mut choices: Vec<(String, OpenTarget)> = Vec::new();
+	if let Some(poll) = &target.poll {
+		let label = if poll.expired || poll.voted.unwrap_or(false) { "Poll results" } else { "Vote on poll" };
+		choices.push((label.to_string(), OpenTarget::Command(UiCommand::Vote)));
+	}
+	let quoted = target.quote.as_ref().and_then(|q| q.quoted_status.as_deref());
+	let media = if target.media_attachments.is_empty() {
+		quoted.map_or(0, |q| q.media_attachments.len())
+	} else {
+		target.media_attachments.len()
+	};
+	match media {
+		0 => {}
+		1 => choices.push(("Play media".to_string(), OpenTarget::Command(UiCommand::PlayMedia))),
+		count => choices.push((format!("Play media ({count} attachments)"), OpenTarget::Command(UiCommand::PlayMedia))),
+	}
+	for link in post_links(state, target) {
+		choices.push((format!("Open {}", link.url), OpenTarget::Link(link.url)));
+	}
+	let only_link_but_asked =
+		state.config.always_show_link_dialog && matches!(choices.as_slice(), [(_, OpenTarget::Link(_))]);
+	match choices.len() {
+		0 => live_region.announce("Nothing to open in this post"),
+		1 if !only_link_but_asked => {
+			if let Some((_, target)) = choices.pop() {
+				open_target(ctx, target);
+			}
+		}
+		_ => {
+			let options: Vec<dialogs::OpenChoice> = choices
+				.iter()
+				.map(|(label, target)| dialogs::OpenChoice {
+					label: label.clone(),
+					url: match target {
+						OpenTarget::Link(url) => Some(url.clone()),
+						OpenTarget::Command(_) => None,
+					},
+				})
+				.collect();
+			deferred::dialog_some(
+				ctx,
+				move |frame| dialogs::show_open_dialog(frame, "Open", "What to open:", &options),
+				move |ctx, index| {
+					if index < choices.len() {
+						let target = choices.swap_remove(index);
+						open_target(ctx, target.1);
+					}
+				},
+			);
+		}
+	}
+}
+
+fn open_target(ctx: &mut UiCommandContext<'_>, target: OpenTarget) {
+	match target {
+		OpenTarget::Command(command) => handle_ui_command(command, ctx),
+		OpenTarget::Link(url) => {
+			ctx.live_region.announce("Opening link");
+			let _ = launch_default_browser(&url, BrowserLaunchFlags::Default);
+		}
+	}
+}
+
+/// The links in `target` and the post it quotes, once each, with tracking removed if the user asked for that.
+fn post_links(state: &AppState, target: &Status) -> Vec<html::Link> {
 	let mut links = html::extract_links(&target.content);
 	if let Some(quote) = &target.quote
 		&& let Some(quoted_status) = &quote.quoted_status
@@ -694,14 +770,23 @@ pub(super) fn open_links(ctx: &mut UiCommandContext<'_>) {
 	}
 	let mut seen = std::collections::HashSet::new();
 	links.retain(|link| seen.insert(link.url.clone()));
-	if links.is_empty() {
-		live_region.announce("No links in this post");
-		return;
-	}
 	if state.config.strip_tracking {
 		for link in &mut links {
 			link.url = html::clean_url(&link.url);
 		}
+	}
+	links
+}
+
+pub(super) fn open_links(ctx: &mut UiCommandContext<'_>) {
+	let state = &mut *ctx.state;
+	let live_region = ctx.live_region;
+	let Some(status) = get_selected_status(state) else { return };
+	let target = status.reblog.as_ref().map_or(status, std::convert::AsRef::as_ref);
+	let links = post_links(state, target);
+	if links.is_empty() {
+		live_region.announce("No links in this post");
+		return;
 	}
 	let open = |live_region: &crate::ui::timeline_list::TimelineList, url: &str| {
 		live_region.announce("Opening link");

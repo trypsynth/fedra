@@ -31,7 +31,7 @@ pub use edit_history::show_edit_history_dialog;
 pub use filters::*;
 pub use find::show_find_dialog;
 pub use follow_list::{FollowList, FollowListDialog};
-pub use link_selection::show_link_selection_dialog;
+pub use link_selection::{OpenChoice, show_link_selection_dialog, show_open_dialog};
 pub use list_edit::show_list_edit_dialog;
 pub use list_selection::show_list_selection_dialog;
 pub use manage_list_members::ManageListMembersDialog;

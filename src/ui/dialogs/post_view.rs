@@ -7,7 +7,7 @@ use wxdragon::{
 };
 
 use crate::{
-	ID_BOOST, ID_FAVORITE, ID_REPLY, UiCommand,
+	ID_BOOST, ID_FAVORITE, ID_REPLY, ID_VOTE, UiCommand,
 	mastodon::{MediaAttachment, Status},
 };
 
@@ -107,6 +107,8 @@ struct CachedDialog {
 	web_view: WebView,
 	boost_btn: Button,
 	fav_btn: Button,
+	vote_btn: Button,
+	panel: Panel,
 }
 
 thread_local! {
@@ -160,11 +162,13 @@ fn build_dialog(parent: &Frame) -> CachedDialog {
 	let reply_btn = Button::builder(&panel).with_id(ID_REPLY).with_label("Reply").build();
 	let boost_btn = Button::builder(&panel).with_id(ID_BOOST).with_label("Boost").build();
 	let fav_btn = Button::builder(&panel).with_id(ID_FAVORITE).with_label("Favorite").build();
+	let vote_btn = Button::builder(&panel).with_id(ID_VOTE).with_label("Vote").build();
 	let close_btn = Button::builder(&panel).with_id(ID_CANCEL).with_label("Close").build();
 	close_btn.set_default();
 	button_sizer.add(&reply_btn, 0, SizerFlag::All, 5);
 	button_sizer.add(&boost_btn, 0, SizerFlag::All, 5);
 	button_sizer.add(&fav_btn, 0, SizerFlag::All, 5);
+	button_sizer.add(&vote_btn, 0, SizerFlag::All, 5);
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&close_btn, 0, SizerFlag::All, 5);
 	sizer.add(&web_view, 1, SizerFlag::Expand | SizerFlag::All, 5);
@@ -187,20 +191,29 @@ fn build_dialog(parent: &Frame) -> CachedDialog {
 	fav_btn.on_click(move |_| {
 		dialog_fav.end_modal(ID_FAVORITE);
 	});
+	let dialog_vote = dialog;
+	vote_btn.on_click(move |_| {
+		dialog_vote.end_modal(ID_VOTE);
+	});
 	let dialog_close = dialog;
 	close_btn.on_click(move |_| {
 		dialog_close.end_modal(ID_CANCEL);
 	});
-	CachedDialog { dialog, web_view, boost_btn, fav_btn }
+	CachedDialog { dialog, web_view, boost_btn, fav_btn, vote_btn, panel }
 }
 
 pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiCommand> {
 	let title = format!("Post by {}", status.account.display_name_or_username());
 	let cached = CACHE.with(|c| *c.borrow_mut().get_or_insert_with(|| build_dialog(parent)));
-	let CachedDialog { dialog, web_view, boost_btn, fav_btn } = cached;
+	let CachedDialog { dialog, web_view, boost_btn, fav_btn, vote_btn, panel } = cached;
 	dialog.set_label(&title);
 	boost_btn.set_label(if status.reblogged { "Unboost" } else { "Boost" });
 	fav_btn.set_label(if status.favourited { "Unfavorite" } else { "Favorite" });
+	if let Some(poll) = &status.poll {
+		vote_btn.set_label(if poll.expired || poll.voted.unwrap_or(false) { "Poll Results" } else { "Vote" });
+	}
+	vote_btn.show(status.poll.is_some());
+	panel.layout();
 	let mut content = if status.spoiler_text.is_empty() {
 		status.content.clone()
 	} else {
@@ -261,6 +274,7 @@ pub fn show_post_view_dialog(parent: &Frame, status: &Status) -> Option<UiComman
 		ID_REPLY => Some(UiCommand::Reply { reply_all: true }),
 		ID_BOOST => Some(UiCommand::Boost),
 		ID_FAVORITE => Some(UiCommand::Favorite),
+		ID_VOTE => Some(UiCommand::Vote),
 		_ => None,
 	}
 }
