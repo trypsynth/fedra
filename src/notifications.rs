@@ -35,14 +35,15 @@ pub fn show_notification(app_shell: Option<&AppShell>, notification: &Notificati
 	show(app_shell, notification.account.display_name_or_username(), &notification.simple_display());
 }
 
-const DEFAULT_SOUND: &[u8] = include_bytes!("../sounds/boop.mp3");
+pub const DEFAULT_SOUND: &[u8] = include_bytes!("../sounds/boop.mp3");
 
-/// Plays `custom`, or the default notification sound when there's none.
-pub fn play_sound(output: Option<&AudioOutput>, custom: Option<&Path>) {
+/// Plays `custom`, or the default notification sound when there's none, at `volume_percent`.
+pub fn play_sound(output: Option<&AudioOutput>, custom: Option<&Path>, volume_percent: u8) {
 	let Some(output) = output else { return };
+	let volume = f32::from(volume_percent.min(100)) / 100.0;
 	match custom {
-		Some(path) => crate::audio::play_once(output, path),
-		None => crate::audio::play_bytes_once(output, DEFAULT_SOUND),
+		Some(path) => crate::audio::play_once(output, path, volume),
+		None => crate::audio::play_bytes_once(output, DEFAULT_SOUND, volume),
 	}
 }
 
@@ -58,7 +59,7 @@ pub fn notify_message_requests(state: &AppState, count: u64) {
 			show(state.app_shell.as_deref(), "Message requests", &body);
 		}
 		NotificationPreference::SoundOnly => {
-			play_sound(state.notification_sound.as_ref(), None);
+			play_sound(state.notification_sound.as_ref(), None, state.config.sound_volume);
 		}
 		NotificationPreference::Disabled => {}
 	}
@@ -85,7 +86,7 @@ pub fn notify_new_posts(state: &AppState, posts: &[(TimelineType, Status)]) {
 				if !played.contains(&timeline) {
 					played.push(timeline);
 					let custom = state.active_account().and_then(|account| account.timeline_sound(timeline));
-					play_sound(state.notification_sound.as_ref(), custom);
+					play_sound(state.notification_sound.as_ref(), custom, state.config.sound_volume);
 				}
 			}
 		}

@@ -22,6 +22,7 @@ pub use timelines::search;
 
 use crate::{
 	UiCommand,
+	soundpack::{self, SoundEvent},
 	ui::{
 		commands::{UiCommandContext, handle_ui_command},
 		menu::update_menu_labels,
@@ -39,7 +40,17 @@ impl NetworkResponseContext<'_> {
 
 	fn announce_failure(&self, prefix: &str, err: &anyhow::Error) {
 		tracing::warn!(error = format!("{err:#}"), "{prefix}");
-		self.announce(&spoken_failure(prefix, err));
+		self.announce_error(&spoken_failure(prefix, err));
+	}
+
+	/// Announces a failure, with the error sound.
+	fn announce_error(&self, message: &str) {
+		self.play(SoundEvent::Error);
+		self.announce(message);
+	}
+
+	fn play(&self, event: SoundEvent) {
+		soundpack::play(self.state, event);
 	}
 
 	fn dispatch(&mut self, cmd: UiCommand) {
