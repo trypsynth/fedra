@@ -154,6 +154,7 @@ pub fn switch_to_account(
 	state.max_post_chars = None;
 	state.max_media_description_chars = None;
 	state.poll_limits = PollLimits::default();
+	state.instance_languages = Vec::new();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
 		state.session = Some(Session::new(client.clone(), token.clone()));
@@ -163,7 +164,9 @@ pub fn switch_to_account(
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none()
-			|| state.active_account().is_some_and(|a| a.default_post_visibility.is_none());
+			|| state
+				.active_account()
+				.is_some_and(|a| a.default_post_visibility.is_none() || a.default_post_language.is_none());
 		if needs_verify {
 			if let Ok(account) = client.verify_credentials(&token)
 				&& let Some(active) = state.active_account_mut()
@@ -171,7 +174,9 @@ pub fn switch_to_account(
 				active.acct = Some(account.acct);
 				active.display_name = Some(account.display_name);
 				active.user_id = Some(account.id.clone());
-				active.default_post_visibility = account.source.and_then(|s| s.privacy);
+				let source = account.source.unwrap_or_default();
+				active.default_post_visibility = source.privacy;
+				active.default_post_language = Some(source.language.unwrap_or_default());
 				state.current_user_id = Some(account.id);
 				let _ = state.save_config();
 			}

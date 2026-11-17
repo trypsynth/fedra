@@ -95,12 +95,23 @@ pub(super) fn media_description_limit(v2: Option<&InstanceConfiguration>, v1: Op
 	v2.and_then(limit_of).or_else(|| v1.and_then(limit_of)).map_or(DEFAULT_MAX_MEDIA_DESCRIPTION_CHARS, |l| l as usize)
 }
 
+/// A language the instance lets posts be written in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Language {
+	/// Such as "en".
+	pub code: String,
+	/// Such as "English".
+	pub name: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct InstanceInfo {
 	pub max_post_chars: usize,
 	pub max_media_description_chars: usize,
 	pub poll_limits: PollLimits,
 	pub streaming_url: Option<String>,
+	/// By name. Empty when the instance doesn't list them, as before Mastodon 4.2.
+	pub languages: Vec<Language>,
 }
 
 impl Default for InstanceInfo {
@@ -110,6 +121,7 @@ impl Default for InstanceInfo {
 			max_media_description_chars: DEFAULT_MAX_MEDIA_DESCRIPTION_CHARS,
 			poll_limits: PollLimits::default(),
 			streaming_url: None,
+			languages: Vec::new(),
 		}
 	}
 }

@@ -1252,6 +1252,10 @@ pub struct Account {
 	pub user_id: Option<String>,
 	#[serde(default)]
 	pub default_post_visibility: Option<String>,
+	/// The language posts start in, from the account's profile settings: empty when it has none, `None` before it's
+	/// been looked up.
+	#[serde(default)]
+	pub default_post_language: Option<String>,
 	#[serde(default)]
 	pub saved_timelines: Vec<crate::timeline::TimelineType>,
 	#[serde(default)]
@@ -1300,6 +1304,7 @@ impl Account {
 			display_name: None,
 			user_id: None,
 			default_post_visibility: None,
+			default_post_language: None,
 			saved_timelines: Vec::new(),
 			saved_active_timeline: None,
 			saved_positions: Vec::new(),

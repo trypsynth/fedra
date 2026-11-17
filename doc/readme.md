@@ -115,7 +115,7 @@ The dialog has these controls:
 - Content warning: a check box and a field for the warning text.
 - Content type: Default, plain text, Markdown, or HTML, on instances that support it. When you edit a Markdown post, you get your original Markdown, not the rendered text.
 - Visibility: Public, Unlisted, Followers only, or Direct. It starts with the default visibility of your account.
-- Post language: a code such as `en` or `de`. It starts with the setting of your account.
+- Post language: the languages your instance offers, by name. It starts with the default posting language in your account's settings, or a post's own language when you edit it. On an instance that doesn't list its languages, type a code such as `en` or `de`.
 - `Manage Media...`: add attachments, add a description to each one, and mark them as sensitive.
 - `Add Poll...`: add options up to the limit of your instance. Select a duration, allow more than one choice, and hide the vote counts until the poll ends.
 - `Schedule...`: select a local date and time to publish the post. To post immediately, select `Clear Schedule`. To see, reschedule, or delete the posts you've scheduled, use `Options -> Scheduled Posts...`.
@@ -547,6 +547,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Fixed a reply to your own post starting with a space.
 - Fixed Fedra sometimes staying open with no window after you exited it.
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
+- Posts now start in the default posting language from your account's settings, and you pick the language by name from the ones your instance offers, instead of typing a code.
 - Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
 - Starting Fedra while it's already running now brings its window to the front, instead of showing an error.
 - The media download dialog no longer shows a remaining time, which was always unknown.

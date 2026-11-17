@@ -122,7 +122,7 @@ pub fn run_edit_post_dialog(ctx: &mut UiCommandContext<'_>, target: &Status, sou
 	let state = &mut *ctx.state;
 	let max_post_chars = state.max_post_chars;
 	let max_media_description_chars = state.max_media_description_chars;
-	let compose_prefs = dialogs::ComposePrefs::from_config(&state.config);
+	let compose_prefs = dialogs::ComposePrefs::from_state(state);
 	let poll_limits = state.poll_limits.clone();
 	let mention_source = dialogs::SuggestionSource::from_state(state);
 	let shown_target = target.clone();
@@ -170,7 +170,7 @@ pub(super) fn new_post(ctx: &mut UiCommandContext<'_>) {
 		state.active_account().is_some(),
 		state.max_post_chars,
 		state.poll_limits.clone(),
-		dialogs::ComposePrefs::from_config(&state.config),
+		dialogs::ComposePrefs::from_state(state),
 	);
 	if !has_account {
 		live_region.announce("No account configured");
@@ -225,7 +225,7 @@ pub(super) fn continue_thread(ctx: &mut UiCommandContext<'_>, mut status: Box<St
 	if status.visibility == "public" {
 		status.visibility = "unlisted".to_string();
 	}
-	let (max_post_chars, compose_prefs) = (state.max_post_chars, dialogs::ComposePrefs::from_config(&state.config));
+	let (max_post_chars, compose_prefs) = (state.max_post_chars, dialogs::ComposePrefs::from_state(state));
 	let max_media_description_chars = state.max_media_description_chars;
 	let poll_limits = state.poll_limits.clone();
 	let self_acct = state.active_account().and_then(|account| account.acct.clone());
@@ -268,7 +268,7 @@ pub(super) fn reply(ctx: &mut UiCommandContext<'_>, reply_all: bool) {
 	let state = &mut *ctx.state;
 	let live_region = ctx.live_region;
 	let (status, max_post_chars, compose_prefs) =
-		(get_selected_status(state).cloned(), state.max_post_chars, dialogs::ComposePrefs::from_config(&state.config));
+		(get_selected_status(state).cloned(), state.max_post_chars, dialogs::ComposePrefs::from_state(state));
 	let Some(status) = status else {
 		live_region.announce("No post selected");
 		return;
@@ -349,7 +349,7 @@ pub(super) fn prompt_for_quote(ctx: &mut UiCommandContext<'_>, target: Box<Statu
 	let max_post_chars = state.max_post_chars;
 	let max_media_description_chars = state.max_media_description_chars;
 	let poll_limits = state.poll_limits.clone();
-	let compose_prefs = dialogs::ComposePrefs::from_config(&state.config);
+	let compose_prefs = dialogs::ComposePrefs::from_state(state);
 	let mention_source = dialogs::SuggestionSource::from_state(state);
 	deferred::dialog_some(
 		ctx,
@@ -971,7 +971,7 @@ pub(super) fn recover_draft(ctx: &mut UiCommandContext<'_>) {
 	config.max_media_description_chars = state.max_media_description_chars;
 	let max_post_chars = state.max_post_chars;
 	let poll_limits = state.poll_limits.clone();
-	let compose_prefs = dialogs::ComposePrefs::from_config(&state.config);
+	let compose_prefs = dialogs::ComposePrefs::from_state(state);
 	let mention_source = dialogs::SuggestionSource::from_state(state);
 	let media = pending.last_result.media;
 	let poll = pending.last_result.poll;

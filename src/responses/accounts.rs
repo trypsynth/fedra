@@ -59,6 +59,7 @@ fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
 	state.max_post_chars = Some(info.max_post_chars);
 	state.max_media_description_chars = Some(info.max_media_description_chars);
 	state.poll_limits = info.poll_limits;
+	state.instance_languages = info.languages;
 	let streaming_url = info.streaming_url.and_then(|url| Url::parse(&url).ok());
 	if streaming_url.is_some() && streaming_url != state.streaming_url {
 		state.streaming_url = streaming_url;
@@ -230,7 +231,9 @@ fn credentials_fetched(ctx: &NetworkResponseContext<'_>, account: &Account, max_
 fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {
 	ctx.announce("Profile updated");
 	if let Some(active) = ctx.state.active_account_mut() {
-		active.default_post_visibility = account.source.and_then(|s| s.privacy);
+		let source = account.source.unwrap_or_default();
+		active.default_post_visibility = source.privacy;
+		active.default_post_language = Some(source.language.unwrap_or_default());
 	}
 	let _ = ctx.state.save_config();
 	let _ = ctx.ui_tx.send(UiCommand::Refresh);

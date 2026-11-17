@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use crate::mastodon::{
-	InstanceInfo, MastodonClient, PollLimits,
+	InstanceInfo, Language, MastodonClient, PollLimits,
 	instance::{InstanceResponse, InstanceV2Response, media_description_limit},
 };
 
@@ -25,7 +25,20 @@ impl MastodonClient {
 		let poll_limits =
 			info.configuration.as_ref().and_then(|c| c.polls.as_ref()).map(PollLimits::from_config).unwrap_or_default();
 		let streaming_url = info.urls.and_then(|u| u.streaming_api);
-		Ok(InstanceInfo { max_post_chars: max_chars, max_media_description_chars, poll_limits, streaming_url })
+		let mut languages: Vec<Language> = self
+			.base_url
+			.join("api/v1/instance/languages")
+			.ok()
+			.and_then(|url| Self::send_json(self.http.get(url), "fetch the instance's languages").ok())
+			.unwrap_or_default();
+		languages.sort_by_cached_key(|language| language.name.to_lowercase());
+		Ok(InstanceInfo {
+			max_post_chars: max_chars,
+			max_media_description_chars,
+			poll_limits,
+			streaming_url,
+			languages,
+		})
 	}
 
 	/// How many custom profile fields the instance allows, if it says.

@@ -16,7 +16,7 @@ mod time;
 pub use account::{Account, Relationship, Source};
 pub use client::{AppCredentials, DEFAULT_SCOPES, Markers, MastodonClient};
 pub use filter::{Filter, FilterAction, FilterContext, FilterKeyword, FilterResult};
-pub use instance::{DEFAULT_MAX_MEDIA_DESCRIPTION_CHARS, InstanceInfo};
+pub use instance::{DEFAULT_MAX_MEDIA_DESCRIPTION_CHARS, InstanceInfo, Language};
 pub use list::List;
 pub use notification::{Notification, NotificationPolicy, NotificationRequest};
 pub use poll::{Poll, PollLimits};

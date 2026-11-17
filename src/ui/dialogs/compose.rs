@@ -9,8 +9,9 @@ use super::{
 	completion::{Completer, SuggestionSource},
 };
 use crate::{
-	config::{Config, ContentWarningDisplay},
-	mastodon::{Account, Mention, PollLimits, Status},
+	AppState,
+	config::ContentWarningDisplay,
+	mastodon::{Account, Language, Mention, PollLimits, Status},
 	ui::{keys, spell_check},
 };
 
@@ -77,16 +78,78 @@ pub struct PostPoll {
 	pub hide_totals: bool,
 }
 
-/// The user's settings for every compose window.
-#[derive(Debug, Clone, Copy)]
+/// The user's settings for every compose window, and what their account and instance say about languages.
+#[derive(Debug, Clone)]
 pub struct ComposePrefs {
 	pub enter_to_send: bool,
 	pub confirm_discard: bool,
+	/// The language a new post starts in.
+	pub default_language: Option<String>,
+	/// The instance's languages to pick from. Empty means typing a code instead.
+	pub languages: Vec<Language>,
 }
 
 impl ComposePrefs {
-	pub const fn from_config(config: &Config) -> Self {
-		Self { enter_to_send: config.enter_to_send, confirm_discard: config.confirm_discard }
+	pub fn from_state(state: &AppState) -> Self {
+		Self {
+			enter_to_send: state.config.enter_to_send,
+			confirm_discard: state.config.confirm_discard,
+			default_language: state
+				.active_account()
+				.and_then(|account| account.default_post_language.as_deref())
+				.and_then(normalize_language_code),
+			languages: state.instance_languages.clone(),
+		}
+	}
+}
+
+/// Where a post's language is picked: from the instance's list when it has one, or typed as a code.
+enum LanguagePicker {
+	Listed(Choice, Vec<String>),
+	Typed(ComboBox),
+}
+
+impl LanguagePicker {
+	fn new(panel: Panel, languages: &[Language], initial: Option<&str>) -> Self {
+		if languages.is_empty() {
+			let codes = ["", "en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh"];
+			let combo = ComboBox::builder(&panel).with_choices(codes.iter().map(ToString::to_string).collect()).build();
+			combo.set_value(initial.unwrap_or_default());
+			return Self::Typed(combo);
+		}
+		let mut codes = vec![String::new()];
+		let mut names = vec!["Not set".to_string()];
+		for language in languages {
+			codes.push(language.code.clone());
+			names.push(language.name.clone());
+		}
+		// A post being edited can be in a language the instance doesn't list.
+		if let Some(code) = initial
+			&& !codes.iter().any(|c| c.eq_ignore_ascii_case(code))
+		{
+			codes.push(code.to_string());
+			names.push(code.to_string());
+		}
+		let choice = Choice::builder(&panel).with_choices(names).build();
+		let selected = initial.and_then(|code| codes.iter().position(|c| c.eq_ignore_ascii_case(code))).unwrap_or(0);
+		choice.set_selection(u32::try_from(selected).unwrap_or(0));
+		Self::Listed(choice, codes)
+	}
+
+	fn add_to(&self, sizer: BoxSizer) {
+		match self {
+			Self::Listed(choice, _) => sizer.add(choice, 1, SizerFlag::Expand, 0),
+			Self::Typed(combo) => sizer.add(combo, 1, SizerFlag::Expand, 0),
+		};
+	}
+
+	fn value(&self) -> Option<String> {
+		match self {
+			Self::Listed(choice, codes) => {
+				choice.get_selection().and_then(|i| codes.get(i as usize)).filter(|code| !code.is_empty()).cloned()
+			}
+			Self::Typed(combo) => normalize_language_code(&combo.get_value()),
+		}
 	}
 }
 
@@ -898,7 +961,7 @@ pub fn prompt_for_compose(
 	let initial_content = config.initial_content.clone();
 	let initial_cw = config.initial_cw.clone();
 	let default_visibility = config.default_visibility;
-	let enter_to_send = prefs.enter_to_send;
+	let ComposePrefs { enter_to_send, confirm_discard, default_language, languages } = prefs;
 	let discard_title = title_prefix.clone();
 	let (opened_media, opened_poll) = (initial_media.clone(), initial_poll.clone());
 	let dialog =
@@ -957,26 +1020,13 @@ pub fn prompt_for_compose(
 	let content_type_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	content_type_sizer.add(&content_type_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	content_type_sizer.add(&content_type_choice, 1, SizerFlag::Expand, 0);
-	let language_choices = vec![
-		String::new(),
-		"en".to_string(),
-		"es".to_string(),
-		"fr".to_string(),
-		"de".to_string(),
-		"it".to_string(),
-		"pt".to_string(),
-		"ja".to_string(),
-		"ko".to_string(),
-		"zh".to_string(),
-	];
 	let language_label = StaticText::builder(&panel).with_label("Post &language:").build();
-	let language_combo = ComboBox::builder(&panel).with_choices(language_choices).build();
-	let initial_language_value =
-		config.initial_language.as_deref().and_then(normalize_language_code).unwrap_or_default();
-	language_combo.set_value(&initial_language_value);
+	// A post being edited keeps its own language, and anything new starts in the account's.
+	let initial_language = config.initial_language.as_deref().and_then(normalize_language_code).or(default_language);
+	let language_picker = LanguagePicker::new(panel, &languages, initial_language.as_deref());
 	let language_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	language_sizer.add(&language_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
-	language_sizer.add(&language_combo, 1, SizerFlag::Expand, 0);
+	language_picker.add_to(language_sizer);
 	let media_button = Button::builder(&panel).with_label("Manage &Media...").build();
 	let poll_button = Button::builder(&panel).with_label("Add &Poll...").build();
 	let schedule_button = Button::builder(&panel).with_label("&Schedule...").build();
@@ -1248,7 +1298,7 @@ pub fn prompt_for_compose(
 	let result = loop {
 		let result = dialog.show_modal();
 		if result == ID_OK
-			|| !prefs.confirm_discard
+			|| !confirm_discard
 			|| !unsent()
 			|| wx_utils::confirm(&dialog, "Discard your changes?", &discard_title)
 		{
@@ -1275,7 +1325,7 @@ pub fn prompt_for_compose(
 	};
 	let content_type_idx = content_type_choice.get_selection().unwrap_or(0) as usize;
 	let content_type = content_type_options.get(content_type_idx).and_then(|(_, value)| value.clone());
-	let language = normalize_language_code(&language_combo.get_value());
+	let language = language_picker.value();
 	let media = media_items.borrow().clone();
 	let poll = poll_state.borrow().clone();
 	let sensitive = *sensitive_state.borrow();

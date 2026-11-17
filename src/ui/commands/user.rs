@@ -643,7 +643,7 @@ pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Accou
 		state.active_account().is_some(),
 		state.max_post_chars,
 		state.poll_limits.clone(),
-		dialogs::ComposePrefs::from_config(&state.config),
+		dialogs::ComposePrefs::from_state(state),
 	);
 	if !has_account {
 		ctx.live_region.announce("No account configured");

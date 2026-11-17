@@ -95,7 +95,7 @@ pub struct AccountRole {
 	pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct Source {
 	pub privacy: Option<String>,
 	pub sensitive: Option<bool>,

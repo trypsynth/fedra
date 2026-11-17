@@ -104,6 +104,8 @@ pub(crate) struct AppState {
 	pub(crate) max_post_chars: Option<usize>,
 	pub(crate) max_media_description_chars: Option<usize>,
 	pub(crate) poll_limits: PollLimits,
+	/// The languages the active account's instance offers for posts, by name.
+	pub(crate) instance_languages: Vec<mastodon::Language>,
 	pub(crate) hashtag_dialog: Option<ui::dialogs::HashtagDialog>,
 	pub(crate) profile_dialog: Option<ui::dialogs::ProfileDialog>,
 	pub(crate) follow_list_dialogs: HashMap<ui::dialogs::FollowList, ui::dialogs::FollowListDialog>,
@@ -140,6 +142,7 @@ impl AppState {
 			max_post_chars: None,
 			max_media_description_chars: None,
 			poll_limits: PollLimits::default(),
+			instance_languages: Vec::new(),
 			hashtag_dialog: None,
 			profile_dialog: None,
 			follow_list_dialogs: HashMap::new(),
