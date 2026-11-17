@@ -14,165 +14,50 @@ use crate::{
 };
 
 pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
-	let state = &*ctx.state;
-	let input = dialogs::OptionsDialogInput {
-		enter_to_send: state.config.enter_to_send,
-		always_show_link_dialog: state.config.always_show_link_dialog,
-		show_link_previews: state.config.show_link_previews,
-		strip_tracking: state.config.strip_tracking,
-		quick_action_keys: state.config.quick_action_keys,
-		check_for_updates: state.config.check_for_updates_on_startup,
-		start_maximized: state.config.start_maximized,
-		update_channel: state.config.update_channel,
-		log_level: state.config.log_level,
-		autoload: state.config.autoload,
-		fetch_limit: state.config.fetch_limit,
-		streaming: state.config.streaming,
-		refresh_minutes: state.config.refresh_minutes,
-		content_warning_display: state.config.content_warning_display,
-		display_name_emoji_mode: state.config.display_name_emoji_mode,
-		sort_order: state.config.sort_order,
-		preserve_thread_order: state.config.preserve_thread_order,
-		default_timelines: state.config.default_timelines.clone(),
-		restore_open_timelines: state.config.restore_open_timelines,
-		sync_read_position: state.config.sync_read_position,
-		load_older_to_restore: state.config.load_older_to_restore,
-		notification_preference: state.config.notification_preference,
-		disabled_notification_types: state.config.disabled_notification_types.clone(),
-		silent_notification_types: state.config.silent_notification_types.clone(),
-		global_keys: state.config.global_keys,
-		repeat_at_timeline_edges: state.config.repeat_at_timeline_edges,
-		shortcuts: state.config.shortcuts.clone(),
-		templates: state.config.templates.clone(),
-		filters: state.config.filters.clone(),
-		find_loading_mode: state.config.find_loading_mode,
-		window_title_template: state.config.window_title_template.clone(),
-		spell_check: state.config.spell_check,
-		spell_check_announce: state.config.spell_check_announce,
-		spell_language: state.config.spell_language.clone(),
-	};
-	deferred::dialog_some(ctx, move |frame| dialogs::prompt_for_options(frame, input), apply_options);
+	let initial = dialogs::OptionsDialogResult::load(&ctx.state.config);
+	deferred::dialog_some(ctx, move |frame| dialogs::prompt_for_options(frame, initial), apply_options);
 }
 
 fn apply_options(ctx: &mut UiCommandContext<'_>, options: dialogs::OptionsDialogResult) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
-	let quick_action_keys_enabled = ctx.quick_action_keys_enabled;
-	let autoload_mode = ctx.autoload_mode;
-	let sort_order_cell = ctx.sort_order_cell;
-	let shortcuts_cell = ctx.shortcuts_cell;
-	let ui_tx = ctx.ui_tx;
-	let dialogs::OptionsDialogResult {
-		enter_to_send,
-		always_show_link_dialog,
-		show_link_previews,
-		strip_tracking,
-		quick_action_keys,
-		check_for_updates,
-		start_maximized,
-		update_channel,
-		log_level,
-		autoload,
-		fetch_limit,
-		streaming,
-		refresh_minutes,
-		content_warning_display,
-		display_name_emoji_mode,
-		sort_order,
-		preserve_thread_order,
-		default_timelines,
-		restore_open_timelines,
-		sync_read_position,
-		load_older_to_restore,
-		notification_preference,
-		disabled_notification_types,
-		silent_notification_types,
-		global_keys,
-		repeat_at_timeline_edges,
-		shortcuts,
-		templates,
-		filters,
-		find_loading_mode,
-		window_title_template,
-		spell_check: spell_check_on,
-		spell_check_announce,
-		spell_language,
-	} = options;
-	let needs_refresh = state.config.sort_order != sort_order
-		|| state.config.content_warning_display != content_warning_display
-		|| state.config.display_name_emoji_mode != display_name_emoji_mode
-		|| state.config.preserve_thread_order != preserve_thread_order
-		|| state.config.show_link_previews != show_link_previews
-		|| state.config.templates != templates
-		|| state.config.filters != filters
-		|| state.config.window_title_template != window_title_template;
-	let streaming_changed = state.config.streaming != streaming;
-	let refresh_changed = state.config.refresh_minutes != refresh_minutes;
-	let hotkeys_changed = state.config.global_keys != global_keys || state.config.shortcuts.global != shortcuts.global;
-	state.config.enter_to_send = enter_to_send;
-	state.config.always_show_link_dialog = always_show_link_dialog;
-	state.config.show_link_previews = show_link_previews;
-	state.config.strip_tracking = strip_tracking;
-	state.config.quick_action_keys = quick_action_keys;
-	state.config.check_for_updates_on_startup = check_for_updates;
-	state.config.start_maximized = start_maximized;
-	state.config.update_channel = update_channel;
-	if state.config.log_level != log_level {
-		tracing::info!(from = %state.config.log_level, to = %log_level, "log level changed");
-		state.config.log_level = log_level;
-		logkeeper::set_level(log_level);
+	let before = dialogs::OptionsDialogResult::load(&state.config);
+	if before == options {
+		return;
 	}
-	state.config.autoload = autoload;
-	state.config.fetch_limit = fetch_limit;
-	state.config.streaming = streaming;
-	state.config.refresh_minutes = refresh_minutes;
+	let needs_refresh =
+		before.display != options.display || before.templates != options.templates || before.filters != options.filters;
+	let streaming_changed = before.timelines.streaming != options.timelines.streaming;
+	let refresh_changed = before.timelines.refresh_minutes != options.timelines.refresh_minutes;
+	let hotkeys_changed = before.invisible.global_keys != options.invisible.global_keys;
+	if before.advanced.log_level != options.advanced.log_level {
+		tracing::info!(from = %before.advanced.log_level, to = %options.advanced.log_level, "log level changed");
+		logkeeper::set_level(options.advanced.log_level);
+	}
+	options.save(&mut state.config);
 	if streaming_changed {
 		apply_streaming_setting(state);
 	}
 	if refresh_changed {
 		apply_refresh_interval(state);
 	}
-	state.config.content_warning_display = content_warning_display;
-	state.config.display_name_emoji_mode = display_name_emoji_mode;
-	state.config.sort_order = sort_order;
-	state.config.preserve_thread_order = preserve_thread_order;
-	state.config.default_timelines = default_timelines;
-	state.config.restore_open_timelines = restore_open_timelines;
-	state.config.sync_read_position = sync_read_position;
-	state.config.load_older_to_restore = load_older_to_restore;
-	state.config.notification_preference = notification_preference;
-	state.config.disabled_notification_types = disabled_notification_types;
-	state.config.silent_notification_types = silent_notification_types;
-	state.config.spell_check = spell_check_on;
-	state.config.spell_check_announce = spell_check_announce;
-	state.config.spell_language = spell_language;
 	crate::ui::spell_check::configure(
 		state.config.spell_check,
 		state.config.spell_check_announce,
 		&state.config.spell_language,
 	);
-	state.config.global_keys = global_keys;
-	state.config.repeat_at_timeline_edges = repeat_at_timeline_edges;
-	state.config.shortcuts = shortcuts;
-	*shortcuts_cell.borrow_mut() = state.config.shortcuts.clone();
-	state.config.templates = templates;
-	state.config.filters = filters;
-	state.config.find_loading_mode = find_loading_mode;
-	state.config.window_title_template = window_title_template;
 	update_window_title(state, frame);
 	if state.config.content_warning_display != ContentWarningDisplay::WarningOnly {
 		state.cw_expanded.clear();
 	}
-	quick_action_keys_enabled.set(quick_action_keys);
-	autoload_mode.set(autoload);
-	sort_order_cell.set(sort_order);
+	ctx.quick_action_keys_enabled.set(state.config.quick_action_keys);
+	ctx.autoload_mode.set(state.config.autoload);
+	ctx.sort_order_cell.set(state.config.sort_order);
 	if let Some(mb) = frame.get_menu_bar() {
 		relabel_menus(&mb, state);
 	}
-	state.config.sort_order = sort_order;
-	state.config.preserve_thread_order = preserve_thread_order;
 	if hotkeys_changed {
-		register_hotkeys(state, ui_tx, ctx.live_region);
+		register_hotkeys(state, ctx.ui_tx, ctx.live_region);
 	}
 	if let Err(err) = state.save_config() {
 		deferred::error(ctx, err);

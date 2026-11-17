@@ -126,17 +126,51 @@ If `Use enter to send posts` is on, press `Enter` in the content field to post. 
 To open the options, press `Ctrl+,`.
 
 ### General Tab
-- `Use enter to send posts`
 - `Always prompt to open links`
-- `Read link previews in timelines`
 - `Strip tracking parameters from URLs`
 - `Use quick action keys in timelines`
-- `Check for updates on startup`
 - `Start maximized`
-- Updates:
-  - `Stable releases`
-  - `Test builds`
-- Notification mode:
+
+To change keyboard shortcuts, use `Options -> Customize Keyboard Shortcuts...` in the menu bar.
+
+### Composing Tab
+- `Use enter to send posts`
+- `Check spelling in the post box`: on Windows only. `F7` moves to the next misspelled word.
+- `Say when a word you type is misspelled`: on Windows only.
+- Spelling language: on Windows only. `Windows default` uses the language of Windows.
+
+### Timelines Tab
+- `Restore open timelines on startup`: when this is off, Fedra opens only your default timelines at startup.
+- `Sync home and notifications position with your server`: Fedra saves your position in Home and Notifications on your server about once a minute, and when you exit. At startup, Fedra goes to that position. Other apps that sync their position, such as Tusky or Ivory, use the same position.
+- `Load older posts to find your saved position`: if your saved position is older than the first page of posts, Fedra loads older posts until it finds it. Fedra loads up to 10 pages. If the post was deleted, Fedra goes to the next older post.
+- Autoload posts:
+  - Never
+  - When reaching the end
+  - When navigating past the end
+- Posts to load at a time (`1` to `40`)
+- `Stream new posts in real time`: when this is off, Fedra checks for new posts on a timer instead.
+- Minutes between checks for new posts when not streaming (`1` to `60`): also used for any timeline whose stream is down.
+- `Load more on find next`
+- `Customize Default Timelines...`:
+  - Fedra always opens Home and Notifications at startup.
+  - You can add Local, Federated, Direct Messages, Bookmarks, Favorites, Mentions, and Sent.
+
+### Display Tab
+- Content warnings:
+  - Show inline
+  - Don't show
+  - CW only
+- Hide emoji in names:
+  - None
+  - Unicode emojis
+  - Instance emojis
+  - All
+- `Read link previews in timelines`
+- `Show oldest timeline entries first`
+- `Always preserve thread order`
+
+### Notifications Tab
+- Notifications:
   - Operating system notifications
   - Sound only
   - Disabled
@@ -150,48 +184,14 @@ To open the options, press `Ctrl+,`.
   - Edited posts
   - New posts
   - Moderation and admin
-- `Customize Keyboard Shortcuts...`
-
-### Invisible Interface Tab
-This tab shows only on Windows.
-
-- `Use the invisible interface`: turns the [global shortcuts](#global-shortcuts) on or off. The shortcut that shows and hides the window always works, so you can always get a hidden window back.
-- `Repeat the post at the start or end of a timeline`: when this is on and you move past the first or last post with a global shortcut, Fedra reads that post again. When it is off, Fedra says nothing.
-
-### Timeline Tab
-- `Restore open timelines on startup`: when this is off, Fedra opens only your default timelines at startup.
-- `Sync home and notifications position with your server`: Fedra saves your position in Home and Notifications on your server about once a minute, and when you exit. At startup, Fedra goes to that position. Other apps that sync their position, such as Tusky or Ivory, use the same position.
-- `Load older posts to find your saved position`: if your saved position is older than the first page of posts, Fedra loads older posts until it finds it. Fedra loads up to 10 pages. If the post was deleted, Fedra goes to the next older post.
-- Autoload posts:
-  - Never
-  - When reaching the end
-  - When navigating past the end
-- Posts to load at a time (`1` to `40`)
-- `Stream new posts in real time`: when this is off, Fedra checks for new posts on a timer instead.
-- Minutes between checks for new posts when not streaming (`1` to `60`): also used for any timeline whose stream is down.
-- Content warning display:
-  - Show inline
-  - Don't show
-  - CW only
-- Hide emoji in names:
-  - None
-  - Unicode emojis
-  - Instance emojis
-  - All
-- `Show oldest timeline entries first`
-- `Always preserve thread order`
-- `Load more on find next`
-- `Customize Default Timelines...`:
-  - Fedra always opens Home and Notifications at startup.
-  - You can add Local, Federated, Direct Messages, Bookmarks, Favorites, Mentions, and Sent.
 
 ### Templates Tab
 Templates set how posts show in each timeline. They use [Jinja2](https://jinja.palletsprojects.com/en/stable/templates/) syntax.
 
-- Select a timeline in the list. To set the templates for all timelines that don't have their own, select `Global Default`.
+- Select a timeline in the list.
 - Edit the `Window title template`, `Post template`, `Boost template`, and `Quote template` fields.
 - When you select the Notifications timeline, a `Favorite template` field also shows. It sets how "X favorited your post" entries show, as the boost template does for boosts. Other timelines don't show favorite notifications, so the field doesn't show for them.
-- To set the templates of the selected timeline back to the global default, select `Reset to default`. For the global default, this sets the built-in templates again.
+- To set the templates of the selected timeline back to the built-in ones, select `Reset to default`.
 
 Fedra renders the template for each entry each time it shows a timeline. If a template has a syntax error, the entry shows as `author: content`.
 
@@ -201,7 +201,7 @@ Fedra renders the template for each entry each time it shows a timeline. If a te
 |---|---|
 | `{{ author }}` | Display name. Uses the Hide emoji in names setting. |
 | `{{ username }}` | `@acct` handle |
-| `{{ content }}` | Post text without HTML. Uses the Content warning display setting. |
+| `{{ content }}` | Post text without HTML. Uses the Content warnings setting. |
 | `{{ content_warning }}` | Content warning text, or empty |
 | `{{ relative_time }}` | Relative time, for example `2 hours ago` |
 | `{{ absolute_time }}` | Local date and time, for example `Feb 17, 2026 at 2:30 PM` |
@@ -252,6 +252,19 @@ Hide types of posts in each timeline. These filters apply only in Fedra. Select 
 - Your replies
 
 The filters on your server are different. To manage them, use `Options -> Manage Filters...`.
+
+### Invisible Interface Tab
+This tab shows only on Windows.
+
+- `Use the invisible interface`: turns the [global shortcuts](#global-shortcuts) on or off. The shortcut that shows and hides the window always works, so you can always get a hidden window back.
+- `Repeat the post at the start or end of a timeline`: when this is on and you move past the first or last post with a global shortcut, Fedra reads that post again. When it is off, Fedra says nothing.
+
+### Advanced Tab
+- `Check for updates on startup`
+- Update channel:
+  - Stable releases
+  - Test builds
+- Log level: how much Fedra writes to `fedra.log`, in the same folder as `config.json`. Each time Fedra starts, it moves the log of the previous run to `fedra.log.1`. If you report a problem, the default of `Debug` gives the most useful log. `Off` writes no log.
 
 ## Keyboard Shortcuts
 
@@ -452,7 +465,7 @@ The alias shows in place of their display name in all your timelines, for all yo
 `Options -> Manage Filters...` manages the filters on your instance. These filters apply in all Mastodon apps, not only in Fedra. Each filter has a title, the contexts where it applies, an action, an optional expiry time, and a list of keywords. You can set each keyword to match only whole words.
 
 ## Finding Text in a Timeline
-`Ctrl+F` asks for text, then goes to the next entry that contains it. The search follows the sort order of your timeline. `F3` finds the next match, and `Shift+F3` finds the previous match. If `Load more on find next` is on in the Timeline options, Fedra loads older posts during the search. If it is off, the search stops at the end of the loaded posts.
+`Ctrl+F` asks for text, then goes to the next entry that contains it. The search follows the sort order of your timeline. `F3` finds the next match, and `Shift+F3` finds the previous match. If `Load more on find next` is on in the Timelines tab of the options, Fedra loads older posts during the search. If it is off, the search stops at the end of the loaded posts.
 
 ## Media Player
 
