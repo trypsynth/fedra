@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
 	config::{Config, ContentWarningDisplay},
-	mastodon::{PollLimits, Status},
+	mastodon::{Account, Mention, PollLimits, Status},
 	ui::{keys, spell_check},
 };
 
@@ -1331,7 +1331,7 @@ pub fn prompt_for_post(
 
 pub fn prompt_for_direct_message(
 	frame: &Frame,
-	recipient: &crate::mastodon::Account,
+	recipient: &Account,
 	max_chars: Option<usize>,
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
@@ -1378,35 +1378,7 @@ pub fn prompt_for_reply(
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = replying_to.account.display_name_or_username();
-	let mention = if reply_all {
-		let mut accts = Vec::new();
-		let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
-		if let Some(self_acct) = self_acct {
-			if !is_self_account(self_acct, &replying_to.account) {
-				accts.push(replying_to.account.full_acct());
-			}
-		} else {
-			accts.push(replying_to.account.full_acct());
-		}
-		for m in &replying_to.mentions {
-			if let Some(self_acct) = self_acct
-				&& is_self_mention(self_acct, m)
-			{
-				continue;
-			}
-			let m_full_acct = m.full_acct();
-			if !accts.iter().any(|a| a == &m_full_acct) {
-				accts.push(m_full_acct);
-			}
-		}
-		accts.iter().map(|a| format!("@{a}")).collect::<Vec<_>>().join(" ") + " "
-	} else {
-		let author_acct = replying_to.account.full_acct();
-		let is_self = self_acct
-			.map(|acct| acct.trim().trim_start_matches('@'))
-			.is_some_and(|acct| !acct.is_empty() && is_self_account(acct, &replying_to.account));
-		if is_self { String::new() } else { format!("@{author_acct} ") }
-	};
+	let mention = reply_mentions(&replying_to.account, &replying_to.mentions, reply_all, self_acct);
 	let default_visibility = match replying_to.visibility.as_str() {
 		"unlisted" => PostVisibility::Unlisted,
 		"private" => PostVisibility::Private,
@@ -1538,7 +1510,32 @@ pub fn prompt_for_quote(
 	)
 }
 
-fn is_self_account(self_acct: &str, account: &crate::mastodon::Account) -> bool {
+/// The handles a reply starts with, each followed by a space, leaving out the user's own. Empty when that leaves
+/// nobody, such as when replying to one's own post.
+fn reply_mentions(author: &Account, mentions: &[Mention], reply_all: bool, self_acct: Option<&str>) -> String {
+	let self_acct = self_acct.map(|acct| acct.trim().trim_start_matches('@')).filter(|acct| !acct.is_empty());
+	let mut accts = Vec::new();
+	if self_acct.is_none_or(|own| !is_self_account(own, author)) {
+		accts.push(author.full_acct());
+	}
+	if reply_all {
+		for mention in mentions {
+			let acct = mention.full_acct();
+			if self_acct.is_none_or(|own| !is_self_mention(own, mention)) && !accts.contains(&acct) {
+				accts.push(acct);
+			}
+		}
+	}
+	let mut text = String::new();
+	for acct in accts {
+		text.push('@');
+		text.push_str(&acct);
+		text.push(' ');
+	}
+	text
+}
+
+fn is_self_account(self_acct: &str, account: &Account) -> bool {
 	let full = account.full_acct();
 	let full = full.trim().trim_start_matches('@');
 	if self_acct.eq_ignore_ascii_case(full) {
@@ -1550,7 +1547,7 @@ fn is_self_account(self_acct: &str, account: &crate::mastodon::Account) -> bool 
 	self_acct.eq_ignore_ascii_case(account.acct.trim().trim_start_matches('@'))
 }
 
-fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool {
+fn is_self_mention(self_acct: &str, mention: &Mention) -> bool {
 	let mention_acct = mention.full_acct();
 	let mention_acct = mention_acct.trim().trim_start_matches('@');
 	if self_acct.eq_ignore_ascii_case(mention_acct) {
@@ -1564,8 +1561,45 @@ fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool 
 
 #[cfg(test)]
 mod tests {
-	use super::poll_results_text;
-	use crate::mastodon::Poll;
+	use super::{poll_results_text, reply_mentions};
+	use crate::mastodon::{Account, Mention, Poll};
+
+	fn account(acct: &str) -> Account {
+		serde_json::from_value(serde_json::json!({
+			"id": acct,
+			"username": acct,
+			"acct": acct,
+			"display_name": "",
+			"url": format!("https://example.social/@{acct}"),
+		}))
+		.unwrap()
+	}
+
+	fn mention(acct: &str) -> Mention {
+		serde_json::from_value(serde_json::json!({
+			"id": acct,
+			"username": acct,
+			"acct": acct,
+			"url": format!("https://example.social/@{acct}"),
+		}))
+		.unwrap()
+	}
+
+	#[test]
+	fn replying_to_your_own_post_starts_empty() {
+		let me = account("me");
+		assert_eq!(reply_mentions(&me, &[], true, Some("me")), "");
+		assert_eq!(reply_mentions(&me, &[mention("me")], true, Some("me")), "");
+		assert_eq!(reply_mentions(&me, &[], false, Some("me")), "");
+	}
+
+	#[test]
+	fn reply_mentions_the_author_then_everyone_else_once() {
+		let author = account("ann");
+		let mentions = [mention("me"), mention("bob"), mention("ann")];
+		assert_eq!(reply_mentions(&author, &mentions, true, Some("me")), "@ann@example.social @bob@example.social ");
+		assert_eq!(reply_mentions(&author, &mentions, false, Some("me")), "@ann@example.social ");
+	}
 
 	fn poll(multiple: bool, voters: u64) -> Poll {
 		serde_json::from_value(serde_json::json!({
