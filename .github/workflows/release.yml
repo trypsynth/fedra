@@ -93,7 +93,7 @@ jobs:
           target/release/fedra_setup-${{ matrix.arch }}.exe.minisig
         retention-days: 90
   build-macos:
-    name: Build (macOS arm64)
+    name: Build (macOS)
     needs: notes
     runs-on: macos-latest
     # Code signing and notarization run only when their secrets are set. Without them the DMG
@@ -110,6 +110,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
+        targets: aarch64-apple-darwin,x86_64-apple-darwin
     - name: Install CMake and Ninja
       run: brew install cmake ninja
     - name: Find wxWidgets master
@@ -126,7 +127,8 @@ jobs:
       run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/wxWidgets/wxWidgets.git
     - name: Build, sign, and notarize
       # notarytool waits on Apple with no limit of its own, so without this the step could sit until the job's 6-hour limit.
-      timeout-minutes: 45
+      # It builds wxWidgets for both architectures and notarizes three disk images.
+      timeout-minutes: 120
       env:
         WXWIDGETS_DIR: ${{ github.workspace }}/wxWidgets
         MACOSX_DEPLOYMENT_TARGET: "13.0"
@@ -136,6 +138,9 @@ jobs:
         MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
         MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
       run: cargo release
+    # No Intel Mac runs this job, so this is the check that the universal app has the Intel half at all.
+    - name: Check the universal app has both architectures
+      run: lipo target/release/Fedra.app/Contents/MacOS/fedra -verify_arch arm64 x86_64
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
@@ -143,6 +148,10 @@ jobs:
         path: |
           target/release/fedra-arm64.dmg
           target/release/fedra-arm64.dmg.minisig
+          target/release/fedra-x64.dmg
+          target/release/fedra-x64.dmg.minisig
+          target/release/fedra-universal.dmg
+          target/release/fedra-universal.dmg.minisig
         retention-days: 90
   release:
     name: Publish release

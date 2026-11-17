@@ -5,8 +5,10 @@ use std::{
 	error::Error,
 	path::{Path, PathBuf},
 };
+#[cfg(target_os = "macos")]
+use std::{fs, process::Command};
 
-use shipfitter::{package::cargo_build_release, sign::Minisign};
+use shipfitter::sign::Minisign;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	if env::args().nth(1).as_deref() == Some("release") {
@@ -25,14 +27,7 @@ fn release() -> Result<(), Box<dyn Error>> {
 	let root = project_root();
 	// Load the signing keys before building anything, so a broken secret fails fast.
 	let minisign = Minisign::from_env()?;
-	cargo_build_release(&root, &[])?;
-	let target_dir = root.join("target/release");
-	let exe_path = target_dir.join(if cfg!(windows) { "fedra.exe" } else { "fedra" });
-	if !exe_path.exists() {
-		return Err("Executable not found".into());
-	}
-	println!("Packaging binaries and docs...");
-	let artifacts = package(&root, &target_dir, &exe_path)?;
+	let artifacts = package(&root)?;
 	if let Some(minisign) = minisign {
 		for artifact in &artifacts {
 			println!("Signed {}", minisign.sign(artifact)?.display());
@@ -43,15 +38,22 @@ fn release() -> Result<(), Box<dyn Error>> {
 
 /// Builds the release files, returning the ones to publish.
 #[cfg(not(target_os = "macos"))]
-fn package(_root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	use shipfitter::{
 		host_arch_suffix,
-		package::{Zip, inno_setup},
+		package::{Zip, cargo_build_release, inno_setup},
 	};
 
+	cargo_build_release(root, &[])?;
+	let target_dir = root.join("target/release");
+	let exe_path = target_dir.join(if cfg!(windows) { "fedra.exe" } else { "fedra" });
+	if !exe_path.exists() {
+		return Err("Executable not found".into());
+	}
+	println!("Packaging binaries and docs...");
 	let zip_path = target_dir.join(format!("fedra-{}.zip", host_arch_suffix()));
 	let mut zip = Zip::create(&zip_path)?;
-	zip.file(exe_path, &exe_path.file_name().unwrap().to_string_lossy())?;
+	zip.file(&exe_path, &exe_path.file_name().unwrap().to_string_lossy())?;
 	let readme_path = target_dir.join("readme.html");
 	if readme_path.exists() {
 		zip.file(&readme_path, "readme.html")?;
@@ -68,20 +70,24 @@ fn package(_root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathB
 	Ok(artifacts)
 }
 
-/// Builds the release files, returning the ones to publish.
+/// A DMG for each architecture, which the updater picks by its own, and a universal one for anyone who doesn't know which Mac they have.
 #[cfg(target_os = "macos")]
-fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	use shipfitter::{
-		host_arch_suffix,
 		macos::{DeveloperId, Keychain, MacApp, Notary, dmg, sign_bundle},
 		package::crate_version,
 	};
 
+	const TARGETS: [(&str, &str); 2] = [("aarch64-apple-darwin", "arm64"), ("x86_64-apple-darwin", "x64")];
 	let keychain = Keychain::import_from_env()?;
 	let signer = keychain.as_ref().map(Keychain::signer).or_else(DeveloperId::from_env);
 	let notary = Notary::from_env()?;
 	if notary.is_some() && signer.is_none() {
 		return Err("notarizing needs a signed app; set MACOS_CERTIFICATE_P12_BASE64 or MACOS_SIGN_IDENTITY".into());
+	}
+	let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+	for (target, _) in TARGETS {
+		run(Command::new(&cargo).current_dir(root).args(["build", "--release", "-p", "fedra", "--target", target]))?;
 	}
 	let version = crate_version(root, "fedra")?;
 	let app = MacApp {
@@ -91,24 +97,41 @@ fn package(root: &Path, target_dir: &Path, exe_path: &Path) -> Result<Vec<PathBu
 		version: &version,
 		..MacApp::default()
 	};
-	let readme_path = target_dir.join("readme.html");
+	let target_dir = root.join("target/release");
+	fs::create_dir_all(&target_dir)?;
+	let slices = TARGETS.map(|(target, _)| root.join("target").join(target).join("release"));
+	let universal_exe = target_dir.join("fedra");
+	let inputs = slices.each_ref().map(|dir| dir.join("fedra"));
+	run(Command::new("lipo").arg("-create").args(&inputs).arg("-output").arg(&universal_exe))?;
+	// Both architectures build the same readme.
+	let readme_path = slices[0].join("readme.html");
 	let mut resources = Vec::new();
 	if readme_path.exists() {
 		resources.push(readme_path.as_path());
 	} else {
 		println!("Warning: readme.html not found, skipping.");
 	}
-	let bundle = app.bundle(target_dir, exe_path, &[], &resources)?;
-	match &signer {
-		Some(signer) => sign_bundle(&bundle, &[], signer)?,
-		None => println!("No signing certificate, so the app keeps its ad hoc signature."),
+	let builds = TARGETS.iter().zip(&slices).map(|((_, arch), dir)| (*arch, dir.clone(), dir.join("fedra")));
+	let mut artifacts = Vec::new();
+	for (arch, dir, exe) in builds.chain([("universal", target_dir.clone(), universal_exe)]) {
+		let bundle = app.bundle(&dir, &exe, &[], &resources)?;
+		match &signer {
+			Some(signer) => sign_bundle(&bundle, &[], signer)?,
+			None => println!("No signing certificate, so the app keeps its ad hoc signature."),
+		}
+		println!("Built app: {}", bundle.display());
+		let dmg_path = target_dir.join(format!("fedra-{arch}.dmg"));
+		dmg(&bundle, &dmg_path)?;
+		println!("Created DMG: {}", dmg_path.display());
+		if let Some(notary) = &notary {
+			notary.notarize(&dmg_path)?;
+		}
+		artifacts.push(dmg_path);
 	}
-	println!("Built app: {}", bundle.display());
-	let dmg_path = target_dir.join(format!("fedra-{}.dmg", host_arch_suffix()));
-	dmg(&bundle, &dmg_path)?;
-	println!("Created DMG: {}", dmg_path.display());
-	if let Some(notary) = notary {
-		notary.notarize(&dmg_path)?;
-	}
-	Ok(vec![dmg_path])
+	Ok(artifacts)
+}
+
+#[cfg(target_os = "macos")]
+fn run(command: &mut Command) -> Result<(), Box<dyn Error>> {
+	if command.status()?.success() { Ok(()) } else { Err(format!("{command:?} failed").into()) }
 }

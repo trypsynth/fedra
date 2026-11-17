@@ -4,7 +4,7 @@
 
 ## System Requirements
 - Windows 10 or 11, on x64 or Arm.
-- macOS 13 Ventura or later, on Apple silicon.
+- macOS 13 Ventura or later, on Apple silicon or Intel.
 
 ## Core Features
 - A native user interface with controls that work well with screen readers. Fedra announces changes as they occur. On Windows, the timeline is a custom list control that uses [AccessKit](https://accesskit.dev).
