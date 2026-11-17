@@ -659,9 +659,11 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 		.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
 		.build();
 	main_sizer.add(&post_display, 1, SizerFlag::Expand | SizerFlag::All, 8);
+	// Voting is over for this user, so the results replace the choices.
+	let closed = poll.expired || poll.voted.unwrap_or(false);
 	let info_text = if poll.expired {
 		"This poll has expired."
-	} else if poll.voted.unwrap_or(false) {
+	} else if closed {
 		"You have already voted on this poll."
 	} else if poll.multiple {
 		"Select options (multiple allowed):"
@@ -670,46 +672,37 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 	};
 	let info_label = StaticText::builder(&panel).with_label(info_text).build();
 	main_sizer.add(&info_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
-	let options_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let mut checkboxes = Vec::new();
 	let mut radio_buttons = Vec::new();
-	if poll.multiple {
-		for option in &poll.options {
-			let cb = CheckBox::builder(&panel).with_label(&option.title).build();
-			if poll.expired || poll.voted.unwrap_or(false) {
-				cb.enable(false);
-			}
-			options_sizer.add(&cb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 4);
-			checkboxes.push(cb);
-		}
+	if closed {
+		// A text field, not labels, so the results can be read again line by line instead of only when the dialog opens.
+		let results_label = StaticText::builder(&panel).with_label("&Results:").build();
+		let results = TextCtrl::builder(&panel)
+			.with_value(&poll_results_text(poll))
+			.with_style(TextCtrlStyle::MultiLine | TextCtrlStyle::ReadOnly)
+			.build();
+		main_sizer.add(&results_label, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+		main_sizer.add(&results, 1, SizerFlag::Expand | SizerFlag::All, 8);
 	} else {
+		let options_sizer = BoxSizer::builder(Orientation::Vertical).build();
 		for (i, option) in poll.options.iter().enumerate() {
-			let style = if i == 0 { RadioButtonStyle::GroupStart } else { RadioButtonStyle::Default };
-			let rb = RadioButton::builder(&panel).with_label(&option.title).with_style(style).build();
-			if poll.expired || poll.voted.unwrap_or(false) {
-				rb.enable(false);
+			let flags = SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom;
+			if poll.multiple {
+				let cb = CheckBox::builder(&panel).with_label(&option.title).build();
+				options_sizer.add(&cb, 0, flags, 4);
+				checkboxes.push(cb);
+			} else {
+				let style = if i == 0 { RadioButtonStyle::GroupStart } else { RadioButtonStyle::Default };
+				let rb = RadioButton::builder(&panel).with_label(&option.title).with_style(style).build();
+				options_sizer.add(&rb, 0, flags, 4);
+				radio_buttons.push(rb);
 			}
-			options_sizer.add(&rb, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right | SizerFlag::Bottom, 4);
-			radio_buttons.push(rb);
 		}
-	}
-	main_sizer.add_sizer(&options_sizer, 1, SizerFlag::Expand | SizerFlag::All, 8);
-	if poll.expired || poll.voted.unwrap_or(false) {
-		let total_votes = poll.votes_count.max(1);
-		let results_sizer = BoxSizer::builder(Orientation::Vertical).build();
-		for option in &poll.options {
-			let votes = option.votes_count.unwrap_or(0);
-			let percent = votes.saturating_mul(100).saturating_div(total_votes).min(i32::MAX as u64);
-			let percent = i32::try_from(percent).unwrap_or(i32::MAX);
-			let label = format!("{}: {} votes ({}%)", option.title, votes, percent);
-			let text = StaticText::builder(&panel).with_label(&label).build();
-			results_sizer.add(&text, 0, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 4);
-		}
-		main_sizer.add_sizer(&results_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+		main_sizer.add_sizer(&options_sizer, 1, SizerFlag::Expand | SizerFlag::All, 8);
 	}
 	let (vote_button, close_button) = build_ok_cancel_buttons_on(&panel, &dialog, "Vote");
 	close_button.set_label("Close");
-	if poll.expired || poll.voted.unwrap_or(false) {
+	if closed {
 		vote_button.enable(false);
 	}
 	add_ok_cancel_footer(main_sizer, vote_button, close_button);
@@ -738,6 +731,34 @@ pub fn prompt_for_vote(frame: &Frame, poll: &crate::mastodon::Poll, post_text: &
 		return None;
 	}
 	Some(selected_indices)
+}
+
+/// A line per option with its share of the votes, marking the user's own, then the total.
+fn poll_results_text(poll: &crate::mastodon::Poll) -> String {
+	let total_votes = poll.votes_count.max(1);
+	let own_votes = poll.own_votes.as_deref().unwrap_or_default();
+	let mut lines: Vec<String> = poll
+		.options
+		.iter()
+		.enumerate()
+		.map(|(i, option)| {
+			let votes = option.votes_count.unwrap_or(0);
+			let percent = votes.saturating_mul(100) / total_votes;
+			let mine = if own_votes.iter().any(|&own| own as usize == i) { ", your vote" } else { "" };
+			format!("{}: {} ({percent}%){mine}", option.title, plural(votes, "vote"))
+		})
+		.collect();
+	// In a poll with several choices one person can cast more than one vote, so people are counted instead.
+	lines.push(match poll.voters_count {
+		Some(1) if poll.multiple => "1 person voted".to_string(),
+		Some(voters) if poll.multiple => format!("{voters} people voted"),
+		_ => format!("{} in total", plural(poll.votes_count, "vote")),
+	});
+	lines.join("\n")
+}
+
+fn plural(count: u64, noun: &str) -> String {
+	if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
 }
 
 fn normalize_language_code(input: &str) -> Option<String> {
@@ -1505,4 +1526,39 @@ fn is_self_mention(self_acct: &str, mention: &crate::mastodon::Mention) -> bool 
 		return false;
 	}
 	self_acct.eq_ignore_ascii_case(mention.username.trim().trim_start_matches('@'))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::poll_results_text;
+	use crate::mastodon::Poll;
+
+	fn poll(multiple: bool, voters: u64) -> Poll {
+		serde_json::from_value(serde_json::json!({
+			"id": "1",
+			"expires_at": null,
+			"expired": true,
+			"multiple": multiple,
+			"votes_count": 4,
+			"voters_count": voters,
+			"options": [{ "title": "Tea", "votes_count": 3 }, { "title": "Coffee", "votes_count": 1 }],
+			"voted": true,
+			"own_votes": [1],
+		}))
+		.unwrap()
+	}
+
+	#[test]
+	fn results_mark_own_vote_and_total() {
+		assert_eq!(
+			poll_results_text(&poll(false, 4)),
+			"Tea: 3 votes (75%)\nCoffee: 1 vote (25%), your vote\n4 votes in total"
+		);
+	}
+
+	#[test]
+	fn results_count_people_when_several_choices_are_allowed() {
+		assert!(poll_results_text(&poll(true, 1)).ends_with("\n1 person voted"));
+		assert!(poll_results_text(&poll(true, 3)).ends_with("\n3 people voted"));
+	}
 }
