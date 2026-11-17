@@ -78,6 +78,9 @@ pub struct Status {
 	pub url: Option<String>,
 	pub content: String,
 	pub created_at: String,
+	/// When the post was last edited, if it ever was.
+	#[serde(default)]
+	pub edited_at: Option<String>,
 	pub account: Account,
 	pub spoiler_text: String,
 	pub reblog: Option<Box<Self>>,
@@ -205,6 +208,56 @@ pub struct MediaAttachment {
 	pub preview_url: Option<String>,
 	#[serde(default)]
 	pub description: Option<String>,
+}
+
+/// One version of an edited post, as the post's edit history gives it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatusVersion {
+	pub content: String,
+	#[serde(default)]
+	pub spoiler_text: String,
+	pub created_at: String,
+	#[serde(default)]
+	pub media_attachments: Vec<MediaAttachment>,
+	#[serde(default)]
+	pub poll: Option<VersionPoll>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VersionPoll {
+	pub options: Vec<VersionPollOption>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VersionPollOption {
+	pub title: String,
+}
+
+impl StatusVersion {
+	pub fn relative_time(&self) -> String {
+		friendly_time(&self.created_at, TimestampFormat::Relative).unwrap_or_default()
+	}
+
+	/// Everything this version said, as plain text to read through: when, the content warning, the text, the poll's
+	/// options and the media descriptions.
+	pub fn text(&self) -> String {
+		let mut out = friendly_time(&self.created_at, TimestampFormat::Absolute).unwrap_or_default();
+		if !self.spoiler_text.trim().is_empty() {
+			let _ = write!(out, "\n\nContent warning: {}", self.spoiler_text.trim());
+		}
+		let _ = write!(out, "\n\n{}", strip_html(&self.content));
+		if let Some(poll) = &self.poll {
+			out.push_str("\n\nPoll:");
+			for option in &poll.options {
+				let _ = write!(out, "\n- {}", option.title);
+			}
+		}
+		for (i, media) in self.media_attachments.iter().enumerate() {
+			let description = media.description.as_deref().map(str::trim).filter(|d| !d.is_empty());
+			let _ = write!(out, "\n\nAttachment {}: {}", i + 1, description.unwrap_or("no description"));
+		}
+		out
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]

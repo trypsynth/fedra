@@ -1,5 +1,6 @@
 //! Commands that compose, edit, or act on a single post.
 
+use wx_utils::tasks::spawn_for;
 use wxdragon::prelude::*;
 
 use super::{
@@ -12,7 +13,7 @@ use crate::{
 	html,
 	mastodon::{Status, StatusAction},
 	network::{self, Target, resolve_status},
-	responses::{status_acted, statuses},
+	responses::{spoken_failure, status_acted, statuses},
 	timeline::{TimelineTextOptions, TimelineType},
 	ui::{dialogs, timeline_view::list_index_to_entry_index},
 };
@@ -537,6 +538,41 @@ pub(super) fn bookmark(ctx: &mut UiCommandContext<'_>) {
 pub(super) fn mute_conversation(ctx: &mut UiCommandContext<'_>) {
 	send_status_action(ctx, |_, s| {
 		Ok(if s.muted { StatusAction::UnmuteConversation } else { StatusAction::MuteConversation })
+	});
+}
+
+pub(super) fn view_edit_history(ctx: &mut UiCommandContext<'_>) {
+	let state = &*ctx.state;
+	let Some(status) = get_selected_status(state) else {
+		ctx.live_region.announce("No post selected");
+		return;
+	};
+	let target = status.reblog.as_deref().unwrap_or(status);
+	if target.edited_at.is_none() {
+		ctx.live_region.announce("This post hasn't been edited");
+		return;
+	}
+	let Some(session) = state.session() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let foreign = foreign_url(state, target.url.as_ref());
+	let status_id = target.id.clone();
+	let history = session.call(move |client, token| {
+		let status_id = match foreign {
+			Some(url) => resolve_status(client, token, &url)?.id,
+			None => status_id,
+		};
+		client.get_status_history(token, &status_id)
+	});
+	let frame = *ctx.frame;
+	let live_region = ctx.live_region.clone();
+	spawn_for(&frame, async move {
+		match history.await {
+			Ok(versions) if versions.len() > 1 => dialogs::show_edit_history_dialog(&frame, &versions),
+			Ok(_) => live_region.announce("No earlier versions of this post"),
+			Err(err) => live_region.announce(&spoken_failure("Failed to load edit history", &err)),
+		}
 	});
 }
 

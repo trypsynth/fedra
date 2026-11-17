@@ -378,6 +378,7 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | Copy Post | `Ctrl+Shift+C` | `Ctrl+Shift+C` |
 | Copy Post Link | `Ctrl+C` | `Ctrl+C` |
 | View Post Details | `Shift+Enter` | `Shift+Enter` |
+| View Edit History | None | None |
 | View Thread | `Alt+Enter` | `Alt+Enter` |
 | View Quoted Thread | None | None |
 | Edit Post... | `Ctrl+E` | `E` |

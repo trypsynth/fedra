@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mastodon::{
-	Account, MastodonClient, Poll, PostSubmission, Status, StatusAction, StatusContext, StatusSource,
+	Account, MastodonClient, Poll, PostSubmission, Status, StatusAction, StatusContext, StatusSource, StatusVersion,
 };
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +151,12 @@ impl MastodonClient {
 	pub fn get_status(&self, access_token: &str, status_id: &str) -> Result<Status> {
 		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}"))?;
 		self.get_json(access_token, url, "fetch status")
+	}
+
+	/// Every version of the post, oldest first, the current one last.
+	pub fn get_status_history(&self, access_token: &str, status_id: &str) -> Result<Vec<StatusVersion>> {
+		let url = self.base_url.join(&format!("api/v1/statuses/{status_id}/history"))?;
+		self.get_json(access_token, url, "fetch edit history")
 	}
 
 	pub fn status_action(&self, access_token: &str, status_id: &str, action: StatusAction) -> Result<Status> {

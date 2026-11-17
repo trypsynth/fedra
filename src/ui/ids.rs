@@ -65,6 +65,7 @@ seq_ids! {
 	ID_FIND_PREV,
 	ID_UI_WAKE,
 	ID_MUTE_CONVERSATION,
+	ID_VIEW_EDIT_HISTORY,
 }
 
 /// wx's standard preferences item, which macOS moves into the app menu as Settings.
