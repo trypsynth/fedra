@@ -20,7 +20,10 @@ use crate::{
 	html,
 	mastodon::{Account, MastodonClient, Status},
 	network::{self, AccountQuery, Session, fetch_tags},
-	responses::{fill_in_profile, lists, look_up, relationship_updated, spoken_failure, statuses, tags_fetched},
+	responses::{
+		fill_in_profile, followed_tags_fetched, lists, look_up, relationship_updated, spoken_failure, statuses,
+		tags_fetched,
+	},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs::{self, FollowList},
@@ -273,6 +276,14 @@ pub(super) fn view_hashtags(ctx: &mut UiCommandContext<'_>) {
 		return;
 	};
 	ctx.handles.request(&session, move |client, token| fetch_tags(client, token, &names), tags_fetched);
+}
+
+pub(super) fn followed_hashtags(ctx: &mut UiCommandContext<'_>) {
+	let Some(session) = ctx.state.session() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	ctx.handles.request(&session, network::fetch_followed_tags, followed_tags_fetched);
 }
 
 pub(super) fn view_boosts(ctx: &mut UiCommandContext<'_>) {

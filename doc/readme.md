@@ -28,7 +28,7 @@
   - See the followers and the accounts that a user follows. Your own are in the Options menu, along with the users you've muted or blocked.
   - See who follows you that you don't follow, who you follow that doesn't follow you, who you follow each other with, and who you follow that hasn't posted in a year, with `Options -> Follower Analysis...`. Fedra loads all of your followers and follows first, with a progress bar that you can cancel.
   - Give a user an alias. Fedra shows the alias in place of their display name.
-  - Follow, unfollow, and mute hashtags.
+  - Follow, unfollow, and mute hashtags. To see the ones you follow, use `Options -> Followed Hashtags...`.
   - See the users who boosted or favorited a post.
   - Search for accounts, hashtags, and posts.
 - A media player that can also download media.
@@ -432,6 +432,7 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | Your Followers... | None | None |
 | Who You Follow... | None | None |
 | Follower Analysis... | None | None |
+| Followed Hashtags... | None | None |
 | Muted Users... | None | None |
 | Blocked Users... | None | None |
 | Message Requests... | None | None |
@@ -533,6 +534,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 ### Version 0.9.0
 - Added a log of what Fedra does, in `fedra.log` beside your settings, to help with reporting problems. The new Advanced tab of the options sets how much it records, or turns it off.
 - Added builds for Intel Macs.
+- Added Followed Hashtags to the Options menu, to see the hashtags you follow and open, unfollow, or mute them.
 - Added Follower Analysis to the Options menu, to see who follows you that you don't follow, who you follow that doesn't follow you, who follows you back, and who you follow that hasn't posted in a year.
 - Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
 - Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. A mute that ends says when.

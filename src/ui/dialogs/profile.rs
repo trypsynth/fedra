@@ -314,8 +314,11 @@ pub struct HashtagDialog {
 }
 
 impl HashtagDialog {
+	/// `title` and `label` say whose hashtags these are: a post's, or the ones the user follows.
 	pub fn new<F>(
 		frame: &Frame,
+		title: &str,
+		label: &str,
 		tags: Vec<Tag>,
 		requests: Requests,
 		ui_tx: crate::ui_wake::UiCommandSender,
@@ -324,10 +327,10 @@ impl HashtagDialog {
 	where
 		F: Fn() + 'static + Clone,
 	{
-		let dialog = Dialog::builder(frame, "Hashtags").with_size(500, 300).build();
+		let dialog = Dialog::builder(frame, title).with_size(500, 300).build();
 		let panel = Panel::builder(&dialog).build();
 		let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
-		let list_label = StaticText::builder(&panel).with_label("Hashtags in post:").build();
+		let list_label = StaticText::builder(&panel).with_label(label).build();
 		let tag_list = ListBox::builder(&panel).build();
 		let format_tag = |tag: &crate::mastodon::Tag| -> String {
 			let mut status = String::new();

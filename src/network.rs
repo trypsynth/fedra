@@ -492,15 +492,28 @@ pub fn fetch_relationship(client: &MastodonClient, access_token: &str, account_i
 /// mutes it.
 pub fn fetch_tags(client: &MastodonClient, access_token: &str, names: &[String]) -> Vec<Tag> {
 	let mut tags: Vec<Tag> = names.iter().filter_map(|name| client.get_tag(access_token, name).ok()).collect();
+	mark_muted_tags(client, access_token, &mut tags);
+	tags
+}
+
+/// The hashtags the user follows, sorted by name, each marked as muted or not.
+pub fn fetch_followed_tags(client: &MastodonClient, access_token: &str) -> Result<Vec<Tag>> {
+	let mut tags = client.get_followed_tags(access_token)?;
+	tags.sort_by_cached_key(|tag| tag.name.to_lowercase());
+	mark_muted_tags(client, access_token, &mut tags);
+	Ok(tags)
+}
+
+/// Marks which of `tags` Fedra's own mute filter holds. A failed lookup leaves them all unmuted.
+fn mark_muted_tags(client: &MastodonClient, access_token: &str, tags: &mut [Tag]) {
 	if let Ok(filters) = client.get_filters(access_token)
 		&& let Some(filter) = filters.iter().find(|f| is_muted_tags_filter(f))
 	{
-		for tag in &mut tags {
+		for tag in tags {
 			let keyword = format!("#{}", tag.name);
 			tag.muted = filter.keywords.iter().any(|kw| kw.keyword.eq_ignore_ascii_case(&keyword));
 		}
 	}
-	tags
 }
 
 pub fn mute_tag(client: &MastodonClient, access_token: &str, name: &str) -> Result<()> {

@@ -105,6 +105,7 @@ pub enum UiCommand {
 	ShowOwnFollowList(FollowList),
 	FollowerAnalysis,
 	ShowFollowerAnalysis(Box<FollowAnalysis>),
+	FollowedHashtags,
 	/// `account` is whose followers or follows to show, and `None` for the user's own mutes and blocks.
 	ShowFollowList {
 		account: Option<Box<Account>>,
@@ -220,6 +221,7 @@ impl UiCommand {
 			Self::ShowOwnFollowList(..) => "ShowOwnFollowList",
 			Self::FollowerAnalysis => "FollowerAnalysis",
 			Self::ShowFollowerAnalysis(..) => "ShowFollowerAnalysis",
+			Self::FollowedHashtags => "FollowedHashtags",
 			Self::ShowFollowList { .. } => "ShowFollowList",
 			Self::OpenAccount { .. } => "OpenAccount",
 			Self::OpenPost => "OpenPost",
@@ -342,6 +344,7 @@ pub const fn command_for(action: ActionId) -> Option<UiCommand> {
 		ActionId::YourFollowers => UiCommand::ShowOwnFollowList(FollowList::Followers),
 		ActionId::YourFollowing => UiCommand::ShowOwnFollowList(FollowList::Following),
 		ActionId::FollowerAnalysis => UiCommand::FollowerAnalysis,
+		ActionId::FollowedHashtags => UiCommand::FollowedHashtags,
 		ActionId::MutedUsers => UiCommand::ShowFollowList { account: None, list: FollowList::Muted },
 		ActionId::BlockedUsers => UiCommand::ShowFollowList { account: None, list: FollowList::Blocked },
 		ActionId::EditProfile => UiCommand::EditProfile,
@@ -555,6 +558,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ShowOwnFollowList(list) => user::show_own_follow_list(ctx, list),
 		UiCommand::FollowerAnalysis => user::follower_analysis(ctx),
 		UiCommand::ShowFollowerAnalysis(analysis) => user::show_follower_analysis(ctx, &analysis),
+		UiCommand::FollowedHashtags => user::followed_hashtags(ctx),
 		UiCommand::ShowFollowList { account, list } => user::show_follow_list(ctx, account.as_deref(), list),
 		UiCommand::OpenAccount { account, action } => open_account(ctx, &account, action),
 		UiCommand::OpenPost => post::open_post(ctx),

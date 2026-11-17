@@ -37,11 +37,25 @@ pub fn muted_changed<T>(ctx: &NetworkResponseContext<'_>, name: &str, result: &R
 }
 
 pub fn info_fetched(ctx: &mut NetworkResponseContext<'_>, tags: Vec<Tag>) {
+	show(ctx, "Hashtags", "Hashtags in post:", tags);
+}
+
+pub fn followed_fetched(ctx: &mut NetworkResponseContext<'_>, result: Result<Vec<Tag>>) {
+	match result {
+		Ok(tags) if tags.is_empty() => ctx.announce("You don't follow any hashtags"),
+		Ok(tags) => show(ctx, "Followed Hashtags", "Hashtags you follow:", tags),
+		Err(err) => ctx.announce_failure("Failed to load followed hashtags", &err),
+	}
+}
+
+fn show(ctx: &mut NetworkResponseContext<'_>, title: &str, label: &str, tags: Vec<Tag>) {
 	let Some(requests) = ctx.requests() else { return };
 	let ui_tx_dlg = ctx.ui_tx.clone();
-	let dlg = dialogs::HashtagDialog::new(ctx.frame, tags, requests, ctx.ui_tx.clone(), move || {
+	let dlg = dialogs::HashtagDialog::new(ctx.frame, title, label, tags, requests, ctx.ui_tx.clone(), move || {
 		let _ = ui_tx_dlg.send(UiCommand::HashtagDialogClosed);
 	});
+	if let Some(previous) = ctx.state.hashtag_dialog.replace(dlg.clone()) {
+		previous.destroy();
+	}
 	dlg.show();
-	ctx.state.hashtag_dialog = Some(dlg);
 }

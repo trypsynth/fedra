@@ -15,7 +15,8 @@ pub use helpers::spoken_failure;
 pub use statuses::action as status_acted;
 pub use stream::process_stream_events;
 pub use tags::{
-	following_changed as tag_following_changed, info_fetched as tags_fetched, muted_changed as tag_muted_changed,
+	followed_fetched as followed_tags_fetched, following_changed as tag_following_changed,
+	info_fetched as tags_fetched, muted_changed as tag_muted_changed,
 };
 pub use timelines::search;
 
