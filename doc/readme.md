@@ -379,6 +379,7 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | Favorite | `Ctrl+Shift+F` | `F` |
 | Bookmark | `Ctrl+Shift+K` | `K` |
 | Boost | `Ctrl+Shift+B` | `B` |
+| Mute / Unmute Conversation | None | None |
 | View Boosts | None | None |
 | View Favorites | None | None |
 | Open User Timeline | `Ctrl+T` | `T` |

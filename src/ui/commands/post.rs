@@ -530,6 +530,12 @@ pub(super) fn bookmark(ctx: &mut UiCommandContext<'_>) {
 	send_status_action(ctx, |_, s| Ok(if s.bookmarked { StatusAction::Unbookmark } else { StatusAction::Bookmark }));
 }
 
+pub(super) fn mute_conversation(ctx: &mut UiCommandContext<'_>) {
+	send_status_action(ctx, |_, s| {
+		Ok(if s.muted { StatusAction::UnmuteConversation } else { StatusAction::MuteConversation })
+	});
+}
+
 pub(super) fn boost(ctx: &mut UiCommandContext<'_>) {
 	send_status_action(ctx, |_, s| {
 		if s.visibility == "direct" {

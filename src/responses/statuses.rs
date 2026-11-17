@@ -147,6 +147,20 @@ const UNBOOST: StatusEffect = StatusEffect {
 	refetch_own_timelines: false,
 };
 
+const MUTE_CONVERSATION: StatusEffect = StatusEffect {
+	success: "Conversation muted",
+	failure: "Failed to mute conversation",
+	apply: copy_mute,
+	refetch_own_timelines: false,
+};
+
+const UNMUTE_CONVERSATION: StatusEffect = StatusEffect {
+	success: "Conversation unmuted",
+	failure: "Failed to unmute conversation",
+	apply: copy_mute,
+	refetch_own_timelines: false,
+};
+
 const fn copy_favorite(target: &mut Status, source: &Status) {
 	target.favourited = source.favourited;
 	target.favourites_count = source.favourites_count;
@@ -154,6 +168,10 @@ const fn copy_favorite(target: &mut Status, source: &Status) {
 
 const fn copy_bookmark(target: &mut Status, source: &Status) {
 	target.bookmarked = source.bookmarked;
+}
+
+const fn copy_mute(target: &mut Status, source: &Status) {
+	target.muted = source.muted;
 }
 
 const fn copy_pin(target: &mut Status, source: &Status) {
@@ -182,6 +200,8 @@ const fn effect(action: StatusAction) -> &'static StatusEffect {
 		StatusAction::Unpin => &UNPIN,
 		StatusAction::Boost => &BOOST,
 		StatusAction::Unboost => &UNBOOST,
+		StatusAction::MuteConversation => &MUTE_CONVERSATION,
+		StatusAction::UnmuteConversation => &UNMUTE_CONVERSATION,
 	}
 }
 

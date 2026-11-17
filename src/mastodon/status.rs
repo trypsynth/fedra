@@ -43,6 +43,8 @@ pub enum StatusAction {
 	Unpin,
 	Boost,
 	Unboost,
+	MuteConversation,
+	UnmuteConversation,
 }
 
 impl StatusAction {
@@ -56,6 +58,8 @@ impl StatusAction {
 			Self::Unpin => "unpin",
 			Self::Boost => "reblog",
 			Self::Unboost => "unreblog",
+			Self::MuteConversation => "mute",
+			Self::UnmuteConversation => "unmute",
 		}
 	}
 }
@@ -99,6 +103,9 @@ pub struct Status {
 	pub reblogged: bool,
 	#[serde(default)]
 	pub bookmarked: bool,
+	/// Whether the user stopped notifications from this post's conversation.
+	#[serde(default)]
+	pub muted: bool,
 	#[serde(default)]
 	pub conversation_id: Option<String>,
 	pub in_reply_to_id: Option<String>,

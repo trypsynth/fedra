@@ -6,7 +6,7 @@ use crate::{
 	ID_CLEAR_TIMELINE, ID_CLOSE_TIMELINE, ID_COPY_POST, ID_COPY_POST_LINK, ID_CUSTOMIZE_SHORTCUTS, ID_DELETE_POST,
 	ID_DIRECT_TIMELINE, ID_EDIT_POST, ID_EDIT_PROFILE, ID_FAVORITE, ID_FAVORITES_TIMELINE, ID_FEDERATED_TIMELINE,
 	ID_FIND, ID_FIND_NEXT, ID_FIND_PREV, ID_HOME_TIMELINE, ID_LOAD_MORE, ID_LOCAL_TIMELINE, ID_MANAGE_ACCOUNTS,
-	ID_MANAGE_FILTERS, ID_MANAGE_LISTS, ID_MENTIONS_TIMELINE, ID_MESSAGE_REQUESTS, ID_NEW_POST,
+	ID_MANAGE_FILTERS, ID_MANAGE_LISTS, ID_MENTIONS_TIMELINE, ID_MESSAGE_REQUESTS, ID_MUTE_CONVERSATION, ID_NEW_POST,
 	ID_NOTIFICATIONS_TIMELINE, ID_OPEN_INSTANCE_TIMELINE_BY_INPUT, ID_OPEN_LINKS, ID_OPEN_LIST,
 	ID_OPEN_USER_TIMELINE_BY_INPUT, ID_OPTIONS, ID_PIN_POST, ID_PLAY_MEDIA, ID_QUOTE, ID_REFRESH, ID_REPLY,
 	ID_REPLY_AUTHOR, ID_RESET_TIMELINE_SOUND, ID_SEARCH, ID_SENT_TIMELINE, ID_SET_TIMELINE_SOUND, ID_TOGGLE_FOLLOW,
@@ -77,6 +77,12 @@ const ITEMS: &[Item] = &[
 	item(ID_FAVORITE, ActionId::Favorite, "&Favorite", "Favorite or unfavorite selected post"),
 	item(ID_BOOKMARK, ActionId::Bookmark, "&Bookmark", "Bookmark or unbookmark selected post"),
 	item(ID_BOOST, ActionId::Boost, "&Boost", "Boost or unboost selected post"),
+	item(
+		ID_MUTE_CONVERSATION,
+		ActionId::MuteConversation,
+		"M&ute Conversation",
+		"Stop or restart notifications from this post's conversation",
+	),
 	item(
 		ID_VIEW_USER_TIMELINE,
 		ActionId::OpenUserTimeline,
@@ -179,6 +185,7 @@ const POST_MENU: &[i32] = &[
 	ID_FAVORITE,
 	ID_BOOKMARK,
 	ID_BOOST,
+	ID_MUTE_CONVERSATION,
 ];
 
 const TIMELINES_MENU: &[i32] = &[
@@ -225,6 +232,7 @@ const CONTEXT_MENU: &[i32] = &[
 	ID_FAVORITE,
 	ID_BOOKMARK,
 	ID_BOOST,
+	ID_MUTE_CONVERSATION,
 	SEPARATOR,
 	ID_VIEW_POST,
 	ID_VIEW_THREAD,
@@ -256,6 +264,7 @@ pub struct PostMenuState {
 	favourited: bool,
 	reblogged: bool,
 	bookmarked: bool,
+	muted: bool,
 	pinned: bool,
 	is_direct: bool,
 	is_own: bool,
@@ -274,6 +283,7 @@ impl PostMenuState {
 			favourited: target.is_some_and(|t| t.favourited),
 			reblogged: target.is_some_and(|t| t.reblogged),
 			bookmarked: target.is_some_and(|t| t.bookmarked),
+			muted: target.is_some_and(|t| t.muted),
 			pinned: target.is_some_and(|t| t.pinned),
 			is_direct: target.is_some_and(|t| t.visibility == "direct"),
 			is_own: target.is_some_and(|t| Some(&t.account.id) == state.current_user_id.as_ref()),
@@ -309,6 +319,7 @@ impl PostMenuState {
 		match item.id {
 			ID_FAVORITE if self.favourited => "Un&favorite",
 			ID_BOOKMARK if self.bookmarked => "Un&bookmark",
+			ID_MUTE_CONVERSATION if self.muted => "Unm&ute Conversation",
 			ID_BOOST if self.reblogged => "Un&boost",
 			ID_PIN_POST if self.pinned => "&Unpin Post",
 			_ => item.label,
