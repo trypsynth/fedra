@@ -469,16 +469,7 @@ pub(super) fn toggle_follow(ctx: &mut UiCommandContext<'_>) {
 				acct: mention.full_acct(),
 				display_name: String::new(),
 				url: mention.url,
-				note: String::new(),
-				followers_count: 0,
-				following_count: 0,
-				statuses_count: 0,
-				fields: Vec::new(),
-				created_at: String::new(),
-				locked: false,
-				bot: false,
-				discoverable: None,
-				source: None,
+				..crate::mastodon::Account::default()
 			});
 		}
 	}

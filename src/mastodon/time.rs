@@ -14,6 +14,12 @@ pub(super) fn friendly_date(iso_time: &str) -> Option<String> {
 	Some(parsed.format("%B %Y").to_string())
 }
 
+/// A day such as "2026-11-15", as "Nov 15, 2026".
+pub(super) fn friendly_day(day: &str) -> Option<String> {
+	let parsed = chrono::NaiveDate::parse_from_str(day.trim(), "%Y-%m-%d").ok()?;
+	Some(parsed.format("%b %-d, %Y").to_string())
+}
+
 pub(super) fn friendly_time(iso_time: &str, format: TimestampFormat) -> Option<String> {
 	let trimmed = iso_time.trim();
 	if trimmed.is_empty() {

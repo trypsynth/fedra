@@ -57,8 +57,16 @@ pub fn append_relationship_text(text: &mut String, relationship: &Relationship, 
 	if relationship.blocking {
 		body.push_str("You have blocked this person.\r\n");
 	}
-	if relationship.muting {
-		body.push_str("You have muted this person.\r\n");
+	if relationship.blocked_by {
+		body.push_str("This person has blocked you.\r\n");
+	}
+	if relationship.muting && relationship.muting_notifications {
+		body.push_str("You have muted this person and their notifications.\r\n");
+	} else if relationship.muting {
+		body.push_str("You have muted this person, but not their notifications.\r\n");
+	}
+	if relationship.endorsed {
+		body.push_str("You feature this person on your profile.\r\n");
 	}
 	if relationship.domain_blocking {
 		body.push_str("You have blocked this person's domain.\r\n");
