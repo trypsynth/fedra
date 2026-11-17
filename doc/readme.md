@@ -532,32 +532,32 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 ## Changelog
 
 ### Version 0.9.0
-- Added a log of what Fedra does, in `fedra.log` beside your settings, to help with reporting problems. The new Advanced tab of the options sets how much it records, or turns it off.
+- A profile's relationship section now says when someone has blocked you, when you feature them on your profile, and whether your mute also hides their notifications.
+- Added a log, `fedra.log` in the same folder as your settings, to help with reporting problems. The new Advanced tab of the options sets how much it records, or turns it off.
 - Added builds for Intel Macs.
 - Added Followed Hashtags to the Options menu, to see the hashtags you follow and open, unfollow, or mute them.
 - Added Follower Analysis to the Options menu, to see who follows you that you don't follow, who you follow that doesn't follow you, who follows you back, and who you follow that hasn't posted in a year.
 - Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
-- Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. A mute that ends says when.
+- Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. For a mute with a time limit, the list shows when it ends.
 - Added Scheduled Posts to the Options menu, to see the posts you've scheduled and reschedule or delete them.
 - Added suggestions for hashtags as you type `#` in a post, the same way as for mentions.
 - Added View Edit History to the Post menu, to read every version of an edited post.
 - Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.
 - Closing a post, reply, or edit that you changed without sending it now asks first. You can turn this off on the Composing tab of the options.
-- `Enter` now opens whatever a post has: it votes in a poll, plays media, or opens a link, and asks which when the post has more than one, with the thread as one of the choices. On a post with none of these, it opens the thread. Open Links is still in the Post menu, without a default shortcut.
-- Every open timeline except Local and Federated now goes back to the post you were on when Fedra starts, not only the one you had open. With `Load older posts to find where you left off` on, the other timelines look for their place the first time you switch to them.
-- Fedra now uses both your Home and your Notifications positions from your server, whichever timeline was open when you exited.
+- `Enter` now opens whatever a post has: its poll, its media, or a link. When a post has more than one, Fedra asks which, and the thread is one of the choices. On a post with none, `Enter` opens the thread. Open Links is still in the Post menu, without a default shortcut.
 - Fixed a reply to your own post starting with a space.
 - Fixed Fedra sometimes staying open with no window after you exited it.
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
-- Posts now start in the default posting language from your account's settings, and you pick the language by name from the ones your instance offers, instead of typing a code.
+- New posts now start in the default posting language from your account's settings, and you choose a language by name from the ones your instance offers instead of typing a code.
 - Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
 - Starting Fedra while it's already running now brings its window to the front, instead of showing an error.
-- The media download dialog no longer shows a remaining time, which was always unknown.
+- The media download dialog no longer says that the time remaining is unknown.
 - The options now have tabs for General, Composing, Timelines, Display, Notifications, Templates, Filters, the invisible interface, and Advanced settings, and no tab uses the same access key twice. Customize Keyboard Shortcuts is now only in the Options menu.
-- The relationship part of a profile now says when someone has blocked you, when you feature them on your profile, and whether your mute hides their notifications.
 - The results of a poll that you voted in, or that has ended, now show in a text field that you can read line by line.
 - Times now follow your system's clock, so they show in 24-hour time if that's how your computer shows them.
 - Vote on Poll is now in the context menu, and the post details have a Vote button for posts with a poll.
+- When Fedra starts, every open timeline except Local and Federated now goes back to the post you were on, not only the timeline you had open. With `Load older posts to find where you left off` on, the other timelines look for their place the first time you switch to them.
+- When Fedra syncs your position with your server, it now restores both Home and Notifications, not only the timeline you had open.
 
 ### Version 0.8.0
 - A follow request is now answered with Accept, Reject, and Cancel buttons.
