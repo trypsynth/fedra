@@ -77,8 +77,9 @@ jobs:
       - name: Rebuild wxdragon-sys if its CMake output is missing
         shell: pwsh
         run: |
+          # Through cargo rather than by deleting its folders, whose layout changes between Cargo versions.
           if (-not (Test-Path target/debug/wxwidgets_cmake_build/libs/webview/packages)) {
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue target/debug/build/wxdragon-sys-*, target/debug/.fingerprint/wxdragon-sys-*
+            cargo clean -p wxdragon-sys
           }
       # Clippy runs first so the dependency tree is built once, in the same
       # profile the tests then reuse. Checking in release meant compiling
