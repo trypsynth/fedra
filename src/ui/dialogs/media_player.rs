@@ -16,7 +16,7 @@ use rodio::Source;
 use url::Url;
 use wx_utils::{
 	format_duration_seconds,
-	progress::{Ended, run_with_progress},
+	progress::{Ended, run_without_estimate},
 };
 use wxdragon::prelude::*;
 
@@ -322,7 +322,7 @@ fn download_to_user_file(frame: &Frame, url: &str) {
 	let url = url.to_string();
 	let target = *frame;
 	let work_path = path.clone();
-	run_with_progress(
+	run_without_estimate(
 		frame,
 		"Downloading Media",
 		"Downloading media...",
