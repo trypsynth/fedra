@@ -70,7 +70,7 @@ fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	Ok(artifacts)
 }
 
-/// A DMG for each architecture, which the updater picks by its own, and a universal one for anyone who doesn't know which Mac they have.
+/// A DMG for each architecture, the one the updater looks for on that Mac.
 #[cfg(target_os = "macos")]
 fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	use shipfitter::{
@@ -86,9 +86,6 @@ fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 		return Err("notarizing needs a signed app; set MACOS_CERTIFICATE_P12_BASE64 or MACOS_SIGN_IDENTITY".into());
 	}
 	let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-	for (target, _) in TARGETS {
-		run(Command::new(&cargo).current_dir(root).args(["build", "--release", "-p", "fedra", "--target", target]))?;
-	}
 	let version = crate_version(root, "fedra")?;
 	let app = MacApp {
 		name: "Fedra",
@@ -97,30 +94,27 @@ fn package(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 		version: &version,
 		..MacApp::default()
 	};
-	let target_dir = root.join("target/release");
-	fs::create_dir_all(&target_dir)?;
-	let slices = TARGETS.map(|(target, _)| root.join("target").join(target).join("release"));
-	let universal_exe = target_dir.join("fedra");
-	let inputs = slices.each_ref().map(|dir| dir.join("fedra"));
-	run(Command::new("lipo").arg("-create").args(&inputs).arg("-output").arg(&universal_exe))?;
-	// Both architectures build the same readme.
-	let readme_path = slices[0].join("readme.html");
-	let mut resources = Vec::new();
-	if readme_path.exists() {
-		resources.push(readme_path.as_path());
-	} else {
-		println!("Warning: readme.html not found, skipping.");
-	}
-	let builds = TARGETS.iter().zip(&slices).map(|((_, arch), dir)| (*arch, dir.clone(), dir.join("fedra")));
+	// Every DMG goes in one place, where the workflows pick them up.
+	let output_dir = root.join("target/release");
+	fs::create_dir_all(&output_dir)?;
 	let mut artifacts = Vec::new();
-	for (arch, dir, exe) in builds.chain([("universal", target_dir.clone(), universal_exe)]) {
-		let bundle = app.bundle(&dir, &exe, &[], &resources)?;
+	for (target, arch) in TARGETS {
+		run(Command::new(&cargo).current_dir(root).args(["build", "--release", "-p", "fedra", "--target", target]))?;
+		let target_dir = root.join("target").join(target).join("release");
+		let readme_path = target_dir.join("readme.html");
+		let mut resources = Vec::new();
+		if readme_path.exists() {
+			resources.push(readme_path.as_path());
+		} else {
+			println!("Warning: readme.html not found, skipping.");
+		}
+		let bundle = app.bundle(&target_dir, &target_dir.join("fedra"), &[], &resources)?;
 		match &signer {
 			Some(signer) => sign_bundle(&bundle, &[], signer)?,
 			None => println!("No signing certificate, so the app keeps its ad hoc signature."),
 		}
 		println!("Built app: {}", bundle.display());
-		let dmg_path = target_dir.join(format!("fedra-{arch}.dmg"));
+		let dmg_path = output_dir.join(format!("fedra-{arch}.dmg"));
 		dmg(&bundle, &dmg_path)?;
 		println!("Created DMG: {}", dmg_path.display());
 		if let Some(notary) = &notary {

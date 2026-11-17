@@ -127,7 +127,7 @@ jobs:
       run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/wxWidgets/wxWidgets.git
     - name: Build, sign, and notarize
       # notarytool waits on Apple with no limit of its own, so without this the step could sit until the job's 6-hour limit.
-      # It builds wxWidgets for both architectures and notarizes three disk images.
+      # It builds wxWidgets and notarizes a disk image for each architecture.
       timeout-minutes: 120
       env:
         WXWIDGETS_DIR: ${{ github.workspace }}/wxWidgets
@@ -138,9 +138,6 @@ jobs:
         MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
         MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
       run: cargo release
-    # No Intel Mac runs this job, so this is the check that the universal app has the Intel half at all.
-    - name: Check the universal app has both architectures
-      run: lipo target/release/Fedra.app/Contents/MacOS/fedra -verify_arch arm64 x86_64
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
@@ -150,8 +147,6 @@ jobs:
           target/release/fedra-arm64.dmg.minisig
           target/release/fedra-x64.dmg
           target/release/fedra-x64.dmg.minisig
-          target/release/fedra-universal.dmg
-          target/release/fedra-universal.dmg.minisig
         retention-days: 90
   release:
     name: Publish release
