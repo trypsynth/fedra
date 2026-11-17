@@ -41,7 +41,9 @@ jobs:
       with:
         toolchain: stable
         components: rustfmt, clippy
+    # The x64 runner has CMake, and the MSVC step puts Visual Studio's Ninja on the PATH.
     - name: Install CMake and Ninja
+      if: matrix.arch == 'arm64'
       run: |
         choco install cmake ninja -y
     # Fedra builds against wxWidgets master for fixes that aren't in a release yet.
@@ -59,6 +61,32 @@ jobs:
     - name: Clone wxWidgets master
       if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
       run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/wxWidgets/wxWidgets.git
+    # wxWidgets is built by wxdragon-sys, so only its locked version decides whether a cached build still fits.
+    - name: Find the locked wxdragon-sys
+      id: wxdragon
+      shell: bash
+      run: echo "hash=$(awk '/^name = "wxdragon-sys"/{f=1} f&&/^$/{exit} f' Cargo.lock | grep -E '^(version|source|checksum) ' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        # Shared with the other workflow, so a release build starts from the last build on main.
+        shared-key: release-windows-${{ matrix.arch }}
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    # After the Rust cache, since post steps run in reverse: this one saves before rust-cache's cleanup would drop it.
+    - name: Cache wxWidgets build
+      uses: actions/cache@v6
+      with:
+        path: |
+          target/release/wxwidgets_cmake_build
+          target/release/wxdragon_sys_cmake_build
+        key: wx-cmake-release-${{ runner.os }}-${{ matrix.arch }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}
+    # A hit on the Rust cache with a miss on this one would leave wxdragon-sys counted as built with its libraries gone.
+    - name: Rebuild wxdragon-sys if its CMake output is missing
+      shell: pwsh
+      run: |
+        if (-not (Test-Path target/release/wxwidgets_cmake_build/libs/webview/packages)) {
+          cargo clean --release -p wxdragon-sys
+        }
     - name: Build and sign
       env:
         WXWIDGETS_DIR: ${{ github.workspace }}/wxWidgets
@@ -109,6 +137,33 @@ jobs:
     - name: Clone wxWidgets master
       if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
       run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/wxWidgets/wxWidgets.git
+    # wxWidgets is built by wxdragon-sys, so only its locked version decides whether a cached build still fits.
+    - name: Find the locked wxdragon-sys
+      id: wxdragon
+      shell: bash
+      run: echo "hash=$(awk '/^name = "wxdragon-sys"/{f=1} f&&/^$/{exit} f' Cargo.lock | grep -E '^(version|source|checksum) ' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        # Shared with the other workflow, so a release build starts from the last build on main.
+        shared-key: release-macos
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    # After the Rust cache, since post steps run in reverse: this one saves before rust-cache's cleanup would drop it.
+    - name: Cache wxWidgets build
+      uses: actions/cache@v6
+      with:
+        path: |
+          target/aarch64-apple-darwin/release/wxwidgets_cmake_build
+          target/aarch64-apple-darwin/release/wxdragon_sys_cmake_build
+          target/x86_64-apple-darwin/release/wxwidgets_cmake_build
+          target/x86_64-apple-darwin/release/wxdragon_sys_cmake_build
+        key: wx-cmake-release-${{ runner.os }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}
+    # A hit on the Rust cache with a miss on this one would leave wxdragon-sys counted as built with its libraries gone.
+    - name: Rebuild wxdragon-sys if its CMake output is missing
+      run: |
+        for target in aarch64-apple-darwin x86_64-apple-darwin; do
+          test -d target/$target/release/wxwidgets_cmake_build || cargo clean --release -p wxdragon-sys --target $target
+        done
     - name: Build, sign, and notarize
       # notarytool waits on Apple with no limit of its own, so without this the step could sit until the job's 6-hour limit.
       # It builds wxWidgets and notarizes a disk image for each architecture.
