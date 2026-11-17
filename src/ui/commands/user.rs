@@ -183,7 +183,7 @@ fn add_role<'a>(involved: &mut Vec<(&'a Account, Vec<&'static str>)>, account: &
 pub(super) fn open_user_timeline_by_input(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	let suggestions: Vec<String> =
-		dialogs::timeline_people(state).iter().map(|person| format!("@{}", person.acct)).collect();
+		dialogs::timeline_people(state).iter().map(|person| format!("@{}", person.text)).collect();
 	let default_value = get_selected_entry(state).and_then(|entry| match entry {
 		TimelineEntry::Status(status) => Some(status.account.full_acct()),
 		TimelineEntry::Notification(notification) => Some(notification.account.full_acct()),
@@ -567,7 +567,7 @@ pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Accou
 		return;
 	}
 	let max_media_description_chars = state.max_media_description_chars;
-	let mention_source = dialogs::MentionSource::from_state(state);
+	let mention_source = dialogs::SuggestionSource::from_state(state);
 	deferred::dialog_some(
 		ctx,
 		move |frame| {

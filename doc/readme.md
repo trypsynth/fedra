@@ -122,6 +122,13 @@ The dialog has these controls:
 
 If `Use enter to send posts` is on, press `Enter` in the content field to post. If it is off, use the Post button.
 
+### Suggestions for Mentions and Hashtags
+When you type `@` in the post text, Fedra suggests people: first the people in the current timeline, then the people your instance finds as you type more. When you type `#`, Fedra suggests hashtags in the same way, with how many people used each one in the past 2 days when your instance knows. Fedra reads the highlighted suggestion, and focus stays in the post text.
+
+- `Up` and `Down` move through the suggestions.
+- `Enter` or `Tab` adds the highlighted suggestion and a space.
+- `Escape` closes the suggestions. `Ctrl+Space` opens them again.
+
 ## Options
 To open the options, press `Ctrl+,`.
 

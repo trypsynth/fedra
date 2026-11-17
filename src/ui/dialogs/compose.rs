@@ -6,7 +6,7 @@ use wxdragon::{event::KeyboardEvent, prelude::*};
 
 use super::{
 	common::show_warning,
-	mentions::{MentionCompleter, MentionSource},
+	completion::{Completer, SuggestionSource},
 };
 use crate::{
 	config::{Config, ContentWarningDisplay},
@@ -881,7 +881,7 @@ pub fn prompt_for_compose(
 	config: ComposeDialogConfig,
 	initial_media: Vec<PostMedia>,
 	initial_poll: Option<PostPoll>,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	const ID_CUSTOM_SUBMIT: i32 = 26001;
 	let max_chars = max_chars.unwrap_or(DEFAULT_MAX_POST_CHARS);
@@ -1021,7 +1021,7 @@ pub fn prompt_for_compose(
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-	let (mentions, mention_timer) = MentionCompleter::new(dialog, panel, content_text, mention_list, mention_source);
+	let (mentions, mention_timer) = Completer::new(dialog, panel, content_text, mention_list, mention_source);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial_media));
 	let sensitive_state: Rc<RefCell<bool>> = Rc::new(RefCell::new(config.initial_sensitive));
 	let media_items_manage = media_items.clone();
@@ -1301,7 +1301,7 @@ pub fn prompt_for_post(
 	poll_limits: &PollLimits,
 	prefs: ComposePrefs,
 	default_visibility: Option<PostVisibility>,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	prompt_for_compose(
 		frame,
@@ -1336,7 +1336,7 @@ pub fn prompt_for_direct_message(
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	prefs: ComposePrefs,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = recipient.display_name_or_username();
 	prompt_for_compose(
@@ -1375,7 +1375,7 @@ pub fn prompt_for_reply(
 	self_acct: Option<&str>,
 	prefs: ComposePrefs,
 	initial_thread_mode: bool,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = replying_to.account.display_name_or_username();
 	let mention = reply_mentions(&replying_to.account, &replying_to.mentions, reply_all, self_acct);
@@ -1421,7 +1421,7 @@ pub fn prompt_for_edit(
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	prefs: ComposePrefs,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let default_visibility = match status.visibility.as_str() {
 		"unlisted" => PostVisibility::Unlisted,
@@ -1474,7 +1474,7 @@ pub fn prompt_for_quote(
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
 	prefs: ComposePrefs,
-	mention_source: MentionSource,
+	mention_source: SuggestionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = quoting.account.display_name_or_username();
 	let default_visibility = match quoting.visibility.as_str() {
