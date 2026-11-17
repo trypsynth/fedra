@@ -236,7 +236,7 @@ fn load_failed(
 	}
 	if loading_more {
 		tracing::warn!(timeline = timeline_type.display_name(), error = format!("{err:#}"), "couldn't load more posts");
-		ctx.announce("Failed to load more posts");
+		ctx.announce_error("Failed to load more posts");
 	} else {
 		tracing::warn!(timeline = timeline_type.display_name(), "couldn't load timeline");
 		ctx.announce_failure("Failed to load timeline", err);
@@ -351,7 +351,7 @@ pub(super) fn search_failed(
 		timeline.loading_more = false;
 	}
 	tracing::warn!(?search_type, error = format!("{err:#}"), "search failed");
-	ctx.announce(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
+	ctx.announce_error(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
 }
 
 /// Folds freshly fetched copies of a post into every timeline that already

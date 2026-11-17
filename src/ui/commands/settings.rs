@@ -30,11 +30,16 @@ fn apply_options(ctx: &mut UiCommandContext<'_>, options: dialogs::OptionsDialog
 	let streaming_changed = before.timelines.streaming != options.timelines.streaming;
 	let refresh_changed = before.timelines.refresh_minutes != options.timelines.refresh_minutes;
 	let hotkeys_changed = before.invisible.global_keys != options.invisible.global_keys;
+	let soundpack_changed = before.notifications.soundpack != options.notifications.soundpack;
 	if before.advanced.log_level != options.advanced.log_level {
 		tracing::info!(from = %before.advanced.log_level, to = %options.advanced.log_level, "log level changed");
 		logkeeper::set_level(options.advanced.log_level);
 	}
 	options.save(&mut state.config);
+	if soundpack_changed {
+		// So the new pack can be heard right away.
+		crate::soundpack::play(state, crate::soundpack::SoundEvent::Start);
+	}
 	if streaming_changed {
 		apply_streaming_setting(state);
 	}

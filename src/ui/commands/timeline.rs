@@ -22,6 +22,7 @@ use crate::{
 	responses::{
 		self, fetch_notification_policy, fill_in_profile, lists, look_up, relationship_updated, statuses, timelines,
 	},
+	soundpack::{self, SoundEvent},
 	timeline::{TimelineEntry, TimelineType},
 	ui::{
 		dialogs,
@@ -99,6 +100,7 @@ pub(super) fn open_timeline(
 	if let Some(mb) = frame.get_menu_bar() {
 		update_menu_labels(&mb, state);
 	}
+	soundpack::play(state, SoundEvent::OpenTimeline);
 }
 
 /// Closes the current timeline if it's closeable.
@@ -141,6 +143,7 @@ pub(super) fn close_timeline(
 	});
 	state.redraw_active_timeline(timeline_list, suppress_selection);
 	update_window_title(state, frame);
+	soundpack::play(state, SoundEvent::CloseTimeline);
 }
 
 pub(super) fn refresh(ctx: &mut UiCommandContext<'_>) {
@@ -276,7 +279,7 @@ pub(super) fn set_sound(ctx: &mut UiCommandContext<'_>) {
 			account.timeline_sounds.push(TimelineSound { timeline: active_type, path: path.clone() });
 			let _ = state.save_config();
 			ctx.live_region.announce("Sound set");
-			crate::notifications::play_sound(state.notification_sound.as_ref(), Some(&path));
+			crate::notifications::play_sound(state.notification_sound.as_ref(), Some(&path), state.config.sound_volume);
 		},
 	);
 }
@@ -426,6 +429,12 @@ pub(super) fn timeline_entry_selection_changed(ctx: &mut UiCommandContext<'_>, i
 		active.selected_index = Some(index);
 		active.selected_id = list_index_to_entry_index(index, active.entries.len(), effective_sort_order)
 			.map(|entry_index| active.entries[entry_index].id().to_string());
+	}
+	if get_selected_status(state).is_some_and(|status| {
+		let status = status.reblog.as_deref().unwrap_or(status);
+		!status.media_attachments.is_empty()
+	}) {
+		soundpack::play(state, SoundEvent::Media);
 	}
 	if let Some(mb) = frame.get_menu_bar() {
 		update_menu_labels(&mb, state);
