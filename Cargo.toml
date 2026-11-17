@@ -36,8 +36,8 @@ ship-shape = "0.6.0"
 tracing = "0.1.44"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
 url = "2.5.8"
-wx-utils = { version = "0.5.0", features = ["global-hotkeys", "shortcuts", "tasks"] }
-wxdragon = { version = "0.9.24", default-features = false, features = ["webview"] }
+wx-utils = { version = "0.5.2", features = ["global-hotkeys", "shortcuts", "tasks"] }
+wxdragon = { version = "0.9.25", default-features = false, features = ["webview"] }
 
 [target.'cfg(windows)'.dependencies]
 accesskit_windows = "0.35.1"
@@ -54,11 +54,6 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 
 [build-dependencies]
 shipfitter = { version = "0.2.5", features = ["docs", "windows-resources"] }
-
-# Until a wxDragon release has Event::event_object_ptr, which wx-utils' tasks need.
-[patch.crates-io]
-wx-utils = { git = "https://github.com/accessware/wx-utils", rev = "e62e956" }
-wxdragon = { git = "https://github.com/AllenDang/wxDragon", rev = "1d56121" }
 
 [profile.release]
 strip = true
