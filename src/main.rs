@@ -11,6 +11,7 @@
 mod accounts;
 mod audio;
 mod auth;
+mod clock;
 mod config;
 mod html;
 mod mastodon;

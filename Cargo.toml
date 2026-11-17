@@ -50,6 +50,7 @@ doorbell = "0.1.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 block = "0.1.6"
 objc = "0.2.7"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSDate", "NSDateFormatter", "NSFormatter", "NSLocale", "NSString"] }
 
 [build-dependencies]
 shipfitter = { version = "0.2.5", features = ["docs", "windows-resources"] }

@@ -214,7 +214,7 @@ Fedra renders the template for each entry each time it shows a timeline. If a te
 | `{{ content }}` | Post text without HTML. Uses the Content warnings setting. |
 | `{{ content_warning }}` | Content warning text, or empty |
 | `{{ relative_time }}` | Relative time, for example `2 hours ago` |
-| `{{ absolute_time }}` | Local date and time, for example `Feb 17, 2026 at 2:30 PM` |
+| `{{ absolute_time }}` | Local date and time, with the time shown the way your system shows it, for example `Feb 17, 2026 at 2:30 PM` or `Feb 17, 2026 at 14:30` |
 | `{{ visibility }}` | `Public`, `Unlisted`, `Followers only`, or `Direct` |
 | `{{ reply_count }}` | For example, `3 replies` |
 | `{{ boost_count }}` | For example, `1 boost` |

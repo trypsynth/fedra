@@ -744,6 +744,7 @@ dependencies = [
  "logkeeper",
  "minijinja",
  "objc",
+ "objc2-foundation",
  "prismer",
  "quiet-list",
  "reqwest",

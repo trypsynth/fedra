@@ -3,7 +3,7 @@
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::HumanTime;
 
-use crate::config::TimestampFormat;
+use crate::{clock::time_of_day, config::TimestampFormat};
 
 pub(super) fn friendly_date(iso_time: &str) -> Option<String> {
 	let trimmed = iso_time.trim();
@@ -27,7 +27,7 @@ pub(super) fn friendly_time(iso_time: &str, format: TimestampFormat) -> Option<S
 		}
 		TimestampFormat::Absolute => {
 			let local: DateTime<Local> = parsed.into();
-			Some(local.format("%b %d, %Y at %l:%M %p").to_string())
+			Some(format!("{} at {}", local.format("%b %-d, %Y"), time_of_day(local)))
 		}
 	}
 }
