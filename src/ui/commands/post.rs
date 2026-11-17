@@ -684,12 +684,12 @@ enum OpenTarget {
 }
 
 /// Does what the selected post has: votes in its poll, plays its media, or opens its link, or asks which when it has
-/// more than one, so the user needn't remember which key does what for which post.
+/// more than one, so the user needn't remember which key does what for which post. With none of those, or on an
+/// entry that isn't a post, it opens the thread, profile, or timeline as View Thread does.
 pub(super) fn open_post(ctx: &mut UiCommandContext<'_>) {
 	let state = &*ctx.state;
-	let live_region = ctx.live_region;
 	let Some(status) = get_selected_status(state) else {
-		live_region.announce("No post selected");
+		handle_ui_command(UiCommand::ViewThread, ctx);
 		return;
 	};
 	let target = status.reblog.as_deref().unwrap_or(status);
@@ -715,13 +715,14 @@ pub(super) fn open_post(ctx: &mut UiCommandContext<'_>) {
 	let only_link_but_asked =
 		state.config.always_show_link_dialog && matches!(choices.as_slice(), [(_, OpenTarget::Link(_))]);
 	match choices.len() {
-		0 => live_region.announce("Nothing to open in this post"),
+		0 => handle_ui_command(UiCommand::ViewThread, ctx),
 		1 if !only_link_but_asked => {
 			if let Some((_, target)) = choices.pop() {
 				open_target(ctx, target);
 			}
 		}
 		_ => {
+			choices.push(("View thread".to_string(), OpenTarget::Command(UiCommand::ViewThread)));
 			let options: Vec<dialogs::OpenChoice> = choices
 				.iter()
 				.map(|(label, target)| dialogs::OpenChoice {
