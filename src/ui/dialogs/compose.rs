@@ -9,7 +9,7 @@ use super::{
 	mentions::{MentionCompleter, MentionSource},
 };
 use crate::{
-	config::ContentWarningDisplay,
+	config::{Config, ContentWarningDisplay},
 	mastodon::{PollLimits, Status},
 	ui::{keys, spell_check},
 };
@@ -62,19 +62,32 @@ pub struct PostResult {
 	pub continue_thread: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostMedia {
 	pub path: String,
 	pub description: Option<String>,
 	pub is_existing: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostPoll {
 	pub options: Vec<String>,
 	pub expires_in: u32,
 	pub multiple: bool,
 	pub hide_totals: bool,
+}
+
+/// The user's settings for every compose window.
+#[derive(Debug, Clone, Copy)]
+pub struct ComposePrefs {
+	pub enter_to_send: bool,
+	pub confirm_discard: bool,
+}
+
+impl ComposePrefs {
+	pub const fn from_config(config: &Config) -> Self {
+		Self { enter_to_send: config.enter_to_send, confirm_discard: config.confirm_discard }
+	}
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -864,7 +877,7 @@ pub fn prompt_for_compose(
 	frame: &Frame,
 	max_chars: Option<usize>,
 	poll_limits: &PollLimits,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	config: ComposeDialogConfig,
 	initial_media: Vec<PostMedia>,
 	initial_poll: Option<PostPoll>,
@@ -877,6 +890,9 @@ pub fn prompt_for_compose(
 	let initial_content = config.initial_content.clone();
 	let initial_cw = config.initial_cw.clone();
 	let default_visibility = config.default_visibility;
+	let enter_to_send = prefs.enter_to_send;
+	let discard_title = title_prefix.clone();
+	let (opened_media, opened_poll) = (initial_media.clone(), initial_poll.clone());
 	let dialog =
 		Dialog::builder(frame, &format!("{title_prefix} - 0 of {max_chars} characters")).with_size(700, 560).build();
 	let panel = Panel::builder(&dialog).build();
@@ -1212,7 +1228,25 @@ pub fn prompt_for_compose(
 	if !initial_content.is_empty() {
 		content_text.set_insertion_point_end();
 	}
-	let result = dialog.show_modal();
+	let unsent = || {
+		let cw = if cw_checkbox.get_value() { cw_text.get_value() } else { String::new() };
+		content_text.get_value().trim() != initial_content.trim()
+			|| cw.trim() != initial_cw.as_deref().unwrap_or_default().trim()
+			|| *media_items.borrow() != opened_media
+			|| *poll_state.borrow() != opened_poll
+	};
+	// Every way out but sending ends the modal loop the same way, so asking here covers Cancel, Escape and closing
+	// the window alike. Showing it again keeps everything as it was.
+	let result = loop {
+		let result = dialog.show_modal();
+		if result == ID_OK
+			|| !prefs.confirm_discard
+			|| !unsent()
+			|| wx_utils::confirm(&dialog, "Discard your changes?", &discard_title)
+		{
+			break result;
+		}
+	};
 	spell_check::detach(&content_text);
 	spell_check::detach(&cw_text);
 	mention_timer.stop();
@@ -1265,7 +1299,7 @@ pub fn prompt_for_post(
 	max_chars: Option<usize>,
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	default_visibility: Option<PostVisibility>,
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
@@ -1273,7 +1307,7 @@ pub fn prompt_for_post(
 		frame,
 		max_chars,
 		poll_limits,
-		enter_to_send,
+		prefs,
 		ComposeDialogConfig {
 			title_prefix: "Post".to_string(),
 			ok_label: "Post".to_string(),
@@ -1301,7 +1335,7 @@ pub fn prompt_for_direct_message(
 	max_chars: Option<usize>,
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = recipient.display_name_or_username();
@@ -1309,7 +1343,7 @@ pub fn prompt_for_direct_message(
 		frame,
 		max_chars,
 		poll_limits,
-		enter_to_send,
+		prefs,
 		ComposeDialogConfig {
 			title_prefix: format!("Direct Message to {author}"),
 			ok_label: "Post".to_string(),
@@ -1339,7 +1373,7 @@ pub fn prompt_for_reply(
 	poll_limits: &PollLimits,
 	reply_all: bool,
 	self_acct: Option<&str>,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	initial_thread_mode: bool,
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
@@ -1385,7 +1419,7 @@ pub fn prompt_for_reply(
 		frame,
 		max_chars,
 		poll_limits,
-		enter_to_send,
+		prefs,
 		ComposeDialogConfig {
 			title_prefix: format!("Reply to {author}"),
 			ok_label: "Post".to_string(),
@@ -1414,7 +1448,7 @@ pub fn prompt_for_edit(
 	max_chars: Option<usize>,
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let default_visibility = match status.visibility.as_str() {
@@ -1439,7 +1473,7 @@ pub fn prompt_for_edit(
 		frame,
 		max_chars,
 		poll_limits,
-		enter_to_send,
+		prefs,
 		ComposeDialogConfig {
 			title_prefix: "Edit Post".to_string(),
 			ok_label: "Save".to_string(),
@@ -1467,7 +1501,7 @@ pub fn prompt_for_quote(
 	max_chars: Option<usize>,
 	max_media_description_chars: Option<usize>,
 	poll_limits: &PollLimits,
-	enter_to_send: bool,
+	prefs: ComposePrefs,
 	mention_source: MentionSource,
 ) -> Option<(PostResult, ComposeDialogConfig)> {
 	let author = quoting.account.display_name_or_username();
@@ -1482,7 +1516,7 @@ pub fn prompt_for_quote(
 		frame,
 		max_chars,
 		poll_limits,
-		enter_to_send,
+		prefs,
 		ComposeDialogConfig {
 			title_prefix: format!("Quote {author}"),
 			ok_label: "Post".to_string(),

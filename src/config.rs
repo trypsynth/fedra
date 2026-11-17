@@ -30,6 +30,9 @@ pub struct Config {
 	pub active_account_id: Option<String>,
 	#[serde(default = "default_enter_to_send")]
 	pub enter_to_send: bool,
+	/// Ask before closing a compose window would lose what's in it.
+	#[serde(default = "default_true")]
+	pub confirm_discard: bool,
 	#[serde(default = "default_always_show_link_dialog")]
 	pub always_show_link_dialog: bool,
 	#[serde(default = "default_show_link_previews")]
@@ -1155,6 +1158,7 @@ impl Default for Config {
 			accounts: Vec::new(),
 			active_account_id: None,
 			enter_to_send: true,
+			confirm_discard: true,
 			always_show_link_dialog: false,
 			show_link_previews: false,
 			quick_action_keys: false,

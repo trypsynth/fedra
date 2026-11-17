@@ -135,6 +135,7 @@ To change keyboard shortcuts, use `Options -> Customize Keyboard Shortcuts...` i
 
 ### Composing Tab
 - `Use enter to send posts`
+- `Ask before discarding a post`: when you close a post, reply, or edit that you've changed without sending it, Fedra asks before throwing the changes away. This covers Cancel, `Escape`, and closing the window.
 - `Check spelling in the post box`: on Windows only. `F7` moves to the next misspelled word.
 - `Say when a word you type is misspelled`: on Windows only.
 - Spelling language: on Windows only. `Windows default` uses the language of Windows.

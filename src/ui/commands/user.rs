@@ -556,8 +556,12 @@ pub(super) fn set_alias(ctx: &mut UiCommandContext<'_>, account: &Account) {
 
 pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Account) {
 	let state = &mut *ctx.state;
-	let (has_account, max_post_chars, poll_limits, enter_to_send) =
-		(state.active_account().is_some(), state.max_post_chars, state.poll_limits.clone(), state.config.enter_to_send);
+	let (has_account, max_post_chars, poll_limits, compose_prefs) = (
+		state.active_account().is_some(),
+		state.max_post_chars,
+		state.poll_limits.clone(),
+		dialogs::ComposePrefs::from_config(&state.config),
+	);
 	if !has_account {
 		ctx.live_region.announce("No account configured");
 		return;
@@ -573,7 +577,7 @@ pub(super) fn send_direct_message(ctx: &mut UiCommandContext<'_>, account: Accou
 				max_post_chars,
 				max_media_description_chars,
 				&poll_limits,
-				enter_to_send,
+				compose_prefs,
 				mention_source,
 			)
 		},
