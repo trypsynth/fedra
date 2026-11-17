@@ -77,8 +77,7 @@ impl MastodonClient {
 			params.push(("poll[multiple]".to_string(), poll.multiple.to_string()));
 			params.push(("poll[hide_totals]".to_string(), poll.hide_totals.to_string()));
 		}
-		let response =
-			self.http.post(url).bearer_auth(access_token).form(&params).send().context("Failed to post status")?;
+		let response = Self::send(self.http.post(url).bearer_auth(access_token).form(&params), "post status")?;
 		let status = response.status();
 		if !status.is_success() {
 			let body = response.text().unwrap_or_default();
@@ -96,6 +95,7 @@ impl MastodonClient {
 			} else {
 				format!("HTTP status {status}: {detail}")
 			};
+			tracing::warn!(detail, "instance rejected the post");
 			anyhow::bail!("Instance rejected status post ({detail})");
 		}
 		let submission: PostSubmission = response.json().context("Invalid status response")?;
@@ -112,8 +112,7 @@ impl MastodonClient {
 			let normalized = description.replace("\r\n", "\n");
 			form = form.text("description", normalized);
 		}
-		let response =
-			self.http.post(url).bearer_auth(access_token).multipart(form).send().context("Failed to upload media")?;
+		let response = Self::send(self.http.post(url).bearer_auth(access_token).multipart(form), "upload media")?;
 		let status = response.status();
 		let response = response.error_for_status().context("Instance rejected media upload")?;
 		let payload: MediaResponse = response.json().context("Invalid media upload response")?;
@@ -129,12 +128,8 @@ impl MastodonClient {
 		for attempt in 0..60 {
 			let delay = cmp::min(1 + attempt, 5);
 			thread::sleep(Duration::from_secs(delay));
-			let response = self
-				.http
-				.get(url.clone())
-				.bearer_auth(access_token)
-				.send()
-				.context("Failed to check media processing status")?;
+			let response =
+				Self::send(self.http.get(url.clone()).bearer_auth(access_token), "check media processing status")?;
 			match response.status() {
 				StatusCode::OK => return Ok(()),
 				StatusCode::PARTIAL_CONTENT => {}
@@ -143,6 +138,7 @@ impl MastodonClient {
 				}
 			}
 		}
+		tracing::warn!(media_id, "gave up waiting for the instance to process media");
 		anyhow::bail!("Media processing timed out")
 	}
 

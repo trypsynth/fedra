@@ -80,6 +80,7 @@ pub(super) fn open_timeline(
 		live_region.announce("Timeline already open");
 		return;
 	}
+	tracing::info!(timeline = timeline_type.display_name(), "opened timeline");
 	selector.append(&timeline_type.display_name());
 	let new_index = state.timeline_manager.len() - 1;
 	state.timeline_manager.set_active(new_index);
@@ -124,6 +125,7 @@ pub(super) fn close_timeline(
 	if !state.timeline_manager.close(&active_type) {
 		return;
 	}
+	tracing::info!(timeline = active_type.display_name(), "closed timeline");
 	let _ = state.save_config();
 	let active_index = state.timeline_manager.active_index();
 	let active_name = state.timeline_manager.display_names().get(active_index).cloned();

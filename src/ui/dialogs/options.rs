@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use logkeeper::Level;
 use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
@@ -94,6 +95,7 @@ pub struct OptionsDialogInput {
 	pub check_for_updates: bool,
 	pub start_maximized: bool,
 	pub update_channel: crate::config::UpdateChannel,
+	pub log_level: Level,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
 	pub streaming: bool,
@@ -131,6 +133,7 @@ pub struct OptionsDialogResult {
 	pub check_for_updates: bool,
 	pub start_maximized: bool,
 	pub update_channel: crate::config::UpdateChannel,
+	pub log_level: Level,
 	pub autoload: AutoloadMode,
 	pub fetch_limit: u8,
 	pub streaming: bool,
@@ -170,6 +173,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		check_for_updates,
 		start_maximized,
 		update_channel,
+		log_level,
 		autoload,
 		fetch_limit,
 		streaming,
@@ -229,6 +233,14 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	let channel_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 	channel_sizer.add(&channel_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
 	channel_sizer.add(&channel_choice, 1, SizerFlag::Expand, 0);
+	let log_level_label = StaticText::builder(&general_panel).with_label("Lo&g level:").build();
+	let log_level_choices = Level::ALL.iter().map(|level| log_level_name(*level).to_string()).collect();
+	let log_level_choice = Choice::builder(&general_panel).with_choices(log_level_choices).build();
+	let log_level_index = Level::ALL.iter().position(|level| *level == log_level).unwrap_or(0);
+	log_level_choice.set_selection(u32::try_from(log_level_index).unwrap_or(0));
+	let log_level_sizer = BoxSizer::builder(Orientation::Horizontal).build();
+	log_level_sizer.add(&log_level_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+	log_level_sizer.add(&log_level_choice, 1, SizerFlag::Expand, 0);
 	let notification_label = StaticText::builder(&general_panel).with_label("Notifications:").build();
 	let notification_choices =
 		vec!["Operating system notifications".to_string(), "Sound only".to_string(), "Disabled".to_string()];
@@ -259,6 +271,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	general_sizer.add(&update_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&maximized_checkbox, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&channel_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	general_sizer.add_sizer(&log_level_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add_sizer(&notification_sizer, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	general_sizer.add(&notification_types_button, 0, SizerFlag::Expand | SizerFlag::All, 8);
 	let spell_languages = spell_check::languages();
@@ -821,6 +834,8 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		Some(1) => crate::config::UpdateChannel::Dev,
 		_ => update_channel,
 	};
+	let new_log_level =
+		log_level_choice.get_selection().and_then(|i| Level::ALL.get(i as usize).copied()).unwrap_or(log_level);
 	let new_find_loading_mode = if find_load_checkbox.get_value() {
 		crate::config::FindLoadingMode::LoadOnNext
 	} else {
@@ -889,6 +904,7 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 		sync_read_position: sync_position_checkbox.get_value(),
 		load_older_to_restore: load_older_checkbox.get_value(),
 		update_channel: new_update_channel,
+		log_level: new_log_level,
 		autoload: new_autoload,
 		fetch_limit: new_fetch_limit,
 		streaming: streaming_checkbox.get_value(),
@@ -911,4 +927,15 @@ pub fn prompt_for_options(frame: &Frame, input: OptionsDialogInput) -> Option<Op
 	};
 	dialog.destroy();
 	Some(options)
+}
+
+const fn log_level_name(level: Level) -> &'static str {
+	match level {
+		Level::Off => "Off",
+		Level::Error => "Errors",
+		Level::Warn => "Warnings",
+		Level::Info => "Information",
+		Level::Debug => "Debug",
+		Level::Trace => "Trace (very large log)",
+	}
 }

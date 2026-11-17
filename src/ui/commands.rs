@@ -157,6 +157,104 @@ pub enum UiCommand {
 	PollStreamable,
 }
 
+impl UiCommand {
+	/// Just the variant, for the log: some commands carry a whole post, or the tokens from signing in.
+	const fn name(&self) -> &'static str {
+		match self {
+			Self::NewPost => "NewPost",
+			Self::Reply { .. } => "Reply",
+			Self::Quote => "Quote",
+			Self::DeletePost => "DeletePost",
+			Self::EditPost => "EditPost",
+			Self::CopyPost => "CopyPost",
+			Self::CopyPostLink => "CopyPostLink",
+			Self::Favorite => "Favorite",
+			Self::Bookmark => "Bookmark",
+			Self::Boost => "Boost",
+			Self::Pin => "Pin",
+			Self::Refresh => "Refresh",
+			Self::OpenTimeline(..) => "OpenTimeline",
+			Self::SentTimeline => "SentTimeline",
+			Self::OpenUserTimeline => "OpenUserTimeline",
+			Self::OpenUserTimelineByInput => "OpenUserTimelineByInput",
+			Self::OpenInstanceTimelineByInput => "OpenInstanceTimelineByInput",
+			Self::CloseTimeline => "CloseTimeline",
+			Self::TogglePermanentTimeline => "TogglePermanentTimeline",
+			Self::ToggleTimelineNotifications => "ToggleTimelineNotifications",
+			Self::SetTimelineSound => "SetTimelineSound",
+			Self::ResetTimelineSound => "ResetTimelineSound",
+			Self::ClearTimeline => "ClearTimeline",
+			Self::ClearAllTimelines => "ClearAllTimelines",
+			Self::TimelineSelectionChanged(..) => "TimelineSelectionChanged",
+			Self::TimelineEntrySelectionChanged(..) => "TimelineEntrySelectionChanged",
+			Self::ShowOptions => "ShowOptions",
+			Self::CustomizeShortcuts => "CustomizeShortcuts",
+			Self::ManageAccounts => "ManageAccounts",
+			Self::SwitchAccount(..) => "SwitchAccount",
+			Self::SwitchNextAccount => "SwitchNextAccount",
+			Self::SwitchPrevAccount => "SwitchPrevAccount",
+			Self::SwitchNextTimeline => "SwitchNextTimeline",
+			Self::SwitchPrevTimeline => "SwitchPrevTimeline",
+			Self::MoveTimelineLeft => "MoveTimelineLeft",
+			Self::MoveTimelineRight => "MoveTimelineRight",
+			Self::RemoveAccount(..) => "RemoveAccount",
+			Self::ViewProfile => "ViewProfile",
+			Self::ViewMentions => "ViewMentions",
+			Self::ViewHashtags => "ViewHashtags",
+			Self::ViewBoosts => "ViewBoosts",
+			Self::ViewFavorites => "ViewFavorites",
+			Self::HashtagDialogClosed => "HashtagDialogClosed",
+			Self::ProfileDialogClosed => "ProfileDialogClosed",
+			Self::FollowersDialogClosed => "FollowersDialogClosed",
+			Self::FollowingDialogClosed => "FollowingDialogClosed",
+			Self::ShowFollowList { .. } => "ShowFollowList",
+			Self::OpenAccount { .. } => "OpenAccount",
+			Self::OpenLinks => "OpenLinks",
+			Self::ViewInBrowser => "ViewInBrowser",
+			Self::PlayMedia => "PlayMedia",
+			Self::ViewThread => "ViewThread",
+			Self::ViewResolvedThread(..) => "ViewResolvedThread",
+			Self::PromptForQuote(..) => "PromptForQuote",
+			Self::ViewQuotedThread => "ViewQuotedThread",
+			Self::Vote => "Vote",
+			Self::LoadMore => "LoadMore",
+			Self::LoadMoreBackground => "LoadMoreBackground",
+			Self::ToggleContentWarning => "ToggleContentWarning",
+			Self::ToggleFollow => "ToggleFollow",
+			Self::ToggleWindowVisibility => "ToggleWindowVisibility",
+			Self::ShowWindow => "ShowWindow",
+			Self::Global(..) => "Global",
+			Self::SetQuickActionKeysEnabled(..) => "SetQuickActionKeysEnabled",
+			Self::SwitchTimelineByIndex(..) => "SwitchTimelineByIndex",
+			Self::OAuthResult { .. } => "OAuthResult",
+			Self::CancelAuth => "CancelAuth",
+			Self::EditProfile => "EditProfile",
+			Self::ViewHelp => "ViewHelp",
+			Self::ViewPost => "ViewPost",
+			Self::Search => "Search",
+			Self::CheckForUpdates => "CheckForUpdates",
+			Self::ManageFilters => "ManageFilters",
+			Self::MessageRequests => "MessageRequests",
+			Self::ManageLists => "ManageLists",
+			Self::ManageListsDialogClosed => "ManageListsDialogClosed",
+			Self::ManageListMembersDialogClosed => "ManageListMembersDialogClosed",
+			Self::OpenList => "OpenList",
+			Self::AddUserToList(..) => "AddUserToList",
+			Self::RemoveUserFromList(..) => "RemoveUserFromList",
+			Self::SendDirectMessage(..) => "SendDirectMessage",
+			Self::SetUserAlias(..) => "SetUserAlias",
+			Self::ContinueThread(..) => "ContinueThread",
+			Self::Find(..) => "Find",
+			Self::FindNext => "FindNext",
+			Self::FindPrev => "FindPrev",
+			Self::AppClosing => "AppClosing",
+			Self::ExitApp => "ExitApp",
+			Self::RecoverDraft => "RecoverDraft",
+			Self::PollStreamable => "PollStreamable",
+		}
+	}
+}
+
 /// Handles a UI command, updating state and UI as needed.
 /// The command a shortcut action runs. `None` for the two that need more than a command: Find
 /// asks for a query first, and toggling quick action keys changes state the key handler owns.
@@ -358,6 +456,17 @@ impl UiHandles {
 
 /// Handles a UI command, updating state and UI as needed.
 pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
+	// These come with every timer tick and arrow key, so they'd bury the rest at the debug level.
+	if matches!(
+		cmd,
+		UiCommand::PollStreamable
+			| UiCommand::TimelineEntrySelectionChanged(_)
+			| UiCommand::TimelineSelectionChanged(_)
+	) {
+		tracing::trace!(command = cmd.name(), "handling");
+	} else {
+		tracing::debug!(command = cmd.name(), "handling");
+	}
 	match cmd {
 		UiCommand::NewPost => post::new_post(ctx),
 		UiCommand::ContinueThread(status) => post::continue_thread(ctx, status),

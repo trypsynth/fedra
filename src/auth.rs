@@ -28,10 +28,13 @@ pub fn oauth_with_local_listener(client: &MastodonClient, app_name: &str) -> Res
 	let credentials = client.register_app(app_name, &redirect_uri)?;
 	let authorize_url = client.build_authorize_url(&credentials, &redirect_uri)?;
 	if !launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default) {
+		tracing::warn!("couldn't open the browser to sign in");
 		return Err(anyhow::anyhow!("Failed to open browser"));
 	}
+	tracing::info!(port = addr.port(), "waiting for the browser to finish signing in");
 	let code = wait_for_code(&listener, addr.port()).context("OAuth callback timeout")?;
 	let access_token = client.exchange_token(&credentials, &code, &redirect_uri)?;
+	tracing::info!("signed in through the browser");
 	Ok(OAuthResult { access_token, client_id: credentials.client_id, client_secret: credentials.client_secret })
 }
 
@@ -45,16 +48,26 @@ fn wait_for_code(listener: &TcpListener, port: u16) -> Option<String> {
 				let size = stream.read(&mut buffer).ok()?;
 				let request = String::from_utf8_lossy(&buffer[..size]);
 				let code = extract_code(&request, port);
+				if code.is_none() {
+					tracing::warn!("the sign-in callback had no code");
+				}
 				let _ = respond_ok(&mut stream);
 				return code;
 			}
 			Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
 				if start.elapsed() > LISTEN_TIMEOUT {
+					tracing::warn!(
+						secs = LISTEN_TIMEOUT.as_secs(),
+						"gave up waiting for the browser to finish signing in"
+					);
 					return None;
 				}
 				thread::sleep(Duration::from_millis(50));
 			}
-			Err(_) => return None,
+			Err(e) => {
+				tracing::warn!(error = %e, "the sign-in listener failed");
+				return None;
+			}
 		}
 	}
 }

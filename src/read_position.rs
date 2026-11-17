@@ -82,5 +82,7 @@ pub fn sync_before_exit(state: &AppState) {
 		}
 		let _ = done_tx.send(());
 	});
-	let _ = done_rx.recv_timeout(Duration::from_secs(2));
+	if done_rx.recv_timeout(Duration::from_secs(2)).is_err() {
+		tracing::warn!("exited before the reading positions were saved to the server");
+	}
 }

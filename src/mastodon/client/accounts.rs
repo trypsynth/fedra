@@ -46,7 +46,7 @@ impl MastodonClient {
 		if let Some(token) = access_token {
 			req = req.bearer_auth(token);
 		}
-		let response = req.send()?.error_for_status()?;
+		let response = Self::send(req, "fetch accounts")?.error_for_status()?;
 		let next_max_id = Self::next_max_id(&response);
 		let accounts: Vec<Account> = response.json()?;
 		Ok((accounts, next_max_id))
@@ -107,11 +107,7 @@ impl MastodonClient {
 		let base_url = Url::parse(&format!("https://{domain}/"))?;
 		let mut lookup_url = base_url.join("api/v1/accounts/lookup")?;
 		lookup_url.query_pairs_mut().append_pair("acct", acct);
-		let account: Account = self
-			.http
-			.get(lookup_url)
-			.send()
-			.context("Failed to lookup account on remote instance")?
+		let account: Account = Self::send(self.http.get(lookup_url), "look up an account on its home instance")?
 			.error_for_status()
 			.context("Could not find this account on their home instance")?
 			.json()

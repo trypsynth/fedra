@@ -32,10 +32,12 @@ pub type NetworkResponseContext<'a> = UiCommandContext<'a>;
 
 impl NetworkResponseContext<'_> {
 	fn announce(&self, message: &str) {
+		tracing::debug!(message, "announcing");
 		self.live_region.announce(message);
 	}
 
 	fn announce_failure(&self, prefix: &str, err: &anyhow::Error) {
+		tracing::warn!(error = format!("{err:#}"), "{prefix}");
 		self.announce(&spoken_failure(prefix, err));
 	}
 

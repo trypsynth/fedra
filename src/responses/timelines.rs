@@ -55,6 +55,12 @@ fn loaded(
 	data: TimelineData,
 	max_id: Option<&str>,
 ) {
+	let count = match &data {
+		TimelineData::Statuses(items, _) => items.len(),
+		TimelineData::Notifications(items, _) => items.len(),
+		TimelineData::Conversations(items, _) => items.len(),
+	};
+	tracing::debug!(timeline = timeline_type.display_name(), count, older = max_id.is_some(), "loaded timeline");
 	let mut should_find_next = false;
 	let mut should_find_prev = false;
 	let status_snapshots = {
@@ -231,8 +237,10 @@ fn load_failed(
 		timeline.loading_more = false;
 	}
 	if loading_more {
+		tracing::warn!(timeline = timeline_type.display_name(), error = format!("{err:#}"), "couldn't load more posts");
 		ctx.announce("Failed to load more posts");
 	} else {
+		tracing::warn!(timeline = timeline_type.display_name(), "couldn't load timeline");
 		ctx.announce_failure("Failed to load timeline", err);
 	}
 }
@@ -344,6 +352,7 @@ pub(super) fn search_failed(
 	if let Some(timeline) = ctx.state.timeline_manager.get_mut(&timeline_type) {
 		timeline.loading_more = false;
 	}
+	tracing::warn!(?search_type, error = format!("{err:#}"), "search failed");
 	ctx.announce(&format!("Search for '{query}' failed: {}", summarize_api_error(err)));
 }
 

@@ -87,8 +87,11 @@ pub fn start_streaming(
 	let (sender, receiver) = mpsc::channel();
 	let stop = Arc::new(AtomicBool::new(false));
 	let thread_stop = Arc::clone(&stop);
+	// Never log the URL, which carries the access token.
+	tracing::info!(timeline = timeline_type.display_name(), "starting stream");
 	thread::spawn(move || {
 		streaming_loop(&streaming_url, &timeline_type, &sender, &ui_waker, &thread_stop);
+		tracing::info!(timeline = timeline_type.display_name(), "stream stopped");
 	});
 	Some(StreamHandle { receiver, stop })
 }
@@ -111,17 +114,21 @@ fn streaming_loop(
 	let mut retry_count: u32 = 0;
 	let base_delay = Duration::from_secs(1);
 	let max_delay = Duration::from_secs(60);
-	loop {
-		if connect_and_stream(url, timeline_type, sender, ui_waker, &mut retry_count, stop) == Ok(()) {
-			// Receiver dropped or intentional shutdown.
-			break;
-		}
+	// Ok means the receiver was dropped or the stream was stopped on purpose.
+	while let Err(e) = connect_and_stream(url, timeline_type, sender, ui_waker, &mut retry_count, stop) {
 		retry_count += 1;
 		if !send_event(sender, ui_waker, StreamEvent::Disconnected(timeline_type.clone())) {
 			break;
 		}
 		let exp = retry_count.saturating_sub(1).min(6);
 		let delay = (base_delay * 2u32.pow(exp)).min(max_delay);
+		tracing::warn!(
+			timeline = timeline_type.display_name(),
+			error = e,
+			retry = retry_count,
+			delay_secs = delay.as_secs(),
+			"stream disconnected, so reconnecting"
+		);
 		thread::sleep(delay);
 		if stop.load(Ordering::Relaxed) {
 			break;
@@ -145,6 +152,7 @@ fn connect_and_stream(
 		client_tls_with_config(request, tcp, None, None).map_err(|e| format!("WebSocket connection failed: {e}"))?;
 	let mut last_message_at = Instant::now();
 	let mut last_ping_at = Instant::now().checked_sub(HEARTBEAT_INTERVAL).unwrap_or_else(Instant::now);
+	tracing::info!(timeline = timeline_type.display_name(), "stream connected");
 	if !send_event(sender, ui_waker, StreamEvent::Connected(timeline_type.clone())) {
 		return Ok(());
 	}
@@ -239,10 +247,12 @@ fn parse_payload<T: serde::de::DeserializeOwned>(
 	match serde_json::from_str(payload) {
 		Ok(value) => Some(value),
 		Err(e) => {
-			eprintln!(
-				"Failed to parse {event} payload for {}: {e}; payload: {:.400}",
-				timeline_type.display_name(),
-				payload
+			tracing::warn!(
+				event,
+				timeline = timeline_type.display_name(),
+				error = %e,
+				payload = format!("{payload:.400}"),
+				"couldn't parse a stream payload"
 			);
 			None
 		}
@@ -253,14 +263,16 @@ fn parse_stream_message(text: &str, timeline_type: &TimelineType) -> Option<Stre
 	let msg: StreamMessage = match serde_json::from_str(text) {
 		Ok(msg) => msg,
 		Err(e) => {
-			eprintln!(
-				"Failed to parse stream message for {}: {e}; message: {:.400}",
-				timeline_type.display_name(),
-				text
+			tracing::warn!(
+				timeline = timeline_type.display_name(),
+				error = %e,
+				message = format!("{text:.400}"),
+				"couldn't parse a stream message"
 			);
 			return None;
 		}
 	};
+	tracing::trace!(timeline = timeline_type.display_name(), event = msg.event, "stream event");
 	match msg.event.as_str() {
 		"update" => {
 			if matches!(timeline_type, TimelineType::Notifications | TimelineType::Mentions | TimelineType::Direct) {

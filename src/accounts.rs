@@ -41,6 +41,7 @@ pub fn continue_add_account_flow(frame: &Frame, ui_tx: &UiCommandSender, state: 
 			return;
 		}
 	};
+	tracing::info!(instance = instance_url.host_str(), "adding an account");
 	let instance_url_clone = instance_url;
 	let ui_tx_thread = ui_tx.clone();
 	thread::spawn(move || {
@@ -85,7 +86,10 @@ pub fn try_oob_oauth(
 			return None;
 		}
 	};
-	let _ = launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default);
+	tracing::info!("signing in by pasting a code instead");
+	if !launch_default_browser(authorize_url.as_str(), BrowserLaunchFlags::Default) {
+		tracing::warn!("couldn't open the browser to sign in");
+	}
 	let code = dialogs::prompt_for_oauth_code(frame, instance_url)?;
 	let access_token = match client.exchange_token(&credentials, &code, auth::OOB_REDIRECT_URI) {
 		Ok(token) => token,
@@ -140,8 +144,10 @@ pub fn switch_to_account(
 		let token = a.access_token.clone()?;
 		Some((url, token))
 	}) else {
+		tracing::warn!(account = active_id, "no usable account to switch to");
 		return;
 	};
+	tracing::info!(account = active_id, instance = url.host_str(), "switching to account");
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
 	// The previous account's limits don't apply here; the instance's own arrive with its info.

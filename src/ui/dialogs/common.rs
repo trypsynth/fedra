@@ -73,6 +73,7 @@ pub fn prompt_for_user_lookup(
 /// Every error dialog in the app is titled with the app name, so this wraps the wx-utils
 /// helper rather than having each of the two dozen call sites repeat it.
 pub fn show_error(parent: &dyn WxWidget, err: &anyhow::Error) {
+	tracing::error!(error = format!("{err:#}"), "showing an error");
 	wx_utils::show_error(parent, err, "Fedra");
 }
 

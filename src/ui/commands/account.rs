@@ -92,6 +92,7 @@ pub(super) fn remove_account(ctx: &mut UiCommandContext<'_>, id: String) {
 	let timeline_list = &ctx.timeline_list;
 	let suppress_selection = ctx.suppress_selection;
 	let is_active = state.config.active_account_id.as_ref() == Some(&id);
+	tracing::info!(account = id, is_active, "removing account");
 	state.config.accounts.retain(|a| a.id != id);
 	state.account_timelines.remove(&id);
 	state.account_cw_expanded.remove(&id);
@@ -142,7 +143,8 @@ pub(super) fn oauth_result(
 			account.client_secret = Some(res.client_secret);
 			finish_oauth(ctx, Some(account));
 		}
-		Err(_) => {
+		Err(e) => {
+			tracing::warn!(error = e, "signing in through the browser failed");
 			// Fall back to pasting a code, then to pasting a token.
 			deferred::dialog(
 				ctx,
@@ -165,6 +167,7 @@ pub(super) fn oauth_result(
 fn finish_oauth(ctx: &mut UiCommandContext<'_>, account: Option<Account>) {
 	if let Some(account) = account {
 		let id = account.id.clone();
+		tracing::info!(account = id, "added account");
 		ctx.state.config.accounts.push(account);
 		let _ = ctx.state.save_config();
 		handle_ui_command(UiCommand::SwitchAccount(id), ctx);
@@ -176,6 +179,7 @@ fn finish_oauth(ctx: &mut UiCommandContext<'_>, account: Option<Account>) {
 pub(super) fn cancel_auth(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
+	tracing::info!("signing in was cancelled");
 	if let Some(dialog) = state.pending_auth_dialog.take() {
 		dialog.destroy();
 	}

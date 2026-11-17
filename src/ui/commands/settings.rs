@@ -24,6 +24,7 @@ pub(super) fn show_options(ctx: &mut UiCommandContext<'_>) {
 		check_for_updates: state.config.check_for_updates_on_startup,
 		start_maximized: state.config.start_maximized,
 		update_channel: state.config.update_channel,
+		log_level: state.config.log_level,
 		autoload: state.config.autoload,
 		fetch_limit: state.config.fetch_limit,
 		streaming: state.config.streaming,
@@ -70,6 +71,7 @@ fn apply_options(ctx: &mut UiCommandContext<'_>, options: dialogs::OptionsDialog
 		check_for_updates,
 		start_maximized,
 		update_channel,
+		log_level,
 		autoload,
 		fetch_limit,
 		streaming,
@@ -115,6 +117,11 @@ fn apply_options(ctx: &mut UiCommandContext<'_>, options: dialogs::OptionsDialog
 	state.config.check_for_updates_on_startup = check_for_updates;
 	state.config.start_maximized = start_maximized;
 	state.config.update_channel = update_channel;
+	if state.config.log_level != log_level {
+		tracing::info!(from = %state.config.log_level, to = %log_level, "log level changed");
+		state.config.log_level = log_level;
+		logkeeper::set_level(log_level);
+	}
 	state.config.autoload = autoload;
 	state.config.fetch_limit = fetch_limit;
 	state.config.streaming = streaming;
@@ -204,6 +211,7 @@ pub fn register_hotkeys(state: &AppState, ui_tx: &UiCommandSender, live_region: 
 	let Some(shell) = &state.app_shell else { return };
 	let failed = shell.register_hotkeys(ui_tx.clone(), &state.config.shortcuts.global, state.config.global_keys);
 	if !failed.is_empty() {
+		tracing::warn!(shortcuts = failed.join(", "), "couldn't register global shortcuts another program is using");
 		live_region.announce(&format!("Another program is using {}", failed.join(", ")));
 	}
 }

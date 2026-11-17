@@ -20,9 +20,11 @@ pub fn run_update_check(frame: Frame, silent: bool, ui_tx: UiCommandSender) {
 			.with_install_kind(crate::config::home().kind().into())
 			.with_asset_suffix(if cfg!(target_arch = "aarch64") { "-arm64" } else { "-x64" }),
 	);
+	tracing::info!(channel = ?config.update_channel, automatic = silent, "checking for updates");
 	let trigger = if silent { CheckTrigger::Automatic } else { CheckTrigger::Manual };
 	// Quitting through the normal close saves the config and read positions, which ship-shape's own exit skips by leaving the main loop at once.
 	ship_shape::ui::run_update_check_with_exit_handler(updater_config, &frame, channel, trigger, move || {
+		tracing::info!("installing an update, so restarting");
 		crate::speech::speak("Installing the update. Fedra will restart.");
 		// A live region speaks on a later run-loop turn, so the window stays up long enough to say it.
 		thread::spawn(move || {

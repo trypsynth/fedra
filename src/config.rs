@@ -9,7 +9,8 @@ use std::{
 use anyhow::Result;
 use homeport::Homeport;
 pub use key_chord::KeyChord;
-use serde::{Deserialize, Deserializer, Serialize};
+use logkeeper::Level;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use url::Url;
 
@@ -70,6 +71,12 @@ pub struct Config {
 	pub start_maximized: bool,
 	#[serde(default)]
 	pub update_channel: UpdateChannel,
+	#[serde(
+		default = "default_log_level",
+		serialize_with = "serialize_log_level",
+		deserialize_with = "deserialize_log_level"
+	)]
+	pub log_level: Level,
 	/// The old single show/hide hotkey, from before it became the `ToggleWindow` global
 	/// shortcut. Only read so `ConfigStore::load` can carry a customized one over.
 	#[serde(default, rename = "hotkey", skip_serializing)]
@@ -1027,6 +1034,28 @@ const fn default_preserve_thread_order() -> bool {
 	true
 }
 
+pub const DEFAULT_LOG_LEVEL: Level = Level::Debug;
+
+const fn default_log_level() -> Level {
+	DEFAULT_LOG_LEVEL
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref, reason = "serde passes fields by reference")]
+fn serialize_log_level<S: Serializer>(level: &Level, serializer: S) -> Result<S::Ok, S::Error> {
+	serializer.serialize_str(level.as_str())
+}
+
+fn deserialize_log_level<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Level, D::Error> {
+	Ok(String::deserialize(deserializer)?.parse().unwrap_or(DEFAULT_LOG_LEVEL))
+}
+
+/// Read on its own before logging starts, which is before the rest of the config loads, so a config that fails to load is logged.
+pub fn log_level_from_disk() -> Level {
+	let contents = fs::read_to_string(config_path()).unwrap_or_default();
+	let config = serde_json::from_str::<Value>(&contents).unwrap_or_default();
+	config.get("log_level").and_then(Value::as_str).and_then(|name| name.parse().ok()).unwrap_or(DEFAULT_LOG_LEVEL)
+}
+
 const fn default_check_for_updates() -> bool {
 	true
 }
@@ -1129,6 +1158,7 @@ impl Default for Config {
 			check_for_updates_on_startup: true,
 			start_maximized: false,
 			update_channel: UpdateChannel::default(),
+			log_level: DEFAULT_LOG_LEVEL,
 			spell_check: true,
 			spell_check_announce: false,
 			spell_language: String::new(),
@@ -1229,12 +1259,25 @@ impl ConfigStore {
 	}
 
 	pub fn load(&self) -> Config {
-		let Ok(contents) = fs::read_to_string(&self.path) else { return Config::default() };
-		if let Ok(config) = serde_json::from_str::<Config>(&contents) {
-			return config.migrate_legacy_timelines().migrate_legacy_hotkey();
+		let contents = match fs::read_to_string(&self.path) {
+			Ok(contents) => contents,
+			Err(e) => {
+				tracing::info!(path = %self.path.display(), error = %e, "no config to load, so starting fresh");
+				return Config::default();
+			}
+		};
+		match serde_json::from_str::<Config>(&contents) {
+			Ok(config) => {
+				tracing::info!(accounts = config.accounts.len(), "loaded config");
+				return config.migrate_legacy_timelines().migrate_legacy_hotkey();
+			}
+			Err(e) => tracing::error!(error = %e, "config is unreadable, so it's moved aside and Fedra starts fresh"),
 		}
 		// Move it aside so the next save can't destroy the user's accounts and tokens.
-		let _ = fs::rename(&self.path, self.path.with_extension("json.bak"));
+		let backup = self.path.with_extension("json.bak");
+		if let Err(e) = fs::rename(&self.path, &backup) {
+			tracing::error!(error = %e, backup = %backup.display(), "couldn't move the unreadable config aside");
+		}
 		Config::default()
 	}
 
@@ -1247,6 +1290,7 @@ impl ConfigStore {
 		let tmp = self.path.with_extension("json.tmp");
 		fs::write(&tmp, contents)?;
 		fs::rename(&tmp, &self.path)?;
+		tracing::debug!("saved config");
 		Ok(())
 	}
 }

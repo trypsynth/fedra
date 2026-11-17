@@ -184,8 +184,10 @@ fn unique_temp_path() -> PathBuf {
 /// chunk. Fails once `cancel` is set, so nothing goes on to use the partial file.
 fn download(url: &str, dest: &Path, cancel: &AtomicBool, mut report: impl FnMut(u64, u64)) -> anyhow::Result<()> {
 	let client = reqwest::blocking::Client::builder().user_agent(USER_AGENT).build()?;
+	let host = Url::parse(url).ok().and_then(|u| u.host_str().map(ToString::to_string)).unwrap_or_default();
 	let mut resp = client.get(url).send()?.error_for_status()?;
 	let total = resp.content_length().unwrap_or(0);
+	tracing::debug!(host, status = resp.status().as_u16(), bytes = total, "downloading media");
 	let mut file = std::fs::File::create(dest)?;
 	let mut buf = vec![0u8; 65536];
 	let mut downloaded = 0u64;
@@ -243,6 +245,9 @@ fn start_load<T: Send + 'static>(
 			}
 			Err(e) => Err(e.to_string()),
 		};
+		if let Err(e) = &result {
+			tracing::warn!(error = e, "couldn't load media");
+		}
 		send(Load::Done(result));
 	});
 }
@@ -335,7 +340,10 @@ fn download_to_user_file(frame: &Frame, url: &str) {
 			}
 			match result {
 				Ok(()) => wx_utils::show_info(&target, "Download complete.", "Fedra"),
-				Err(e) => wx_utils::show_error(&target, format!("Failed to download media: {e}"), "Fedra"),
+				Err(e) => {
+					tracing::warn!(error = %e, "couldn't save media");
+					wx_utils::show_error(&target, format!("Failed to download media: {e}"), "Fedra");
+				}
 			}
 			target.set_focus();
 		},
@@ -670,6 +678,7 @@ fn with_session(state: &Rc<RefCell<Option<PlayerState>>>, lr: &MediaLiveRegion, 
 }
 
 fn show_media_load_error(frame: &Frame, detail: &str) {
+	tracing::warn!(detail, "showing a media error");
 	let msg = format!(
 		"Fedra could not load this attachment: {detail}\n\nThe media may be unavailable or its format may not be \
 		supported. Try opening the attachment in your browser."

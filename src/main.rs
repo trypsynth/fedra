@@ -29,14 +29,12 @@ mod ui_wake;
 use std::{
 	cell::{Cell, RefCell},
 	collections::{HashMap, HashSet},
-	fs::File,
-	io::Write,
-	panic,
 	rc::Rc,
 	sync::mpsc,
 	time::{Duration, Instant},
 };
 
+use logkeeper::Logkeeper;
 use wx_utils::tasks::{sleep, spawn_local};
 use wxdragon::prelude::*;
 
@@ -215,7 +213,9 @@ impl AppState {
 			account.saved_active_timeline = manager.active().map(|t| t.timeline_type.clone());
 			account.saved_selected_post_id = manager.active().and_then(|t| t.selected_id.clone());
 		}
-		config::ConfigStore::new().save(&self.config)
+		config::ConfigStore::new()
+			.save(&self.config)
+			.inspect_err(|e| tracing::error!(error = format!("{e:#}"), "couldn't save config"))
 	}
 
 	pub(crate) fn timeline_view_options_for(&self, timeline_type: &timeline::TimelineType) -> TimelineViewOptions {
@@ -264,27 +264,20 @@ fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandConte
 }
 
 fn main() {
+	// Before logging starts, so a second copy exits without starting a new log and pushing the running copy's aside.
 	// macOS reopens the running app through on_reopen_app instead of starting another copy.
 	#[cfg(not(target_os = "macos"))]
 	let door = match doorbell::ring("fedra", &[] as &[&str]) {
 		Ok(doorbell::Ring::Delivered) => return,
-		Ok(doorbell::Ring::First(door)) => Some(door),
-		Err(e) => {
-			eprintln!("Couldn't check for a running copy of Fedra: {e}");
-			None
-		}
+		Ok(doorbell::Ring::First(door)) => Ok(door),
+		Err(e) => Err(e),
 	};
+	let _log_guard =
+		Logkeeper::new(config::config_dir(), "fedra").with_crates(["fedra"]).init(config::log_level_from_disk());
+	tracing::info!(version = env!("CARGO_PKG_VERSION"), commit = env!("FEDRA_COMMIT_HASH"), "starting");
+	#[cfg(not(target_os = "macos"))]
+	let door = door.inspect_err(|e| tracing::warn!(error = %e, "couldn't check for a running copy")).ok();
 	let _ = rustls::crypto::ring::default_provider().install_default();
-	panic::set_hook(Box::new(|info| {
-		let log_path = config::config_dir().join("crash.log");
-		if let Ok(mut file) = File::create(&log_path) {
-			let _ = writeln!(file, "Fedra crashed at {}", chrono::Local::now());
-			let _ = writeln!(file, "{info}");
-			if let Some(location) = info.location() {
-				let _ = writeln!(file, "  at {}:{}:{}", location.file(), location.line(), location.column());
-			}
-		}
-	}));
 	#[cfg(target_os = "macos")]
 	promote_unbundled_to_regular_app();
 	let _ = wxdragon::main(|app| {
@@ -318,7 +311,7 @@ fn main() {
 		let mut state = AppState::new(config, ui_waker.clone());
 		match audio::AudioOutput::open() {
 			Ok(output) => state.notification_sound = Some(output),
-			Err(err) => eprintln!("Failed to open audio output for notification sound: {err}"),
+			Err(err) => tracing::warn!(error = %err, "couldn't open audio output, so notifications have no sound"),
 		}
 		let refresh_timer = Rc::new(Timer::new(&frame));
 		let ui_tx_timer_poll = ui_tx.clone();
@@ -413,6 +406,7 @@ fn main() {
 		if let Some(door) = door {
 			let ui_tx_door = ui_tx.clone();
 			door.listen(move |_| {
+				tracing::info!("another copy was started, so showing the window");
 				let _ = ui_tx_door.send(UiCommand::ShowWindow);
 			});
 		}
@@ -462,5 +456,7 @@ fn main() {
 				window_parts.timeline_list.set_focus();
 			}
 		}
+		tracing::info!(hidden = start_hidden, "started");
 	});
+	tracing::info!("exiting");
 }
