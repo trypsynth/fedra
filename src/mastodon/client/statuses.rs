@@ -8,7 +8,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mastodon::{
-	Account, MastodonClient, Poll, PostSubmission, Status, StatusAction, StatusContext, StatusSource, StatusVersion,
+	Account, MastodonClient, Poll, PostSubmission, ScheduledStatus, Status, StatusAction, StatusContext, StatusSource,
+	StatusVersion,
 };
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +188,42 @@ impl MastodonClient {
 			params.push(("choices[]", choice.to_string()));
 		}
 		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&params), "vote on poll")
+	}
+
+	/// Every post waiting to go out, in whatever order the server keeps them.
+	pub fn get_scheduled_statuses(&self, access_token: &str) -> Result<Vec<ScheduledStatus>> {
+		let mut all = Vec::new();
+		let mut max_id: Option<String> = None;
+		loop {
+			let mut url = self.base_url.join("api/v1/scheduled_statuses")?;
+			{
+				let mut query = url.query_pairs_mut();
+				query.append_pair("limit", "40");
+				if let Some(id) = &max_id {
+					query.append_pair("max_id", id);
+				}
+			}
+			let (page, next): (Vec<ScheduledStatus>, _) =
+				Self::send_json_paged(self.http.get(url).bearer_auth(access_token), "fetch scheduled posts")?;
+			let done = page.is_empty() || next.is_none();
+			all.extend(page);
+			if done {
+				return Ok(all);
+			}
+			max_id = next;
+		}
+	}
+
+	/// Moves a scheduled post to `scheduled_at`, an RFC 3339 time.
+	pub fn reschedule_status(&self, access_token: &str, id: &str, scheduled_at: &str) -> Result<ScheduledStatus> {
+		let url = self.base_url.join(&format!("api/v1/scheduled_statuses/{id}"))?;
+		let request = self.http.put(url).bearer_auth(access_token).form(&[("scheduled_at", scheduled_at)]);
+		Self::send_json(request, "reschedule post")
+	}
+
+	pub fn delete_scheduled_status(&self, access_token: &str, id: &str) -> Result<()> {
+		let url = self.base_url.join(&format!("api/v1/scheduled_statuses/{id}"))?;
+		self.delete_empty(access_token, url, "delete scheduled post")
 	}
 
 	pub fn delete_status(&self, access_token: &str, status_id: &str) -> Result<()> {

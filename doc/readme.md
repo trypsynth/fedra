@@ -117,7 +117,7 @@ The dialog has these controls:
 - Post language: a code such as `en` or `de`. It starts with the setting of your account.
 - `Manage Media...`: add attachments, add a description to each one, and mark them as sensitive.
 - `Add Poll...`: add options up to the limit of your instance. Select a duration, allow more than one choice, and hide the vote counts until the poll ends.
-- `Schedule...`: select a local date and time to publish the post. To post immediately, select `Clear Schedule`.
+- `Schedule...`: select a local date and time to publish the post. To post immediately, select `Clear Schedule`. To see, reschedule, or delete the posts you've scheduled, use `Options -> Scheduled Posts...`.
 - Thread mode: when you select it, the dialog opens again after you post, as a reply to your new post. This lets you write a thread in one dialog.
 
 If `Use enter to send posts` is on, press `Enter` in the content field to post. If it is off, use the Post button.
@@ -425,6 +425,7 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | Toggle Quick Keys Mode | `Ctrl+Shift+Q` | `Ctrl+Shift+Q` |
 | Manage Accounts... | `Ctrl+Alt+A` | `Ctrl+Alt+A` |
 | Manage Filters... | None | None |
+| Scheduled Posts... | None | None |
 | Manage Lists... | None | None |
 | Your Followers... | None | None |
 | Who You Follow... | None | None |
@@ -529,6 +530,7 @@ Press `Enter` on a post to open its links. If the post has more than one link, o
 - Added builds for Intel Macs.
 - Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
 - Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. A mute that ends says when.
+- Added Scheduled Posts to the Options menu, to see the posts you've scheduled and reschedule or delete them.
 - Added suggestions for hashtags as you type `#` in a post, the same way as for mentions.
 - Added View Edit History to the Post menu, to read every version of an edited post.
 - Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.

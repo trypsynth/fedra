@@ -18,6 +18,7 @@ mod options;
 mod post_view;
 mod profile;
 mod profile_edit;
+mod scheduled_posts;
 mod shortcuts;
 mod user_actions;
 
@@ -41,4 +42,5 @@ pub use options::*;
 pub use post_view::show_post_view_dialog;
 pub use profile::*;
 pub use profile_edit::show_profile_edit_dialog;
+pub use scheduled_posts::{ScheduledPostAction, show_scheduled_posts_dialog};
 pub use shortcuts::*;

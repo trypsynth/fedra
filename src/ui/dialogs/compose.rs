@@ -809,7 +809,12 @@ fn parse_schedule_inputs(date_value: &str, time_value: &str) -> Option<DateTime<
 }
 
 #[allow(clippy::option_option)]
-fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<Option<String>> {
+/// Asks when to post. `Some(None)` is the Clear button, which `can_clear` leaves out.
+pub(super) fn prompt_for_schedule(
+	parent: &dyn WxWidget,
+	current: Option<&str>,
+	can_clear: bool,
+) -> Option<Option<String>> {
 	const ID_CLEAR_SCHEDULE: i32 = 24_001;
 	let dialog = Dialog::builder(parent, "Schedule Post").with_size(360, 210).build();
 	let panel = Panel::builder(&dialog).build();
@@ -833,6 +838,9 @@ fn prompt_for_schedule(parent: &dyn WxWidget, current: Option<&str>) -> Option<O
 	let clear_button = Button::builder(&panel).with_id(ID_CLEAR_SCHEDULE).with_label("Clear").build();
 	let cancel_button = Button::builder(&panel).with_id(ID_CANCEL).with_label("Cancel").build();
 	set_button.set_default();
+	if !can_clear {
+		clear_button.show(false);
+	}
 	button_sizer.add(&clear_button, 0, SizerFlag::Right, 8);
 	button_sizer.add_stretch_spacer(1);
 	button_sizer.add(&set_button, 0, SizerFlag::Right, 8);
@@ -1074,7 +1082,7 @@ pub fn prompt_for_compose(
 		let schedule_parent = dialog;
 		schedule_button.on_click(move |_| {
 			let current = scheduled_state_set.borrow().clone();
-			if let Some(updated) = prompt_for_schedule(&schedule_parent, current.as_deref()) {
+			if let Some(updated) = prompt_for_schedule(&schedule_parent, current.as_deref(), true) {
 				*scheduled_state_set.borrow_mut() = updated;
 				let label = schedule_button_label(scheduled_state_set.borrow().as_deref());
 				schedule_button_set.set_label(&label);

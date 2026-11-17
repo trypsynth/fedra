@@ -29,7 +29,88 @@ pub struct QuoteApproval {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ScheduledStatus {
+	#[serde(default)]
+	pub id: String,
 	pub scheduled_at: String,
+	#[serde(default)]
+	pub params: ScheduledParams,
+	#[serde(default)]
+	pub media_attachments: Vec<MediaAttachment>,
+}
+
+/// What a scheduled post will say when it goes out.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ScheduledParams {
+	#[serde(default)]
+	pub text: String,
+	#[serde(default)]
+	pub spoiler_text: Option<String>,
+	#[serde(default)]
+	pub visibility: Option<String>,
+	/// Some servers send a number here and others a string, and only whether there is one matters.
+	#[serde(default)]
+	pub in_reply_to_id: Option<serde_json::Value>,
+	#[serde(default)]
+	pub poll: Option<ScheduledPoll>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScheduledPoll {
+	#[serde(default)]
+	pub options: Vec<String>,
+}
+
+impl ScheduledStatus {
+	pub fn is_reply(&self) -> bool {
+		self.params.in_reply_to_id.as_ref().is_some_and(|id| !id.is_null())
+	}
+
+	/// The start of what it says, on one line, for a list of scheduled posts.
+	pub fn preview(&self) -> String {
+		let text = self.params.text.split_whitespace().collect::<Vec<_>>().join(" ");
+		let text = if text.is_empty() && self.params.poll.is_some() { "Poll".to_string() } else { text };
+		let text = if text.is_empty() && !self.media_attachments.is_empty() { "Media".to_string() } else { text };
+		if text.chars().count() > 80 { format!("{}\u{2026}", text.chars().take(80).collect::<String>()) } else { text }
+	}
+
+	/// Everything it will say, as plain text to read through.
+	pub fn details(&self) -> String {
+		let mut out = format!(
+			"Scheduled for {}",
+			friendly_time(&self.scheduled_at, TimestampFormat::Absolute).unwrap_or_default()
+		);
+		if self.is_reply() {
+			out.push_str("\nA reply");
+		}
+		if let Some(visibility) = self.params.visibility.as_deref().filter(|v| !v.is_empty()) {
+			let _ = write!(out, "\nVisibility: {}", visibility_name(visibility));
+		}
+		if let Some(cw) = self.params.spoiler_text.as_deref().map(str::trim).filter(|cw| !cw.is_empty()) {
+			let _ = write!(out, "\n\nContent warning: {cw}");
+		}
+		let _ = write!(out, "\n\n{}", self.params.text.trim());
+		if let Some(poll) = &self.params.poll {
+			out.push_str("\n\nPoll:");
+			for option in &poll.options {
+				let _ = write!(out, "\n- {option}");
+			}
+		}
+		for (i, media) in self.media_attachments.iter().enumerate() {
+			let description = media.description.as_deref().map(str::trim).filter(|d| !d.is_empty());
+			let _ = write!(out, "\n\nAttachment {}: {}", i + 1, description.unwrap_or("no description"));
+		}
+		out
+	}
+}
+
+fn visibility_name(visibility: &str) -> &str {
+	match visibility {
+		"public" => "Public",
+		"unlisted" => "Unlisted",
+		"private" => "Followers only",
+		"direct" => "Direct",
+		other => other,
+	}
 }
 
 /// A toggle a user can apply to a post, named after the API endpoint it hits.
@@ -647,7 +728,43 @@ fn count_label(count: u64, singular: &str, plural: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::QuoteApproval;
+	use super::{QuoteApproval, ScheduledStatus};
+
+	#[test]
+	fn a_scheduled_post_reads_whichever_way_the_server_sends_its_reply_id() {
+		let post: ScheduledStatus = serde_json::from_value(serde_json::json!({
+			"id": "7",
+			"scheduled_at": "2026-11-18T17:00:00.000Z",
+			"params": {
+				"text": "Hello\n  there",
+				"spoiler_text": "",
+				"visibility": "unlisted",
+				"in_reply_to_id": 12345,
+				"poll": { "options": ["Yes", "No"], "expires_in": 3600 },
+			},
+			"media_attachments": [],
+		}))
+		.unwrap();
+		assert!(post.is_reply());
+		assert_eq!(post.preview(), "Hello there");
+		let details = post.details();
+		assert!(details.contains("A reply\nVisibility: Unlisted"), "{details}");
+		assert!(details.ends_with("Poll:\n- Yes\n- No"), "{details}");
+		assert!(!details.contains("Content warning"), "{details}");
+	}
+
+	#[test]
+	fn a_scheduled_post_with_nothing_but_media_says_so() {
+		let post: ScheduledStatus = serde_json::from_value(serde_json::json!({
+			"id": "8",
+			"scheduled_at": "2026-11-18T17:00:00.000Z",
+			"params": { "text": "", "in_reply_to_id": null },
+			"media_attachments": [{ "id": "1", "type": "image", "url": "https://example.social/a.png" }],
+		}))
+		.unwrap();
+		assert!(!post.is_reply());
+		assert_eq!(post.preview(), "Media");
+	}
 
 	fn approval(json: &str) -> QuoteApproval {
 		serde_json::from_str(json).expect("quote_approval should parse")

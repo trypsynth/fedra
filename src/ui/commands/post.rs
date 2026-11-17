@@ -11,7 +11,7 @@ use crate::{
 	AppState,
 	config::ContentWarningDisplay,
 	html,
-	mastodon::{Status, StatusAction},
+	mastodon::{MastodonClient, Status, StatusAction, friendly_time_local},
 	network::{self, Target, resolve_status},
 	responses::{spoken_failure, status_acted, statuses},
 	timeline::{TimelineTextOptions, TimelineType},
@@ -538,6 +538,54 @@ pub(super) fn bookmark(ctx: &mut UiCommandContext<'_>) {
 pub(super) fn mute_conversation(ctx: &mut UiCommandContext<'_>) {
 	send_status_action(ctx, |_, s| {
 		Ok(if s.muted { StatusAction::UnmuteConversation } else { StatusAction::MuteConversation })
+	});
+}
+
+/// Lists the user's scheduled posts to reschedule or delete, coming back to the list after each change until it's
+/// closed.
+pub(super) fn scheduled_posts(ctx: &mut UiCommandContext<'_>) {
+	let Some(session) = ctx.state.session() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let frame = *ctx.frame;
+	let live_region = ctx.live_region.clone();
+	spawn_for(&frame, async move {
+		let mut selected = 0;
+		let mut changed = false;
+		loop {
+			let mut posts = match session.call(MastodonClient::get_scheduled_statuses).await {
+				Ok(posts) => posts,
+				Err(err) => {
+					live_region.announce(&spoken_failure("Failed to load scheduled posts", &err));
+					return;
+				}
+			};
+			if posts.is_empty() {
+				live_region.announce(if changed { "No more scheduled posts" } else { "No scheduled posts" });
+				return;
+			}
+			posts.sort_by(|a, b| a.scheduled_at.cmp(&b.scheduled_at));
+			let Some((action, index)) = dialogs::show_scheduled_posts_dialog(&frame, &posts, selected) else { return };
+			selected = index;
+			let done = match action {
+				dialogs::ScheduledPostAction::Reschedule { id, scheduled_at } => session
+					.queued(move |client, token| client.reschedule_status(token, &id, &scheduled_at))
+					.await
+					.map(|post| format!("Rescheduled for {}", friendly_time_local(&post.scheduled_at))),
+				dialogs::ScheduledPostAction::Delete { id } => session
+					.queued(move |client, token| client.delete_scheduled_status(token, &id))
+					.await
+					.map(|()| "Scheduled post deleted".to_string()),
+			};
+			match done {
+				Ok(message) => {
+					changed = true;
+					live_region.announce(&message);
+				}
+				Err(err) => live_region.announce(&spoken_failure("Failed to change the scheduled post", &err)),
+			}
+		}
 	});
 }
 

@@ -315,6 +315,7 @@ pub enum ActionId {
 	ManageAccounts,
 	ManageFilters,
 	MessageRequests,
+	ScheduledPosts,
 	ManageLists,
 	YourFollowers,
 	YourFollowing,
@@ -394,6 +395,7 @@ impl ActionId {
 			Self::ManageAccounts,
 			Self::ManageFilters,
 			Self::MessageRequests,
+			Self::ScheduledPosts,
 			Self::ManageLists,
 			Self::YourFollowers,
 			Self::YourFollowing,
@@ -473,6 +475,7 @@ impl ActionId {
 			Self::ManageAccounts => "Manage Accounts...",
 			Self::ManageFilters => "Manage Filters...",
 			Self::MessageRequests => "Message Requests...",
+			Self::ScheduledPosts => "Scheduled Posts...",
 			Self::ManageLists => "Manage Lists...",
 			Self::YourFollowers => "Your Followers...",
 			Self::YourFollowing => "Who You Follow...",
@@ -552,6 +555,7 @@ impl ActionId {
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
 				Self::ManageLists
+				| Self::ScheduledPosts
 				| Self::YourFollowers
 				| Self::YourFollowing
 				| Self::MutedUsers
@@ -626,6 +630,7 @@ impl ActionId {
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
 				Self::ManageLists
+				| Self::ScheduledPosts
 				| Self::YourFollowers
 				| Self::YourFollowing
 				| Self::MutedUsers

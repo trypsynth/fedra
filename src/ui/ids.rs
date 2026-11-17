@@ -70,6 +70,7 @@ seq_ids! {
 	ID_BLOCKED_USERS,
 	ID_YOUR_FOLLOWERS,
 	ID_YOUR_FOLLOWING,
+	ID_SCHEDULED_POSTS,
 }
 
 /// wx's standard preferences item, which macOS moves into the app menu as Settings.
