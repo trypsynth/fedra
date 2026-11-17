@@ -30,12 +30,13 @@ mod ui_wake;
 use std::{
 	cell::{Cell, RefCell},
 	collections::{HashMap, HashSet},
+	process,
 	rc::Rc,
-	sync::mpsc,
+	sync::{Mutex, mpsc},
 	time::{Duration, Instant},
 };
 
-use logkeeper::Logkeeper;
+use logkeeper::{Guard, Logkeeper};
 use wx_utils::tasks::{sleep, spawn_local};
 use wxdragon::prelude::*;
 
@@ -268,6 +269,18 @@ fn drain_ui_commands(ui_rx: &mpsc::Receiver<UiCommand>, ctx: &mut UiCommandConte
 	}
 }
 
+/// Kept where [`exit_now`] can flush it, since that ends the process without returning from `main`.
+static LOG_GUARD: Mutex<Option<Guard>> = Mutex::new(None);
+
+/// Ends the process once quitting has saved everything. Waiting for wx to wind down instead left Fedra running with
+/// no window, or stuck partway out, still holding the pipe that later copies wait on: the main loop ignored the
+/// request to stop, and the hidden windows that outlive the main one kept it going.
+pub(crate) fn exit_now() -> ! {
+	tracing::info!("exiting");
+	drop(LOG_GUARD.lock().map(|mut guard| guard.take()));
+	process::exit(0);
+}
+
 fn main() {
 	// Before logging starts, so a second copy exits without starting a new log and pushing the running copy's aside.
 	// macOS reopens the running app through on_reopen_app instead of starting another copy.
@@ -277,8 +290,11 @@ fn main() {
 		Ok(doorbell::Ring::First(door)) => Ok(door),
 		Err(e) => Err(e),
 	};
-	let _log_guard =
+	let log_guard =
 		Logkeeper::new(config::config_dir(), "fedra").with_crates(["fedra"]).init(config::log_level_from_disk());
+	if let Ok(mut slot) = LOG_GUARD.lock() {
+		*slot = Some(log_guard);
+	}
 	tracing::info!(version = env!("CARGO_PKG_VERSION"), commit = env!("FEDRA_COMMIT_HASH"), "starting");
 	#[cfg(not(target_os = "macos"))]
 	let door = door.inspect_err(|e| tracing::warn!(error = %e, "couldn't check for a running copy")).ok();
@@ -463,5 +479,5 @@ fn main() {
 		}
 		tracing::info!(hidden = start_hidden, "started");
 	});
-	tracing::info!("exiting");
+	exit_now();
 }

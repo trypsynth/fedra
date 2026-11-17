@@ -545,6 +545,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Every open timeline except Local and Federated now goes back to the post you were on when Fedra starts, not only the one you had open. With `Load older posts to find where you left off` on, the other timelines look for their place the first time you switch to them.
 - Fedra now uses both your Home and your Notifications positions from your server, whichever timeline was open when you exited.
 - Fixed a reply to your own post starting with a space.
+- Fixed Fedra sometimes staying open with no window after you exited it.
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
 - Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
 - Starting Fedra while it's already running now brings its window to the front, instead of showing an error.

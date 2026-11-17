@@ -66,7 +66,7 @@ pub(super) fn check_for_updates(ctx: &mut UiCommandContext<'_>) {
 pub(super) fn app_closing(ctx: &mut UiCommandContext<'_>) {
 	let _ = ctx.state.save_config();
 	crate::read_position::sync_before_exit(ctx.state);
-	ctx.frame.destroy();
+	crate::exit_now();
 }
 
 pub(super) fn exit_app(ctx: &mut UiCommandContext<'_>) {
