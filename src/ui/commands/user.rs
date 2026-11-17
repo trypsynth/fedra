@@ -1,7 +1,13 @@
 //! Commands that act on users, profiles, and hashtags.
 
+use std::rc::Rc;
+
 use anyhow::Result;
-use wx_utils::tasks::spawn_for;
+use chrono::Local;
+use wx_utils::{
+	progress::{Ended, run_with_progress},
+	tasks::spawn_for,
+};
 use wxdragon::prelude::*;
 
 use super::{
@@ -341,6 +347,7 @@ pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: Option<&
 		parent,
 		list.title(),
 		list.label(account.is_some_and(|a| ctx.state.current_user_id.as_deref() == Some(a.id.as_str()))),
+		&[],
 		list.total(account),
 		requests,
 		ctx.ui_tx.clone(),
@@ -424,6 +431,86 @@ pub(super) fn profile_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	let state = &mut *ctx.state;
 	if let Some(dialog) = state.profile_dialog.take() {
 		dialog.destroy();
+	}
+}
+
+/// Loads all of the user's followers and follows behind a progress window, then sends the views to open.
+pub(super) fn follower_analysis(ctx: &mut UiCommandContext<'_>) {
+	let (Some(client), Some(token)) = (ctx.state.client.clone(), ctx.state.access_token.clone()) else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let live_region = ctx.live_region.clone();
+	let ui_tx = ctx.ui_tx.clone();
+	run_with_progress(
+		ctx.frame,
+		"Follower Analysis",
+		"Loading your followers...",
+		move |progress| dialogs::load_follows(&client, &token, progress),
+		move |loaded, ended| match loaded {
+			_ if ended == Ended::Cancelled => {}
+			Ok(Some((followers, following))) => {
+				let analysis = dialogs::FollowAnalysis::new(&followers, &following, Local::now().date_naive());
+				let _ = ui_tx.send(UiCommand::ShowFollowerAnalysis(Box::new(analysis)));
+			}
+			Ok(None) => {}
+			Err(err) => live_region.announce(&spoken_failure(FollowList::Analysis.load_failure(), &err)),
+		},
+	);
+}
+
+/// Opens the follower analysis, starting on its first view.
+pub(super) fn show_follower_analysis(ctx: &mut UiCommandContext<'_>, analysis: &dialogs::FollowAnalysis) {
+	let (Some(session), Some(requests)) = (ctx.state.session(), ctx.requests()) else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	let list = FollowList::Analysis;
+	let ui_tx_timeline = ctx.ui_tx.clone();
+	let ui_tx_close = ctx.ui_tx.clone();
+	let dlg = dialogs::FollowListDialog::new(
+		ctx.frame,
+		list.title(),
+		list.label(true),
+		&dialogs::FOLLOW_ANALYSIS_VIEWS,
+		0,
+		requests,
+		ctx.ui_tx.clone(),
+		move |account| {
+			let timeline_type =
+				TimelineType::User { id: account.id.clone(), name: account.display_name_or_username().to_string() };
+			let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
+		},
+		move || {
+			let _ = ui_tx_close.send(UiCommand::FollowListClosed(list));
+		},
+	);
+	if let Some(previous) = ctx.state.follow_list_dialogs.insert(list, dlg.clone()) {
+		previous.destroy();
+	}
+	let views = Rc::new(analysis.views.clone());
+	let show_view = {
+		let (dlg, session) = (dlg.clone(), session);
+		move |index: usize| {
+			let Some(accounts) = views.get(index) else { return };
+			dlg.replace_accounts(accounts);
+			dlg.mark_loaded();
+			let ids: Vec<String> = accounts.iter().map(|a| a.id.clone()).collect();
+			spawn_for(&dlg.dialog(), fill_relationships(dlg.clone(), session.clone(), dlg.missing_relationships(&ids)));
+		}
+	};
+	show_view(0);
+	dlg.on_view_changed(show_view);
+	dlg.show();
+}
+
+/// Fetches the relationships for `ids`, a few at a time, so each person's details and actions fill in.
+async fn fill_relationships(dlg: dialogs::FollowListDialog, session: Session, ids: Vec<String>) {
+	for chunk in ids.chunks(40) {
+		let chunk = chunk.to_vec();
+		if let Ok(relationships) = session.call(move |client, token| client.get_relationships(token, &chunk)).await {
+			dlg.update_relationships(&relationships);
+		}
 	}
 }
 

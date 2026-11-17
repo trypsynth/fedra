@@ -43,7 +43,7 @@ use crate::{
 	responses::open_account,
 	timeline::TimelineType,
 	ui::{
-		dialogs::{FollowList, UserLookupAction},
+		dialogs::{FollowAnalysis, FollowList, UserLookupAction},
 		timeline_list::TimelineList,
 	},
 	ui_wake::UiCommandSender,
@@ -103,6 +103,8 @@ pub enum UiCommand {
 	FollowListClosed(FollowList),
 	/// The user's own followers or follows.
 	ShowOwnFollowList(FollowList),
+	FollowerAnalysis,
+	ShowFollowerAnalysis(Box<FollowAnalysis>),
 	/// `account` is whose followers or follows to show, and `None` for the user's own mutes and blocks.
 	ShowFollowList {
 		account: Option<Box<Account>>,
@@ -216,6 +218,8 @@ impl UiCommand {
 			Self::ProfileDialogClosed => "ProfileDialogClosed",
 			Self::FollowListClosed(..) => "FollowListClosed",
 			Self::ShowOwnFollowList(..) => "ShowOwnFollowList",
+			Self::FollowerAnalysis => "FollowerAnalysis",
+			Self::ShowFollowerAnalysis(..) => "ShowFollowerAnalysis",
 			Self::ShowFollowList { .. } => "ShowFollowList",
 			Self::OpenAccount { .. } => "OpenAccount",
 			Self::OpenPost => "OpenPost",
@@ -337,6 +341,7 @@ pub const fn command_for(action: ActionId) -> Option<UiCommand> {
 		ActionId::ManageLists => UiCommand::ManageLists,
 		ActionId::YourFollowers => UiCommand::ShowOwnFollowList(FollowList::Followers),
 		ActionId::YourFollowing => UiCommand::ShowOwnFollowList(FollowList::Following),
+		ActionId::FollowerAnalysis => UiCommand::FollowerAnalysis,
 		ActionId::MutedUsers => UiCommand::ShowFollowList { account: None, list: FollowList::Muted },
 		ActionId::BlockedUsers => UiCommand::ShowFollowList { account: None, list: FollowList::Blocked },
 		ActionId::EditProfile => UiCommand::EditProfile,
@@ -548,6 +553,8 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::ProfileDialogClosed => user::profile_dialog_closed(ctx),
 		UiCommand::FollowListClosed(list) => user::follow_list_closed(ctx, list),
 		UiCommand::ShowOwnFollowList(list) => user::show_own_follow_list(ctx, list),
+		UiCommand::FollowerAnalysis => user::follower_analysis(ctx),
+		UiCommand::ShowFollowerAnalysis(analysis) => user::show_follower_analysis(ctx, &analysis),
 		UiCommand::ShowFollowList { account, list } => user::show_follow_list(ctx, account.as_deref(), list),
 		UiCommand::OpenAccount { account, action } => open_account(ctx, &account, action),
 		UiCommand::OpenPost => post::open_post(ctx),

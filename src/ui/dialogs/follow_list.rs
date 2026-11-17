@@ -9,14 +9,16 @@ use crate::{
 	ui::commands::Requests,
 };
 
-/// The account lists the list dialog shows: a profile's followers and follows, and the user's own mutes and blocks.
-/// They differ only in wording and in which endpoint they use.
+/// The account lists the list dialog shows: a profile's followers and follows, the user's own mutes and blocks, and
+/// the follower analysis. They differ only in wording and in which endpoint they use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FollowList {
 	Followers,
 	Following,
 	Muted,
 	Blocked,
+	/// Loaded whole before it opens, rather than a page at a time.
+	Analysis,
 }
 
 impl FollowList {
@@ -26,6 +28,7 @@ impl FollowList {
 			Self::Following => "Following",
 			Self::Muted => "Muted Users",
 			Self::Blocked => "Blocked Users",
+			Self::Analysis => "Follower Analysis",
 		}
 	}
 
@@ -38,6 +41,7 @@ impl FollowList {
 			(Self::Following, false) => "Users this person follows:",
 			(Self::Muted, _) => "Users you've muted:",
 			(Self::Blocked, _) => "Users you've blocked:",
+			(Self::Analysis, _) => "&People:",
 		}
 	}
 
@@ -47,6 +51,7 @@ impl FollowList {
 			Self::Following => "No following found",
 			Self::Muted => "You haven't muted anyone",
 			Self::Blocked => "You haven't blocked anyone",
+			Self::Analysis => "Nobody follows you and you don't follow anyone",
 		}
 	}
 
@@ -56,6 +61,7 @@ impl FollowList {
 			Self::Following => "Failed to load following",
 			Self::Muted => "Failed to load muted users",
 			Self::Blocked => "Failed to load blocked users",
+			Self::Analysis => "Failed to load your followers and follows",
 		}
 	}
 
@@ -65,6 +71,7 @@ impl FollowList {
 			Self::Following => "Failed to load more following",
 			Self::Muted => "Failed to load more muted users",
 			Self::Blocked => "Failed to load more blocked users",
+			Self::Analysis => "Failed to load your followers and follows",
 		}
 	}
 
@@ -99,6 +106,7 @@ impl FollowList {
 			(Self::Followers, Some(account)) => client.get_followers_page(token, &account.id, max_id),
 			(Self::Following, Some(account)) => client.get_following_page(token, &account.id, max_id),
 			(Self::Followers | Self::Following, None) => anyhow::bail!("No account to list"),
+			(Self::Analysis, _) => anyhow::bail!("The follower analysis loads everything before it opens"),
 		}
 	}
 }
@@ -113,13 +121,18 @@ pub struct FollowListDialog {
 	title_base: String,
 	total_count: u64,
 	loaded: Rc<RefCell<bool>>,
+	/// Which of several lists to show, for the follower analysis.
+	view_choice: Option<Choice>,
 }
 
 impl FollowListDialog {
+	/// `views` names the lists the dialog can switch between, with a choice above the list. Most show one list, and
+	/// pass none.
 	pub fn new<F, C>(
 		parent: &dyn WxWidget,
 		title: &str,
 		label: &str,
+		views: &[&str],
 		total_count: u64,
 		requests: Requests,
 		ui_tx: crate::ui_wake::UiCommandSender,
@@ -148,6 +161,16 @@ impl FollowListDialog {
 		button_sizer.add(&timeline_button, 0, SizerFlag::Right, 8);
 		button_sizer.add_stretch_spacer(1);
 		button_sizer.add(&close_button, 0, SizerFlag::Right, 8);
+		let view_choice = (!views.is_empty()).then(|| {
+			let view_label = StaticText::builder(&panel).with_label("&Show:").build();
+			let choice = Choice::builder(&panel).with_choices(views.iter().map(ToString::to_string).collect()).build();
+			choice.set_selection(0);
+			let row = BoxSizer::builder(Orientation::Horizontal).build();
+			row.add(&view_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 8);
+			row.add(&choice, 1, SizerFlag::Expand, 0);
+			main_sizer.add_sizer(&row, 0, SizerFlag::Expand | SizerFlag::All, 8);
+			choice
+		});
 		main_sizer.add(&list_label, 0, SizerFlag::Expand | SizerFlag::All, 8);
 		main_sizer.add(&account_list, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
 		main_sizer.add(&profile_text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
@@ -229,7 +252,33 @@ impl FollowListDialog {
 			title_base: title.to_string(),
 			total_count,
 			loaded: Rc::new(RefCell::new(false)),
+			view_choice,
 		}
+	}
+
+	/// Calls `changed` with the index of each view the user switches to.
+	pub fn on_view_changed(&self, changed: impl Fn(usize) + 'static) {
+		if let Some(choice) = self.view_choice {
+			choice.on_selection_changed(move |_| {
+				if let Some(index) = choice.get_selection() {
+					changed(index as usize);
+				}
+			});
+		}
+	}
+
+	/// Shows `accounts` in place of the list, keeping the relationships already known.
+	pub fn replace_accounts(&self, accounts: &[Account]) {
+		self.account_list.clear();
+		self.accounts.borrow_mut().clear();
+		self.profile_text.set_value(if accounts.is_empty() { "Nobody here." } else { "" });
+		self.append_accounts(accounts);
+	}
+
+	/// Which of `ids` there's no relationship for yet.
+	pub fn missing_relationships(&self, ids: &[String]) -> Vec<String> {
+		let known = self.relationships.borrow();
+		ids.iter().filter(|id| !known.contains_key(*id)).cloned().collect()
 	}
 
 	pub const fn dialog(&self) -> Dialog {

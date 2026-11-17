@@ -320,6 +320,7 @@ pub enum ActionId {
 	ManageLists,
 	YourFollowers,
 	YourFollowing,
+	FollowerAnalysis,
 	MutedUsers,
 	BlockedUsers,
 	EditProfile,
@@ -401,6 +402,7 @@ impl ActionId {
 			Self::ManageLists,
 			Self::YourFollowers,
 			Self::YourFollowing,
+			Self::FollowerAnalysis,
 			Self::MutedUsers,
 			Self::BlockedUsers,
 			Self::EditProfile,
@@ -482,6 +484,7 @@ impl ActionId {
 			Self::ManageLists => "Manage Lists...",
 			Self::YourFollowers => "Your Followers...",
 			Self::YourFollowing => "Who You Follow...",
+			Self::FollowerAnalysis => "Follower Analysis...",
 			Self::MutedUsers => "Muted Users...",
 			Self::BlockedUsers => "Blocked Users...",
 			Self::EditProfile => "Edit Profile...",
@@ -562,6 +565,7 @@ impl ActionId {
 				| Self::ScheduledPosts
 				| Self::YourFollowers
 				| Self::YourFollowing
+				| Self::FollowerAnalysis
 				| Self::MutedUsers
 				| Self::BlockedUsers => None,
 				Self::EditProfile => Some(KeyChord::new(true, false, true, "E")),
@@ -638,6 +642,7 @@ impl ActionId {
 				| Self::ScheduledPosts
 				| Self::YourFollowers
 				| Self::YourFollowing
+				| Self::FollowerAnalysis
 				| Self::MutedUsers
 				| Self::BlockedUsers => None,
 				Self::EditProfile => Some(KeyChord::new(true, false, true, "E")),

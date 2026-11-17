@@ -72,6 +72,7 @@ seq_ids! {
 	ID_YOUR_FOLLOWING,
 	ID_SCHEDULED_POSTS,
 	ID_OPEN_POST,
+	ID_FOLLOWER_ANALYSIS,
 }
 
 /// wx's standard preferences item, which macOS moves into the app menu as Settings.
