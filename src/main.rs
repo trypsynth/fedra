@@ -120,8 +120,6 @@ pub(crate) struct AppState {
 	pub(crate) refresh_timer: Option<Rc<Timer<Frame>>>,
 	pub(crate) ui_waker: UiWaker,
 	pub(crate) pending_thread_continuation: bool,
-	pub(crate) pending_restore_post_id: Option<(crate::timeline::TimelineType, String)>,
-	pub(crate) restore_pages: u8,
 	pub(crate) synced_markers: std::collections::HashMap<&'static str, String>,
 	pub(crate) pending_message_requests: Option<u64>,
 	pub(crate) pending_post: Option<PendingPost>,
@@ -158,8 +156,6 @@ impl AppState {
 			refresh_timer: None,
 			ui_waker,
 			pending_thread_continuation: false,
-			pending_restore_post_id: None,
-			restore_pages: 0,
 			synced_markers: std::collections::HashMap::new(),
 			pending_message_requests: None,
 			pending_post: None,
@@ -211,7 +207,16 @@ impl AppState {
 			let Some(manager) = manager.filter(|m| m.len() > 0) else { continue };
 			account.saved_timelines = manager.open_timeline_types();
 			account.saved_active_timeline = manager.active().map(|t| t.timeline_type.clone());
-			account.saved_selected_post_id = manager.active().and_then(|t| t.selected_id.clone());
+			account.saved_positions = manager
+				.timelines()
+				.iter()
+				.filter(|t| t.timeline_type.keeps_position())
+				.filter_map(|t| {
+					// Until a timeline finds its place, what's selected in it is only where loading left it.
+					let post_id = t.restore.as_ref().map(|r| r.post_id.clone()).or_else(|| t.selected_id.clone())?;
+					Some(config::SavedPosition { timeline: t.timeline_type.clone(), post_id })
+				})
+				.collect();
 		}
 		config::ConfigStore::new()
 			.save(&self.config)

@@ -140,9 +140,11 @@ To change keyboard shortcuts, use `Options -> Customize Keyboard Shortcuts...` i
 - Spelling language: on Windows only. `Windows default` uses the language of Windows.
 
 ### Timelines Tab
+Fedra remembers the post you were on in each open timeline, and goes back to it at startup. Local, Federated, and the Local timelines of other instances move too fast for this, so they start at the newest post.
+
 - `Restore open timelines on startup`: when this is off, Fedra opens only your default timelines at startup.
 - `Sync home and notifications position with your server`: Fedra saves your position in Home and Notifications on your server about once a minute, and when you exit. At startup, Fedra goes to that position. Other apps that sync their position, such as Tusky or Ivory, use the same position.
-- `Load older posts to find your saved position`: if your saved position is older than the first page of posts, Fedra loads older posts until it finds it. Fedra loads up to 10 pages. If the post was deleted, Fedra goes to the next older post.
+- `Load older posts to find where you left off`: if the post you were on in a timeline is older than its first page of posts, Fedra loads older posts until it finds it. Fedra loads up to 10 pages for each timeline. The timeline that was open when you exited does this at startup, and the others do it the first time you switch to them. If the post was deleted, Fedra goes to the next older post.
 - Autoload posts:
   - Never
   - When reaching the end

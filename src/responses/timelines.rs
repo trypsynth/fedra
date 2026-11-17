@@ -71,10 +71,8 @@ fn loaded(
 		let is_active = state.timeline_manager.active().is_some_and(|t| &t.timeline_type == timeline_type);
 		let mut status_snapshots: Vec<Status> = Vec::new();
 		let view_options = state.timeline_view_options_for(timeline_type);
-		let restore_id =
-			state.pending_restore_post_id.as_ref().and_then(|(rt, id)| (*rt == *timeline_type).then(|| id.clone()));
-		let may_load_older = state.config.load_older_to_restore && state.restore_pages < MAX_RESTORE_PAGES;
-		let mut restore = None;
+		let load_older_to_restore = state.config.load_older_to_restore;
+		let mut older_than = None;
 		if let Some(timeline) = state.timeline_manager.get_mut(timeline_type) {
 			let filter_context = timeline_type.filter_context();
 			let template_key = timeline_type.template_key();
@@ -172,13 +170,22 @@ fn loaded(
 					timeline.next_max_id = next_max_id;
 				}
 			}
-			if let Some(id) = &restore_id {
-				restore = Some(restore_position(timeline, id, may_load_older));
+			if let Some(mut restore) = timeline.restore.take() {
+				let may_load_older = load_older_to_restore && restore.pages < MAX_RESTORE_PAGES;
+				if let Some(cursor) = restore_position(timeline, &restore.post_id, may_load_older) {
+					if is_active {
+						if restore.pages == 0 {
+							live_region.announce("Finding your place");
+						}
+						restore.pages += 1;
+						older_than = Some(cursor);
+					} else {
+						restore.waiting = Some(cursor);
+					}
+					timeline.restore = Some(restore);
+				}
 			}
-			let finding_place = matches!(restore, Some(Some(_)));
-			if finding_place && state.restore_pages == 0 {
-				live_region.announce("Finding your place");
-			}
+			let finding_place = older_than.is_some();
 			if !finding_place && is_active {
 				update_active_timeline_ui(
 					timeline_list,
@@ -199,19 +206,10 @@ fn loaded(
 				should_find_prev = true;
 			}
 		}
-		match restore {
-			Some(Some(older_than)) => {
-				state.restore_pages += 1;
-				if let Some(requests) = state.requests() {
-					let limit = Some(u32::from(state.config.fetch_limit));
-					fetch(&requests, timeline_type.clone(), limit, Some(older_than));
-				}
-			}
-			Some(None) => {
-				state.pending_restore_post_id = None;
-				state.restore_pages = 0;
-			}
-			None => {}
+		if let Some(older_than) = older_than
+			&& let Some(requests) = state.requests()
+		{
+			fetch(&requests, timeline_type.clone(), Some(u32::from(state.config.fetch_limit)), Some(older_than));
 		}
 		status_snapshots
 	};

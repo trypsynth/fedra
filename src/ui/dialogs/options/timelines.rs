@@ -69,8 +69,7 @@ impl TimelinesTab {
 		let restore = checkbox(panel, "&Restore open timelines on startup", initial.restore_open_timelines);
 		let sync_position =
 			checkbox(panel, "&Sync home and notifications position with your server", initial.sync_read_position);
-		let load_older =
-			checkbox(panel, "Load ol&der posts to find your saved position", initial.load_older_to_restore);
+		let load_older = checkbox(panel, "Load ol&der posts to find where you left off", initial.load_older_to_restore);
 		let autoload_label = StaticText::builder(&panel).with_label("&Autoload posts:").build();
 		let autoload_index = AUTOLOAD_MODES.iter().position(|m| *m == initial.autoload).unwrap_or(0);
 		let autoload =

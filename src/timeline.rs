@@ -46,6 +46,11 @@ impl TimelineType {
 		}
 	}
 
+	/// Local and Federated move too fast for a spot saved last session to still mean anything.
+	pub const fn keeps_position(&self) -> bool {
+		!matches!(self, Self::Local | Self::Federated | Self::InstanceLocal { .. })
+	}
+
 	pub const fn filter_context(&self) -> FilterContext {
 		match self {
 			Self::Home | Self::List { .. } => FilterContext::Home,
@@ -295,6 +300,25 @@ pub struct Timeline {
 	pub find_query: Option<String>,
 	pub pending_find_next: bool,
 	pub pending_find_prev: bool,
+	/// A post to select once it loads, such as where the user left off last session.
+	pub restore: Option<Restore>,
+}
+
+/// Finding a post in a timeline, loading older pages for it if the user allows that.
+#[derive(Debug, Clone)]
+pub struct Restore {
+	pub post_id: String,
+	/// Older pages loaded so far in looking for it.
+	pub pages: u8,
+	/// Where to look next, kept until the user first switches to the timeline, so timelines nobody
+	/// looks at don't load pages at startup.
+	pub waiting: Option<String>,
+}
+
+impl Restore {
+	pub const fn new(post_id: String) -> Self {
+		Self { post_id, pages: 0, waiting: None }
+	}
 }
 
 impl Timeline {
@@ -321,6 +345,7 @@ impl Timeline {
 			find_query: None,
 			pending_find_next: false,
 			pending_find_prev: false,
+			restore: None,
 		}
 	}
 
@@ -378,6 +403,13 @@ impl TimelineManager {
 		}
 		self.timelines.push(Timeline::new(timeline_type));
 		true
+	}
+
+	/// Selects `post_id` in `timeline_type` once it loads, if that timeline is open.
+	pub fn restore(&mut self, timeline_type: &TimelineType, post_id: String) {
+		if let Some(timeline) = self.get_mut(timeline_type) {
+			timeline.restore = Some(Restore::new(post_id));
+		}
 	}
 
 	pub fn close(&mut self, timeline_type: &TimelineType) -> bool {
@@ -489,5 +521,20 @@ impl TimelineManager {
 impl Default for TimelineManager {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::TimelineType;
+
+	#[test]
+	fn only_the_fast_public_timelines_forget_their_position() {
+		assert!(TimelineType::Home.keeps_position());
+		assert!(TimelineType::Notifications.keeps_position());
+		assert!(TimelineType::Hashtag { name: "rust".to_string() }.keeps_position());
+		assert!(!TimelineType::Local.keeps_position());
+		assert!(!TimelineType::Federated.keeps_position());
+		assert!(!TimelineType::InstanceLocal { instance: "example.social".to_string() }.keeps_position());
 	}
 }

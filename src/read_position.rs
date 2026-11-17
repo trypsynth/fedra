@@ -2,7 +2,11 @@
 
 use std::{sync::mpsc, thread, time::Duration};
 
-use crate::{AppState, mastodon::Markers, timeline::TimelineType};
+use crate::{
+	AppState,
+	mastodon::Markers,
+	timeline::{Restore, TimelineType},
+};
 
 pub const MAX_RESTORE_PAGES: u8 = 10;
 
@@ -19,22 +23,25 @@ pub fn is_older(a: &str, b: &str) -> bool {
 	(a.len(), a) < (b.len(), b)
 }
 
-/// Restores the active timeline to its server marker when that's further along than the
-/// position saved locally.
+/// Sends Home and Notifications to their server markers where those are further along than the
+/// positions saved locally. Only timelines still loading their first page are moved, since in the
+/// others the user may already be reading.
 pub fn apply_markers(state: &mut AppState, markers: Markers) {
-	let Some(active) = state.timeline_manager.active().map(|t| t.timeline_type.clone()) else { return };
-	let marker = match active {
-		TimelineType::Home => markers.home,
-		TimelineType::Notifications => markers.notifications,
-		_ => None,
-	};
-	let Some(marker) = marker else { return };
-	if let Some(name) = marker_name(&active) {
-		state.synced_markers.insert(name, marker.last_read_id.clone());
-	}
-	let local = state.pending_restore_post_id.as_ref().filter(|(t, _)| *t == active).map(|(_, id)| id.as_str());
-	if local.is_none_or(|local| is_older(local, &marker.last_read_id)) {
-		state.pending_restore_post_id = Some((active, marker.last_read_id));
+	for (timeline_type, marker) in
+		[(TimelineType::Home, markers.home), (TimelineType::Notifications, markers.notifications)]
+	{
+		let Some(marker) = marker else { continue };
+		if let Some(name) = marker_name(&timeline_type) {
+			state.synced_markers.insert(name, marker.last_read_id.clone());
+		}
+		let Some(timeline) = state.timeline_manager.get_mut(&timeline_type) else { continue };
+		if !timeline.entries.is_empty() {
+			continue;
+		}
+		let local = timeline.restore.as_ref().map(|r| r.post_id.as_str());
+		if local.is_none_or(|local| is_older(local, &marker.last_read_id)) {
+			timeline.restore = Some(Restore::new(marker.last_read_id));
+		}
 	}
 }
 

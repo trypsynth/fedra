@@ -397,13 +397,31 @@ pub(super) fn timeline_selection_changed(ctx: &mut UiCommandContext<'_>, index: 
 		if let Some(mb) = frame.get_menu_bar() {
 			update_menu_labels(&mb, state);
 		}
+		resume_restore(ctx);
 	}
+}
+
+/// Goes on looking for where the user left off in a timeline that waited until now to load older pages.
+fn resume_restore(ctx: &mut UiCommandContext<'_>) {
+	let Some(requests) = ctx.requests() else { return };
+	let limit = Some(u32::from(ctx.state.config.fetch_limit));
+	let Some(timeline) = ctx.state.timeline_manager.active_mut() else { return };
+	let Some(restore) = timeline.restore.as_mut() else { return };
+	let Some(older_than) = restore.waiting.take() else { return };
+	if restore.pages == 0 {
+		ctx.live_region.announce("Finding your place");
+	}
+	restore.pages += 1;
+	timeline.loading_more = true;
+	timelines::fetch(&requests, timeline.timeline_type.clone(), limit, Some(older_than));
 }
 
 pub(super) fn timeline_entry_selection_changed(ctx: &mut UiCommandContext<'_>, index: usize) {
 	let state = &mut *ctx.state;
 	let frame = ctx.frame;
 	if let Some(active) = state.timeline_manager.active_mut() {
+		// The user has moved on, so a page arriving later shouldn't pull them back.
+		active.restore = None;
 		let effective_sort_order = active.effective_sort_order(&state.config);
 		active.selected_index = Some(index);
 		active.selected_id = list_index_to_entry_index(index, active.entries.len(), effective_sort_order)
@@ -630,7 +648,6 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 			}
 			let name = format!("Thread: {}", target.account.display_name_or_username());
 			let timeline_type = TimelineType::Thread { id: target.id.clone(), name };
-			state.pending_restore_post_id = Some((timeline_type.clone(), target.id.clone()));
 			open_timeline(
 				state,
 				timelines_selector,
@@ -640,6 +657,7 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 				live_region,
 				frame,
 			);
+			state.timeline_manager.restore(&timeline_type, target.id.clone());
 			let Some(requests) = &requests else {
 				live_region.announce("Network not available");
 				return;
@@ -659,8 +677,8 @@ pub(super) fn view_resolved_thread(ctx: &mut UiCommandContext<'_>, focus: Box<St
 	let live_region = ctx.live_region;
 	let name = format!("Thread: {}", focus.account.display_name_or_username());
 	let timeline_type = TimelineType::Thread { id: focus.id.clone(), name };
-	state.pending_restore_post_id = Some((timeline_type.clone(), focus.id.clone()));
 	open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
+	state.timeline_manager.restore(&timeline_type, focus.id.clone());
 	if let Some(requests) = &requests {
 		timelines::load_thread(requests, timeline_type, *focus);
 	}
@@ -694,8 +712,8 @@ pub(super) fn view_quoted_thread(ctx: &mut UiCommandContext<'_>) {
 		},
 	);
 	if let Some((timeline_type, status_id)) = quoted_info {
-		state.pending_restore_post_id = Some((timeline_type.clone(), status_id));
 		open_timeline(state, timelines_selector, timeline_list, &timeline_type, suppress_selection, live_region, frame);
+		state.timeline_manager.restore(&timeline_type, status_id);
 		let Some(requests) = &requests else {
 			live_region.announce("Network not available");
 			return;

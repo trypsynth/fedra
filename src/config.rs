@@ -1126,7 +1126,20 @@ impl Config {
 		{
 			account.saved_timelines = std::mem::take(&mut self.legacy_saved_timelines);
 			account.saved_active_timeline = self.legacy_saved_active_timeline.take();
-			account.saved_selected_post_id = self.legacy_saved_selected_post_id.take();
+			account.legacy_selected_post_id = self.legacy_saved_selected_post_id.take();
+		}
+		self
+	}
+
+	/// Moves the one saved post, which belonged to the active timeline, into that timeline's position.
+	fn migrate_selected_post(mut self) -> Self {
+		for account in &mut self.accounts {
+			if let Some(post_id) = account.legacy_selected_post_id.take()
+				&& let Some(timeline) = account.saved_active_timeline.clone()
+				&& account.saved_positions.is_empty()
+			{
+				account.saved_positions.push(SavedPosition { timeline, post_id });
+			}
 		}
 		self
 	}
@@ -1198,8 +1211,12 @@ pub struct Account {
 	pub saved_timelines: Vec<crate::timeline::TimelineType>,
 	#[serde(default)]
 	pub saved_active_timeline: Option<crate::timeline::TimelineType>,
+	/// The post selected in each open timeline, to go back to next session.
 	#[serde(default)]
-	pub saved_selected_post_id: Option<String>,
+	pub saved_positions: Vec<SavedPosition>,
+	/// From when only the active timeline's post was saved. Only read so `ConfigStore::load` can move it into `saved_positions`.
+	#[serde(default, rename = "saved_selected_post_id", skip_serializing)]
+	legacy_selected_post_id: Option<String>,
 	#[serde(default)]
 	#[serde(alias = "locked_timelines")]
 	pub permanent_timelines: Vec<crate::timeline::TimelineType>,
@@ -1207,6 +1224,12 @@ pub struct Account {
 	pub notifying_timelines: Vec<crate::timeline::TimelineType>,
 	#[serde(default)]
 	pub timeline_sounds: Vec<TimelineSound>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedPosition {
+	pub timeline: crate::timeline::TimelineType,
+	pub post_id: String,
 }
 
 /// A sound the user picked for one timeline's notifications, in place of the default.
@@ -1234,7 +1257,8 @@ impl Account {
 			default_post_visibility: None,
 			saved_timelines: Vec::new(),
 			saved_active_timeline: None,
-			saved_selected_post_id: None,
+			saved_positions: Vec::new(),
+			legacy_selected_post_id: None,
 			permanent_timelines: Vec::new(),
 			notifying_timelines: Vec::new(),
 			timeline_sounds: Vec::new(),
@@ -1269,7 +1293,7 @@ impl ConfigStore {
 		match serde_json::from_str::<Config>(&contents) {
 			Ok(config) => {
 				tracing::info!(accounts = config.accounts.len(), "loaded config");
-				return config.migrate_legacy_timelines().migrate_legacy_hotkey();
+				return config.migrate_legacy_timelines().migrate_selected_post().migrate_legacy_hotkey();
 			}
 			Err(e) => tracing::error!(error = %e, "config is unreadable, so it's moved aside and Fedra starts fresh"),
 		}
@@ -1324,6 +1348,29 @@ fn new_account_id() -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn the_old_single_saved_post_becomes_the_active_timelines_position() {
+		let config: Config = serde_json::from_value(serde_json::json!({
+			"version": 1,
+			"accounts": [{
+				"id": "a",
+				"instance": "https://example.social/",
+				"saved_active_timeline": "Mentions",
+				"saved_selected_post_id": "42",
+			}],
+			"active_account_id": "a",
+		}))
+		.unwrap();
+		let config = config.migrate_selected_post();
+		let account = &config.accounts[0];
+		assert_eq!(
+			account.saved_positions,
+			[SavedPosition { timeline: crate::timeline::TimelineType::Mentions, post_id: "42".to_string() }]
+		);
+		let saved = serde_json::to_value(account).unwrap();
+		assert!(saved.get("saved_selected_post_id").is_none(), "the old field is never written back");
+	}
 
 	#[test]
 	fn every_default_global_chord_has_a_modifier_and_is_unique() {

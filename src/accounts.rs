@@ -182,9 +182,9 @@ pub fn switch_to_account(
 	// Only restore the saved timelines the first time an account is shown this
 	// session. Switching back to it later keeps whatever was left open.
 	let first_load = state.timeline_manager.len() == 0;
-	let (saved_timelines, saved_active_timeline, saved_selected_post_id) = state
+	let (saved_timelines, saved_active_timeline, saved_positions) = state
 		.active_account()
-		.map(|a| (a.saved_timelines.clone(), a.saved_active_timeline.clone(), a.saved_selected_post_id.clone()))
+		.map(|a| (a.saved_timelines.clone(), a.saved_active_timeline.clone(), a.saved_positions.clone()))
 		.unwrap_or_default();
 	if first_load {
 		// Asked for before any timeline, so the markers arrive first and restoring can use them.
@@ -264,14 +264,13 @@ pub fn switch_to_account(
 		}
 	}
 	apply_streaming_setting(state);
-	if first_load && let Some(saved_type) = saved_active_timeline {
-		if let Some(index) = state.timeline_manager.index_of(&saved_type) {
+	if first_load {
+		if let Some(index) = saved_active_timeline.and_then(|saved| state.timeline_manager.index_of(&saved)) {
 			state.timeline_manager.set_active(index);
 		}
-		if let Some(post_id) = saved_selected_post_id
-			&& let Some(active_type) = state.timeline_manager.active().map(|t| t.timeline_type.clone())
-		{
-			state.pending_restore_post_id = Some((active_type, post_id));
+		// The timelines' first pages are only requested so far, so each finds its place when its page arrives.
+		for position in saved_positions.into_iter().filter(|p| p.timeline.keeps_position()) {
+			state.timeline_manager.restore(&position.timeline, position.post_id);
 		}
 	}
 	timelines_selector.clear();
