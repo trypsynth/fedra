@@ -25,7 +25,7 @@
   - Open a profile or timeline from a post, a mention, a list of boosts or favorites, or a search result.
   - Follow, unfollow, block, and mute users. A mute can last from 5 minutes to 7 days or have no end, and can hide the user's notifications as well as their posts. Show or hide the boosts of a user. Add users to lists.
   - Accept or reject follow requests.
-  - See the followers and the accounts that a user follows.
+  - See the followers and the accounts that a user follows. Your own are in the Options menu, along with the users you've muted or blocked.
   - Give a user an alias. Fedra shows the alias in place of their display name.
   - Follow, unfollow, and mute hashtags.
   - See the users who boosted or favorited a post.
@@ -426,6 +426,10 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 | Manage Accounts... | `Ctrl+Alt+A` | `Ctrl+Alt+A` |
 | Manage Filters... | None | None |
 | Manage Lists... | None | None |
+| Your Followers... | None | None |
+| Who You Follow... | None | None |
+| Muted Users... | None | None |
+| Blocked Users... | None | None |
 | Message Requests... | None | None |
 | Edit Profile... | `Ctrl+Shift+E` | `Ctrl+Shift+E` |
 | Options... | `Ctrl+,` | `Ctrl+,` |
@@ -519,6 +523,27 @@ Press `Enter` on a post to open its links. If the post has more than one link, o
 - macOS: `~/Library/Application Support/Fedra/config.json`
 
 ## Changelog
+
+### Version 0.9.0
+- Added a log of what Fedra does, in `fedra.log` beside your settings, to help with reporting problems. The new Advanced tab of the options sets how much it records, or turns it off.
+- Added builds for Intel Macs.
+- Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
+- Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. A mute that ends says when.
+- Added suggestions for hashtags as you type `#` in a post, the same way as for mentions.
+- Added View Edit History to the Post menu, to read every version of an edited post.
+- Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.
+- Closing a post, reply, or edit that you changed without sending it now asks first. You can turn this off on the Composing tab of the options.
+- Every open timeline except Local and Federated now goes back to the post you were on when Fedra starts, not only the one you had open. With `Load older posts to find where you left off` on, the other timelines look for their place the first time you switch to them.
+- Fedra now uses both your Home and your Notifications positions from your server, whichever timeline was open when you exited.
+- Fixed a reply to your own post starting with a space.
+- Muting someone now asks how long to mute them for, and whether to hide their notifications too.
+- Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
+- Starting Fedra while it's already running now brings its window to the front, instead of showing an error.
+- The media download dialog no longer shows a remaining time, which was always unknown.
+- The options now have tabs for General, Composing, Timelines, Display, Notifications, Templates, Filters, the invisible interface, and Advanced settings, and no tab uses the same access key twice. Customize Keyboard Shortcuts is now only in the Options menu.
+- The relationship part of a profile now says when someone has blocked you, when you feature them on your profile, and whether your mute hides their notifications.
+- The results of a poll that you voted in, or that has ended, now show in a text field that you can read line by line.
+- Times now follow your system's clock, so they show in 24-hour time if that's how your computer shows them.
 
 ### Version 0.8.0
 - A follow request is now answered with Accept, Reject, and Cancel buttons.

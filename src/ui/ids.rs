@@ -66,6 +66,10 @@ seq_ids! {
 	ID_UI_WAKE,
 	ID_MUTE_CONVERSATION,
 	ID_VIEW_EDIT_HISTORY,
+	ID_MUTED_USERS,
+	ID_BLOCKED_USERS,
+	ID_YOUR_FOLLOWERS,
+	ID_YOUR_FOLLOWING,
 }
 
 /// wx's standard preferences item, which macOS moves into the app menu as Settings.

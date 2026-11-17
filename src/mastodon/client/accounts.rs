@@ -87,6 +87,16 @@ impl MastodonClient {
 		self.fetch_accounts_page(url, Some(access_token), max_id).context("Failed to fetch following")
 	}
 
+	pub fn get_mutes_page(&self, access_token: &str, max_id: Option<&str>) -> Result<(Vec<Account>, Option<String>)> {
+		let url = self.base_url.join("api/v1/mutes")?;
+		self.fetch_accounts_page(url, Some(access_token), max_id).context("Failed to fetch muted users")
+	}
+
+	pub fn get_blocks_page(&self, access_token: &str, max_id: Option<&str>) -> Result<(Vec<Account>, Option<String>)> {
+		let url = self.base_url.join("api/v1/blocks")?;
+		self.fetch_accounts_page(url, Some(access_token), max_id).context("Failed to fetch blocked users")
+	}
+
 	pub fn get_remote_followers(&self, acct: &str) -> Result<Vec<Account>> {
 		let (base_url, remote_id) = self.resolve_remote_account(acct)?;
 		let url = base_url.join(&format!("api/v1/accounts/{remote_id}/followers"))?;

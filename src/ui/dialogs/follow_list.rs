@@ -5,17 +5,18 @@ use wxdragon::{event::MenuEvents, prelude::*};
 
 use super::user_actions;
 use crate::{
-	AppState, UiCommand,
 	mastodon::{Account, MastodonClient, Relationship},
 	ui::commands::Requests,
 };
 
-/// The two account lists a profile can show. They differ only in wording and in
-/// which endpoint and dialog slot they use.
-#[derive(Clone, Copy, Debug)]
+/// The account lists the list dialog shows: a profile's followers and follows, and the user's own mutes and blocks.
+/// They differ only in wording and in which endpoint they use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FollowList {
 	Followers,
 	Following,
+	Muted,
+	Blocked,
 }
 
 impl FollowList {
@@ -23,13 +24,20 @@ impl FollowList {
 		match self {
 			Self::Followers => "Followers",
 			Self::Following => "Following",
+			Self::Muted => "Muted Users",
+			Self::Blocked => "Blocked Users",
 		}
 	}
 
-	pub const fn label(self) -> &'static str {
-		match self {
-			Self::Followers => "Users who follow this person:",
-			Self::Following => "Users this person follows:",
+	/// `own` when the list is the user's own, rather than someone else's from their profile.
+	pub const fn label(self, own: bool) -> &'static str {
+		match (self, own) {
+			(Self::Followers, true) => "People who follow you:",
+			(Self::Following, true) => "People you follow:",
+			(Self::Followers, false) => "Users who follow this person:",
+			(Self::Following, false) => "Users this person follows:",
+			(Self::Muted, _) => "Users you've muted:",
+			(Self::Blocked, _) => "Users you've blocked:",
 		}
 	}
 
@@ -37,6 +45,8 @@ impl FollowList {
 		match self {
 			Self::Followers => "No followers found",
 			Self::Following => "No following found",
+			Self::Muted => "You haven't muted anyone",
+			Self::Blocked => "You haven't blocked anyone",
 		}
 	}
 
@@ -44,6 +54,8 @@ impl FollowList {
 		match self {
 			Self::Followers => "Failed to load followers",
 			Self::Following => "Failed to load following",
+			Self::Muted => "Failed to load muted users",
+			Self::Blocked => "Failed to load blocked users",
 		}
 	}
 
@@ -51,45 +63,42 @@ impl FollowList {
 		match self {
 			Self::Followers => "Failed to load more followers",
 			Self::Following => "Failed to load more following",
+			Self::Muted => "Failed to load more muted users",
+			Self::Blocked => "Failed to load more blocked users",
 		}
 	}
 
-	pub const fn closed_command(self) -> UiCommand {
-		match self {
-			Self::Followers => UiCommand::FollowersDialogClosed,
-			Self::Following => UiCommand::FollowingDialogClosed,
+	/// How many the list holds, when the profile it belongs to says. Mastodon doesn't count mutes or blocks.
+	pub const fn total(self, account: Option<&Account>) -> u64 {
+		match (self, account) {
+			(Self::Followers, Some(account)) => account.followers_count,
+			(Self::Following, Some(account)) => account.following_count,
+			_ => 0,
 		}
 	}
 
-	pub const fn dialog_slot(self, state: &mut AppState) -> &mut Option<FollowListDialog> {
-		match self {
-			Self::Followers => &mut state.followers_dialog,
-			Self::Following => &mut state.following_dialog,
-		}
-	}
-
-	pub const fn total(self, account: &Account) -> u64 {
-		match self {
-			Self::Followers => account.followers_count,
-			Self::Following => account.following_count,
-		}
-	}
-
-	/// One page of `account`'s list, after `max_id`. A remote account's list comes whole, since
-	/// its own server can't be paged through.
+	/// One page of the list, after `max_id`: `account`'s followers or follows, or the user's own mutes or blocks.
+	/// A remote account's list comes whole, since its own server can't be paged through.
 	pub fn fetch_page(
 		self,
 		client: &MastodonClient,
 		token: &str,
-		account: &Account,
+		account: Option<&Account>,
 		max_id: Option<&str>,
 	) -> Result<(Vec<Account>, Option<String>)> {
-		let remote = account.acct.contains('@');
-		match self {
-			Self::Followers if remote => client.get_remote_followers(&account.acct).map(|accounts| (accounts, None)),
-			Self::Following if remote => client.get_remote_following(&account.acct).map(|accounts| (accounts, None)),
-			Self::Followers => client.get_followers_page(token, &account.id, max_id),
-			Self::Following => client.get_following_page(token, &account.id, max_id),
+		let remote = account.is_some_and(|account| account.acct.contains('@'));
+		match (self, account) {
+			(Self::Muted, _) => client.get_mutes_page(token, max_id),
+			(Self::Blocked, _) => client.get_blocks_page(token, max_id),
+			(Self::Followers, Some(account)) if remote => {
+				client.get_remote_followers(&account.acct).map(|accounts| (accounts, None))
+			}
+			(Self::Following, Some(account)) if remote => {
+				client.get_remote_following(&account.acct).map(|accounts| (accounts, None))
+			}
+			(Self::Followers, Some(account)) => client.get_followers_page(token, &account.id, max_id),
+			(Self::Following, Some(account)) => client.get_following_page(token, &account.id, max_id),
+			(Self::Followers | Self::Following, None) => anyhow::bail!("No account to list"),
 		}
 	}
 }

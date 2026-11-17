@@ -326,9 +326,9 @@ where
 	});
 }
 
-/// Opens a dialog that fills with `account`'s followers or follows a page at a time. It appears
-/// once the first page is in, and closing it stops the loading.
-pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account, list: FollowList) {
+/// Opens a dialog that fills with `account`'s followers or follows, or with the user's own mutes or blocks when
+/// there's no `account`, a page at a time. It appears once the first page is in, and closing it stops the loading.
+pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: Option<&Account>, list: FollowList) {
 	let (Some(session), Some(requests)) = (ctx.state.session(), ctx.requests()) else {
 		ctx.live_region.announce("Network not available");
 		return;
@@ -340,7 +340,7 @@ pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account
 	let dlg = dialogs::FollowListDialog::new(
 		parent,
 		list.title(),
-		list.label(),
+		list.label(account.is_some_and(|a| ctx.state.current_user_id.as_deref() == Some(a.id.as_str()))),
 		list.total(account),
 		requests,
 		ctx.ui_tx.clone(),
@@ -350,25 +350,27 @@ pub(super) fn show_follow_list(ctx: &mut UiCommandContext<'_>, account: &Account
 			let _ = ui_tx_timeline.send(UiCommand::OpenTimeline(timeline_type));
 		},
 		move || {
-			let _ = ui_tx_close.send(list.closed_command());
+			let _ = ui_tx_close.send(UiCommand::FollowListClosed(list));
 		},
 	);
-	*list.dialog_slot(ctx.state) = Some(dlg.clone());
-	spawn_for(&dlg.dialog(), load_follow_list(dlg, session, account.clone(), list, ctx.live_region.clone()));
+	if let Some(previous) = ctx.state.follow_list_dialogs.insert(list, dlg.clone()) {
+		previous.destroy();
+	}
+	spawn_for(&dlg.dialog(), load_follow_list(dlg, session, account.cloned(), list, ctx.live_region.clone()));
 }
 
 async fn load_follow_list(
 	dlg: dialogs::FollowListDialog,
 	session: Session,
-	account: Account,
+	account: Option<Account>,
 	list: FollowList,
 	live_region: TimelineList,
 ) {
 	let mut max_id: Option<String> = None;
 	loop {
 		let (page_account, page_max_id) = (account.clone(), max_id.clone());
-		let page =
-			session.call(move |client, token| list.fetch_page(client, token, &page_account, page_max_id.as_deref()));
+		let page = session
+			.call(move |client, token| list.fetch_page(client, token, page_account.as_ref(), page_max_id.as_deref()));
 		let first_page = max_id.is_none();
 		let (accounts, next_max_id) = match page.await {
 			Ok(page) => page,
@@ -425,16 +427,19 @@ pub(super) fn profile_dialog_closed(ctx: &mut UiCommandContext<'_>) {
 	}
 }
 
-pub(super) fn followers_dialog_closed(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	if let Some(dialog) = state.followers_dialog.take() {
-		dialog.destroy();
-	}
+/// The user's own followers or follows, without opening their profile first.
+pub(super) fn show_own_follow_list(ctx: &mut UiCommandContext<'_>, list: FollowList) {
+	let Some(id) = ctx.state.current_user_id.clone() else {
+		ctx.live_region.announce("Your account hasn't loaded yet");
+		return;
+	};
+	// Only the id is needed to page through a list on the user's own server.
+	let account = Account { id, ..Account::default() };
+	show_follow_list(ctx, Some(&account), list);
 }
 
-pub(super) fn following_dialog_closed(ctx: &mut UiCommandContext<'_>) {
-	let state = &mut *ctx.state;
-	if let Some(dialog) = state.following_dialog.take() {
+pub(super) fn follow_list_closed(ctx: &mut UiCommandContext<'_>, list: FollowList) {
+	if let Some(dialog) = ctx.state.follow_list_dialogs.remove(&list) {
 		dialog.destroy();
 	}
 }

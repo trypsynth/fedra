@@ -153,7 +153,7 @@ pub fn handle_action(
 		}
 		ID_ACTION_VIEW_FOLLOWERS | ID_ACTION_VIEW_FOLLOWING => {
 			let list = if id == ID_ACTION_VIEW_FOLLOWERS { FollowList::Followers } else { FollowList::Following };
-			let _ = ui_tx.send(UiCommand::ShowFollowList { account: Box::new(account.clone()), list });
+			let _ = ui_tx.send(UiCommand::ShowFollowList { account: Some(Box::new(account.clone())), list });
 			return;
 		}
 		ID_ACTION_ADD_TO_LIST => {

@@ -316,6 +316,10 @@ pub enum ActionId {
 	ManageFilters,
 	MessageRequests,
 	ManageLists,
+	YourFollowers,
+	YourFollowing,
+	MutedUsers,
+	BlockedUsers,
 	EditProfile,
 	Options,
 	CustomizeShortcuts,
@@ -391,6 +395,10 @@ impl ActionId {
 			Self::ManageFilters,
 			Self::MessageRequests,
 			Self::ManageLists,
+			Self::YourFollowers,
+			Self::YourFollowing,
+			Self::MutedUsers,
+			Self::BlockedUsers,
 			Self::EditProfile,
 			Self::Options,
 			Self::CustomizeShortcuts,
@@ -466,6 +474,10 @@ impl ActionId {
 			Self::ManageFilters => "Manage Filters...",
 			Self::MessageRequests => "Message Requests...",
 			Self::ManageLists => "Manage Lists...",
+			Self::YourFollowers => "Your Followers...",
+			Self::YourFollowing => "Who You Follow...",
+			Self::MutedUsers => "Muted Users...",
+			Self::BlockedUsers => "Blocked Users...",
 			Self::EditProfile => "Edit Profile...",
 			Self::Options => "Options...",
 			Self::CustomizeShortcuts => "Customize Keyboard Shortcuts...",
@@ -539,7 +551,11 @@ impl ActionId {
 				Self::ManageAccounts => Some(KeyChord::new(true, true, false, "A")),
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
-				Self::ManageLists => None,
+				Self::ManageLists
+				| Self::YourFollowers
+				| Self::YourFollowing
+				| Self::MutedUsers
+				| Self::BlockedUsers => None,
 				Self::EditProfile => Some(KeyChord::new(true, false, true, "E")),
 				Self::Options => Some(KeyChord::new(true, false, false, ",")),
 				Self::CustomizeShortcuts => None,
@@ -609,7 +625,11 @@ impl ActionId {
 				Self::ManageAccounts => Some(KeyChord::new(true, true, false, "A")),
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
-				Self::ManageLists => None,
+				Self::ManageLists
+				| Self::YourFollowers
+				| Self::YourFollowing
+				| Self::MutedUsers
+				| Self::BlockedUsers => None,
 				Self::EditProfile => Some(KeyChord::new(true, false, true, "E")),
 				Self::Options => Some(KeyChord::new(true, false, false, ",")),
 				Self::CustomizeShortcuts => None,

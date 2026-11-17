@@ -3,11 +3,11 @@
 use serde::Deserialize;
 
 use crate::{
-	config::DisplayNameEmojiMode,
+	config::{DisplayNameEmojiMode, TimestampFormat},
 	html::strip_html,
 	mastodon::{
 		serde_util::deserialize_u64_or_zero,
-		time::{friendly_date, friendly_day},
+		time::{friendly_date, friendly_day, friendly_time},
 	},
 	text::strip_display_name_emojis,
 	timeline::TimelineTextOptions,
@@ -85,6 +85,9 @@ pub struct Account {
 	/// The day of its latest post, such as "2026-11-15".
 	#[serde(default)]
 	pub last_status_at: Option<String>,
+	/// When the user's mute of it ends. Only the list of mutes gives it, and only for a mute that ends.
+	#[serde(default)]
+	pub mute_expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -183,6 +186,10 @@ impl Account {
 		}
 		if let Some(date) = self.last_status_at.as_deref().and_then(friendly_day) {
 			lines.push(format!("Last post: {date}"));
+		}
+		if let Some(until) = self.mute_expires_at.as_deref().and_then(|at| friendly_time(at, TimestampFormat::Absolute))
+		{
+			lines.push(format!("Muted until {until}"));
 		}
 		lines.join("\r\n")
 	}

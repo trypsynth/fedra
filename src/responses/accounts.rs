@@ -161,10 +161,7 @@ pub fn relationship_updated(
 	if let Some(dlg) = &ctx.state.profile_dialog {
 		dlg.update_relationship(&rel);
 	}
-	if let Some(dlg) = &ctx.state.followers_dialog {
-		dlg.update_relationships(std::slice::from_ref(&rel));
-	}
-	if let Some(dlg) = &ctx.state.following_dialog {
+	for dlg in ctx.state.follow_list_dialogs.values() {
 		dlg.update_relationships(std::slice::from_ref(&rel));
 	}
 	ctx.announce(&relationship_message(action, target_name));
