@@ -119,6 +119,12 @@ pub struct Config {
 	legacy_saved_selected_post_id: Option<String>,
 	#[serde(default)]
 	pub saved_window_hidden: bool,
+	/// The folder name of the chosen soundpack in `soundpacks`. `None` leaves event sounds off.
+	#[serde(default)]
+	pub soundpack: Option<String>,
+	/// How loud sounds play, from 0 to 100.
+	#[serde(default = "default_sound_volume")]
+	pub sound_volume: u8,
 	#[serde(default = "default_spell_check")]
 	pub spell_check: bool,
 	/// Say "Misspelled: word" when a word is finished wrongly. Off by default.
@@ -313,6 +319,8 @@ pub enum ActionId {
 	SwitchNextAccount,
 	ToggleContentWarning,
 	ToggleQuickActionKeys,
+	VolumeUp,
+	VolumeDown,
 	ManageAccounts,
 	ManageFilters,
 	MessageRequests,
@@ -396,6 +404,8 @@ impl ActionId {
 			Self::SwitchNextAccount,
 			Self::ToggleContentWarning,
 			Self::ToggleQuickActionKeys,
+			Self::VolumeUp,
+			Self::VolumeDown,
 			Self::ManageAccounts,
 			Self::ManageFilters,
 			Self::MessageRequests,
@@ -479,6 +489,8 @@ impl ActionId {
 			Self::SwitchNextAccount => "Next Account",
 			Self::ToggleContentWarning => "Toggle Content Warning",
 			Self::ToggleQuickActionKeys => "Toggle Quick Keys Mode",
+			Self::VolumeUp => "Increase Sound Volume",
+			Self::VolumeDown => "Decrease Sound Volume",
 			Self::ManageAccounts => "Manage Accounts...",
 			Self::ManageFilters => "Manage Filters...",
 			Self::MessageRequests => "Message Requests...",
@@ -561,6 +573,8 @@ impl ActionId {
 				Self::SwitchNextAccount => Some(KeyChord::new(true, false, false, "]")),
 				Self::ToggleContentWarning => Some(KeyChord::new(false, false, false, "X")),
 				Self::ToggleQuickActionKeys => Some(KeyChord::new(true, false, true, "Q")),
+				Self::VolumeUp => Some(KeyChord::new(true, false, true, "Up")),
+				Self::VolumeDown => Some(KeyChord::new(true, false, true, "Down")),
 				Self::ManageAccounts => Some(KeyChord::new(true, true, false, "A")),
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
@@ -639,6 +653,8 @@ impl ActionId {
 				Self::SwitchNextAccount => Some(KeyChord::new(true, false, false, "]")),
 				Self::ToggleContentWarning => Some(KeyChord::new(true, false, false, "X")),
 				Self::ToggleQuickActionKeys => Some(KeyChord::new(true, false, true, "Q")),
+				Self::VolumeUp => Some(KeyChord::new(true, false, true, "Up")),
+				Self::VolumeDown => Some(KeyChord::new(true, false, true, "Down")),
 				Self::ManageAccounts => Some(KeyChord::new(true, true, false, "A")),
 				Self::ManageFilters => None,
 				Self::MessageRequests => None,
@@ -1063,6 +1079,10 @@ const fn default_enter_to_send() -> bool {
 	true
 }
 
+const fn default_sound_volume() -> u8 {
+	100
+}
+
 const fn default_spell_check() -> bool {
 	true
 }
@@ -1241,6 +1261,8 @@ impl Default for Config {
 			legacy_saved_active_timeline: None,
 			legacy_saved_selected_post_id: None,
 			saved_window_hidden: false,
+			soundpack: None,
+			sound_volume: default_sound_volume(),
 		}
 	}
 }

@@ -3,7 +3,10 @@
 use wxdragon::prelude::*;
 
 use super::{UiCommandContext, deferred};
-use crate::ui::{app_shell, menu::relabel_menus};
+use crate::{
+	soundpack::{self, SoundEvent},
+	ui::{app_shell, menu::relabel_menus},
+};
 
 pub(super) fn toggle_window_visibility(ctx: &mut UiCommandContext<'_>) {
 	let frame = ctx.frame;
@@ -30,6 +33,22 @@ pub(super) fn set_quick_action_keys_enabled(ctx: &mut UiCommandContext<'_>, enab
 	if let Some(mb) = frame.get_menu_bar() {
 		relabel_menus(&mb, state);
 	}
+}
+
+/// Raises or lowers the sound volume one step, says where it is, and plays the volume change sound at
+/// the new level so it can be heard as well as read.
+pub(super) fn change_volume(ctx: &mut UiCommandContext<'_>, up: bool) {
+	let state = &mut *ctx.state;
+	let current = state.config.sound_volume.min(100);
+	let volume = if up {
+		current.saturating_add(soundpack::VOLUME_STEP).min(100)
+	} else {
+		current.saturating_sub(soundpack::VOLUME_STEP)
+	};
+	state.config.sound_volume = volume;
+	let _ = state.save_config();
+	ctx.live_region.announce(&format!("Volume {volume}%"));
+	soundpack::play(state, SoundEvent::VolumeChange);
 }
 
 pub(super) fn view_help(ctx: &mut UiCommandContext<'_>) {
