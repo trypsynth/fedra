@@ -88,6 +88,12 @@ pub struct Account {
 	/// When the user's mute of it ends. Only the list of mutes gives it, and only for a mute that ends.
 	#[serde(default)]
 	pub mute_expires_at: Option<String>,
+	/// The profile picture's alt text. Empty when there's none, or the server has no such thing.
+	#[serde(default)]
+	pub avatar_description: String,
+	/// The header image's alt text.
+	#[serde(default)]
+	pub header_description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -169,6 +175,13 @@ impl Account {
 			let bio = strip_html(&self.note);
 			if !bio.trim().is_empty() {
 				lines.push(format!("Bio: {bio}"));
+			}
+		}
+		for (image, description) in
+			[("Profile picture", &self.avatar_description), ("Header image", &self.header_description)]
+		{
+			if !description.trim().is_empty() {
+				lines.push(format!("{image}: {}", description.trim()));
 			}
 		}
 		if !self.fields.is_empty() {

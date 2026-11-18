@@ -201,6 +201,8 @@ impl MastodonClient {
 		note: Option<&str>,
 		avatar: Option<&str>,
 		header: Option<&str>,
+		avatar_description: Option<&str>,
+		header_description: Option<&str>,
 		locked: Option<bool>,
 		bot: Option<bool>,
 		discoverable: Option<bool>,
@@ -224,6 +226,12 @@ impl MastodonClient {
 		if let Some(v) = header {
 			let part = multipart::Part::file(v).context("Failed to read header file")?;
 			form = form.part("header", part);
+		}
+		if let Some(v) = avatar_description {
+			form = form.text("avatar_description", v.to_string());
+		}
+		if let Some(v) = header_description {
+			form = form.text("header_description", v.to_string());
 		}
 		if let Some(v) = locked {
 			form = form.text("locked", v.to_string());

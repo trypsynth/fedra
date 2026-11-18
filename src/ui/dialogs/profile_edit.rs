@@ -37,16 +37,24 @@ pub fn show_profile_edit_dialog(
 	let avatar_label = StaticText::builder(&scroll_win).with_label("Avatar:").build();
 	let avatar_path = TextCtrl::builder(&scroll_win).with_style(TextCtrlStyle::ReadOnly).build();
 	let avatar_btn = Button::builder(&scroll_win).with_label("Change Avatar...").build();
+	let avatar_description_label = StaticText::builder(&scroll_win).with_label("Avatar description:").build();
+	let avatar_description = TextCtrl::builder(&scroll_win).with_value(&current.avatar_description).build();
 	avatar_sizer.add(&avatar_label, 0, SizerFlag::All, 5);
 	avatar_sizer.add(&avatar_path, 0, SizerFlag::Expand | SizerFlag::All, 5);
 	avatar_sizer.add(&avatar_btn, 0, SizerFlag::All, 5);
+	avatar_sizer.add(&avatar_description_label, 0, SizerFlag::All, 5);
+	avatar_sizer.add(&avatar_description, 0, SizerFlag::Expand | SizerFlag::All, 5);
 	let header_sizer = BoxSizer::builder(Orientation::Vertical).build();
 	let header_label = StaticText::builder(&scroll_win).with_label("Header:").build();
 	let header_path = TextCtrl::builder(&scroll_win).with_style(TextCtrlStyle::ReadOnly).build();
 	let header_btn = Button::builder(&scroll_win).with_label("Change Header...").build();
+	let header_description_label = StaticText::builder(&scroll_win).with_label("Header description:").build();
+	let header_description = TextCtrl::builder(&scroll_win).with_value(&current.header_description).build();
 	header_sizer.add(&header_label, 0, SizerFlag::All, 5);
 	header_sizer.add(&header_path, 0, SizerFlag::Expand | SizerFlag::All, 5);
 	header_sizer.add(&header_btn, 0, SizerFlag::All, 5);
+	header_sizer.add(&header_description_label, 0, SizerFlag::All, 5);
+	header_sizer.add(&header_description, 0, SizerFlag::Expand | SizerFlag::All, 5);
 	images_sizer.add_sizer(&avatar_sizer, 1, SizerFlag::Expand, 0);
 	images_sizer.add_sizer(&header_sizer, 1, SizerFlag::Expand, 0);
 	content_sizer.add_sizer(&images_sizer, 0, SizerFlag::Expand, 0);
@@ -164,6 +172,10 @@ pub fn show_profile_edit_dialog(
 	let note = note_text.get_value();
 	let avatar = avatar_path.get_value();
 	let header = header_path.get_value();
+	// Only sent when changed, so a server without image descriptions is never asked to set one.
+	let changed = |field: TextCtrl, was: &str| Some(field.get_value()).filter(|now| now.trim() != was.trim());
+	let avatar_description = changed(avatar_description, &current.avatar_description);
+	let header_description = changed(header_description, &current.header_description);
 	let locked = locked_cb.get_value();
 	let bot = bot_cb.get_value();
 	let discoverable = discoverable_cb.get_value();
@@ -198,6 +210,8 @@ pub fn show_profile_edit_dialog(
 		note: Some(note),
 		avatar: if avatar.is_empty() { None } else { Some(avatar) },
 		header: if header.is_empty() { None } else { Some(header) },
+		avatar_description,
+		header_description,
 		locked: Some(locked),
 		bot: Some(bot),
 		discoverable: Some(discoverable),

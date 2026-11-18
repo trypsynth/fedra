@@ -550,6 +550,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
 - New posts now start in the default posting language from your account's settings, and you choose a language by name from the ones your instance offers instead of typing a code.
 - Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
+- Profiles now show the descriptions of a profile picture and header image, and you can set your own in Edit Profile.
 - Starting Fedra while it's already running now brings its window to the front, instead of showing an error.
 - The media download dialog no longer says that the time remaining is unknown.
 - The options now have tabs for General, Composing, Timelines, Display, Notifications, Templates, Filters, the invisible interface, and Advanced settings, and no tab uses the same access key twice. Customize Keyboard Shortcuts is now only in the Options menu.
