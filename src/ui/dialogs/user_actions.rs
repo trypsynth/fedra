@@ -7,7 +7,7 @@ use super::FollowList;
 use crate::{
 	mastodon::{Account, Relationship},
 	network::{FollowOptions, MUTE_DURATIONS, MuteOptions, RelationshipAction, change_relationship},
-	responses::relationship_updated,
+	responses::{note_saved, relationship_updated},
 	ui::commands::{Requests, UiCommand},
 	ui_wake::UiCommandSender,
 };
@@ -31,6 +31,7 @@ pub const ID_ACTION_DISABLE_NOTIFICATIONS: i32 = 6016;
 pub const ID_ACTION_SEND_DIRECT_MESSAGE: i32 = 6017;
 pub const ID_ACTION_SET_ALIAS: i32 = 6018;
 pub const ID_ACTION_REMOVE_FROM_LIST: i32 = 6019;
+pub const ID_ACTION_EDIT_NOTE: i32 = 6020;
 
 pub fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	let mut body = String::new();
@@ -124,6 +125,10 @@ pub fn build_actions_menu(relationship: Option<&Relationship>) -> Menu {
 	menu.append(ID_ACTION_SEND_DIRECT_MESSAGE, "Send Direct Message...", "", ItemKind::Normal);
 	menu.append(ID_ACTION_OPEN_BROWSER, "Open in Browser", "", ItemKind::Normal);
 	menu.append(ID_ACTION_SET_ALIAS, "Set Alias...", "", ItemKind::Normal);
+	// Only once the note is known, so saving can't replace one the user didn't see.
+	if relationship.is_some() {
+		menu.append(ID_ACTION_EDIT_NOTE, "Edit Private Note...", "", ItemKind::Normal);
+	}
 	menu.append_separator();
 	menu.append(ID_ACTION_VIEW_FOLLOWERS, "View Followers", "", ItemKind::Normal);
 	menu.append(ID_ACTION_VIEW_FOLLOWING, "View Following", "", ItemKind::Normal);
@@ -162,6 +167,17 @@ pub fn handle_action(
 		}
 		ID_ACTION_REMOVE_FROM_LIST => {
 			let _ = ui_tx.send(UiCommand::RemoveUserFromList(account.id.clone()));
+			return;
+		}
+		ID_ACTION_EDIT_NOTE => {
+			let current = relationship.map(|r| r.note.as_str()).unwrap_or_default();
+			let Some(note) = prompt_for_note(parent, account.display_name_or_username(), current) else { return };
+			let account_id = account.id.clone();
+			let target_name = account.display_name_or_username().to_string();
+			requests.request(
+				move |client, token| client.set_account_note(token, &account_id, &note),
+				move |ctx, result| note_saved(ctx, &target_name, result),
+			);
 			return;
 		}
 		ID_ACTION_SET_ALIAS => {
@@ -207,6 +223,30 @@ pub fn handle_action(
 		move |client, token| change_relationship(client, token, &account_id, action, options),
 		move |ctx, result| relationship_updated(ctx, &target_name, action, result),
 	);
+}
+
+/// Asks for the user's private note on `name`, starting from `current`.
+fn prompt_for_note(parent: &dyn WxWidget, name: &str, current: &str) -> Option<String> {
+	let dialog = Dialog::builder(parent, &format!("Note on {name}")).with_size(450, 250).build();
+	let panel = Panel::builder(&dialog).build();
+	let label = StaticText::builder(&panel).with_label("&Private note, which only you can see:").build();
+	let text = TextCtrl::builder(&panel).with_style(TextCtrlStyle::MultiLine).with_value(current).build();
+	let main_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	main_sizer.add(&label, 0, SizerFlag::Expand | SizerFlag::All, 8);
+	main_sizer.add(&text, 1, SizerFlag::Expand | SizerFlag::Left | SizerFlag::Right, 8);
+	let (ok_button, cancel_button) = build_ok_cancel_buttons_on(&panel, &dialog, "&Save");
+	add_ok_cancel_footer(main_sizer, ok_button, cancel_button);
+	panel.set_sizer(main_sizer, true);
+	let dialog_sizer = BoxSizer::builder(Orientation::Vertical).build();
+	dialog_sizer.add(&panel, 1, SizerFlag::Expand, 0);
+	dialog.set_sizer(dialog_sizer, true);
+	dialog.centre();
+	text.set_focus();
+	text.set_insertion_point_end();
+	let result = dialog.show_modal();
+	let note = text.get_value().replace("\r\n", "\n");
+	dialog.destroy();
+	(result == ID_OK).then_some(note)
 }
 
 /// Asks how long to mute `name` for, and whether to hide their notifications as well.

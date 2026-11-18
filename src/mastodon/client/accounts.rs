@@ -189,6 +189,12 @@ impl MastodonClient {
 		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&params), "mute account")
 	}
 
+	/// Replaces the user's private note on the account, which only they can see. An empty one removes it.
+	pub fn set_account_note(&self, access_token: &str, account_id: &str, note: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/note"))?;
+		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&[("comment", note)]), "save note")
+	}
+
 	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unmute"))?;
 		self.post_json(access_token, url, "unmute account")

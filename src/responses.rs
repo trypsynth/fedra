@@ -8,7 +8,7 @@ mod timeline_updates;
 pub mod timelines;
 
 pub use accounts::{
-	edit_profile, fetch_instance_info, fetch_markers, fetch_notification_policy, fill_in_profile, look_up,
+	edit_profile, fetch_instance_info, fetch_markers, fetch_notification_policy, fill_in_profile, look_up, note_saved,
 	open_account, relationship_updated,
 };
 pub use helpers::spoken_failure;

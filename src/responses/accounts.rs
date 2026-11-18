@@ -181,13 +181,28 @@ pub fn relationship_updated(
 			return;
 		}
 	};
+	show_relationship(ctx, &rel);
+	ctx.announce(&relationship_message(action, target_name));
+}
+
+pub fn note_saved(ctx: &NetworkResponseContext<'_>, target_name: &str, result: Result<Relationship>) {
+	match result {
+		Ok(rel) => {
+			show_relationship(ctx, &rel);
+			ctx.announce(&format!("Saved your note on {target_name}"));
+		}
+		Err(err) => ctx.announce_failure(&format!("Could not save your note on {target_name}"), &err),
+	}
+}
+
+/// Brings any open profile or user list up to date with `rel`.
+fn show_relationship(ctx: &NetworkResponseContext<'_>, rel: &Relationship) {
 	if let Some(dlg) = &ctx.state.profile_dialog {
-		dlg.update_relationship(&rel);
+		dlg.update_relationship(rel);
 	}
 	for dlg in ctx.state.follow_list_dialogs.values() {
-		dlg.update_relationships(std::slice::from_ref(&rel));
+		dlg.update_relationships(std::slice::from_ref(rel));
 	}
-	ctx.announce(&relationship_message(action, target_name));
 }
 
 fn relationship_failure_message(action: RelationshipAction, target_name: &str) -> String {
