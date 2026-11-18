@@ -96,7 +96,8 @@ jobs:
         path: |
           target/release/wxwidgets_cmake_build
           target/release/wxdragon_sys_cmake_build
-        key: wx-cmake-release-${{ runner.os }}-${{ matrix.arch }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}
+        # CMake keeps the toolset's linker path, which a runner image with a newer MSVC no longer has.
+        key: wx-cmake-release-${{ runner.os }}-${{ matrix.arch }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}-msvc${{ env.VCToolsVersion }}
     # A hit on the Rust cache with a miss on this one would leave wxdragon-sys counted as built with its libraries gone.
     - name: Rebuild wxdragon-sys if its CMake output is missing
       shell: pwsh

@@ -75,7 +75,8 @@ jobs:
           path: |
             target/debug/wxwidgets_cmake_build
             target/debug/wxdragon_sys_cmake_build
-          key: wx-cmake-${{ runner.os }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}
+          # CMake keeps the toolset's linker path, which a runner image with a newer MSVC no longer has.
+          key: wx-cmake-${{ runner.os }}-${{ steps.wxwidgets.outputs.sha }}-${{ steps.wxdragon.outputs.hash }}-msvc${{ env.VCToolsVersion }}
       # If the Rust cache hit but the wxWidgets one didn't, the restored
       # fingerprint says wxdragon-sys is built while its libraries are missing,
       # and linking fails on WebView2LoaderStatic.lib. Force it to rebuild.
