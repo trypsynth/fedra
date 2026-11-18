@@ -560,6 +560,15 @@ pub(super) fn view_thread(ctx: &mut UiCommandContext<'_>) {
 		live_region.announce("No item selected");
 		return;
 	};
+	// A notification without a post, such as a follow, is about its account, so it opens their profile.
+	let entry = match entry {
+		TimelineEntry::Notification(notification)
+			if notification.status.is_none() && notification.kind != "follow_request" =>
+		{
+			TimelineEntry::Account(Box::new(notification.account))
+		}
+		entry => entry,
+	};
 	match &entry {
 		TimelineEntry::Account(account) => {
 			if let Some(url) = foreign_url(state, Some(&account.url)) {

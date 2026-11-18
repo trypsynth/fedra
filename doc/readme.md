@@ -523,7 +523,7 @@ Press `Ctrl+I`, or `I` in Quick Action Keys mode, on a post with media to open t
 - To open the timeline of an account or hashtag in the results, press `Alt+Enter` on it.
 
 ## Opening Posts
-Press `Enter` on a post to open what it has: its poll, its media, or its links. If it has only one of these, Fedra opens it. If it has more, such as a poll and a link, a dialog lists them, with `View thread` last, and its `Open` button opens the one you select. If it has none, `Enter` opens the thread, as `View Thread` does, and on a user or a hashtag it opens their profile or timeline. For a link, `Copy` copies it. If `Always prompt to open links` is on, Fedra also asks when the only thing to open is a link. Fedra removes tracking parameters from URLs, unless you turn this off in the General options.
+Press `Enter` on a post to open what it has: its poll, its media, or its links. If it has only one of these, Fedra opens it. If it has more, such as a poll and a link, a dialog lists them, with `View thread` last, and its `Open` button opens the one you select. If it has none, `Enter` opens the thread, as `View Thread` does, and on a user or a hashtag it opens their profile or timeline. On a notification without a post, such as a follow, it opens the profile of whoever it's from. For a link, `Copy` copies it. If `Always prompt to open links` is on, Fedra also asks when the only thing to open is a link. Fedra removes tracking parameters from URLs, unless you turn this off in the General options.
 
 You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Links` are in the Post menu and the context menu.
 
@@ -551,6 +551,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.
 - Closing a post, reply, or edit that you changed without sending it now asks first. You can turn this off on the Composing tab of the options.
 - `Enter` now opens whatever a post has: its poll, its media, or a link. When a post has more than one, Fedra asks which, and the thread is one of the choices. On a post with none, `Enter` opens the thread. Open Links is still in the Post menu, without a default shortcut.
+- Fixed `Enter` and View Thread saying there's no post on a follow notification. They now open the profile of whoever followed you.
 - Fixed a new post opened right after Fedra starts showing a 500-character limit.
 - Fixed a reply to your own post starting with a space.
 - Fixed Fedra sometimes staying open with no window after you exited it.
