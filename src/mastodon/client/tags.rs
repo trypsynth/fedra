@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::mastodon::{MastodonClient, Tag};
+use crate::mastodon::{FeaturedTag, MastodonClient, Tag};
 
 impl MastodonClient {
 	pub fn follow_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {
@@ -37,6 +37,12 @@ impl MastodonClient {
 			}
 			max_id = next;
 		}
+	}
+
+	/// The hashtags an account features on its profile.
+	pub fn get_featured_tags(&self, access_token: &str, account_id: &str) -> Result<Vec<FeaturedTag>> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/featured_tags"))?;
+		self.get_json(access_token, url, "fetch featured hashtags")
 	}
 
 	pub fn get_tag(&self, access_token: &str, tag_name: &str) -> Result<Tag> {

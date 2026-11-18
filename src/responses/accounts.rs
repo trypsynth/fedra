@@ -146,6 +146,15 @@ pub fn fill_in_profile(requests: &Requests, account_id: &str, refresh_account: b
 			}
 		},
 	);
+	let id = account_id.to_owned();
+	requests.request(
+		move |client, token| client.get_featured_tags(token, &id),
+		|ctx, result| {
+			if let (Ok(tags), Some(dlg)) = (result, &ctx.state.profile_dialog) {
+				dlg.update_featured_tags(tags.into_iter().map(|tag| tag.name).collect());
+			}
+		},
+	);
 	if refresh_account {
 		let id = account_id.to_owned();
 		requests.request(

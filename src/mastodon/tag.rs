@@ -14,6 +14,12 @@ pub struct Tag {
 	pub history: Vec<TagHistory>,
 }
 
+/// A hashtag an account features on its profile.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct FeaturedTag {
+	pub name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TagHistory {
 	pub day: String,

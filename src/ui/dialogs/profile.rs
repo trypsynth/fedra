@@ -16,6 +16,8 @@ pub struct ProfileDialog {
 	relationship: Rc<RefCell<Option<crate::mastodon::Relationship>>>,
 	profile_text: TextCtrl,
 	account: Rc<RefCell<MastodonAccount>>,
+	/// The names of the hashtags the account features, once they've loaded.
+	featured_tags: Rc<RefCell<Vec<String>>>,
 	is_own_account: bool,
 }
 
@@ -88,7 +90,7 @@ impl ProfileDialog {
 			on_close_win();
 		});
 		dialog.centre();
-		Self { dialog, relationship, profile_text, account: account_rc, is_own_account }
+		Self { dialog, relationship, profile_text, account: account_rc, featured_tags: Rc::default(), is_own_account }
 	}
 
 	pub fn show(&self) {
@@ -106,18 +108,31 @@ impl ProfileDialog {
 	pub fn update_account(&self, account: &MastodonAccount) {
 		self.account.replace(account.clone());
 		self.dialog.set_label(&format!("Profile for {}", account.display_name_or_username()));
-		let mut text = account.profile_display();
-		if let Some(rel) = self.relationship.borrow().clone() {
-			user_actions::append_relationship_text(&mut text, &rel, self.is_own_account);
-		}
-		self.profile_text.set_value(&text);
+		self.refresh_text();
 	}
 
 	pub fn update_relationship(&self, relationship: &crate::mastodon::Relationship) {
 		*self.relationship.borrow_mut() = Some(relationship.clone());
-		let account = self.account.borrow();
-		let mut text = account.profile_display();
-		user_actions::append_relationship_text(&mut text, relationship, self.is_own_account);
+		self.refresh_text();
+	}
+
+	pub fn update_featured_tags(&self, names: Vec<String>) {
+		*self.featured_tags.borrow_mut() = names;
+		self.refresh_text();
+	}
+
+	/// The profile as far as it's known, since the relationship and featured hashtags each arrive in their own time.
+	fn refresh_text(&self) {
+		let mut text = self.account.borrow().profile_display();
+		let featured = self.featured_tags.borrow();
+		if !featured.is_empty() {
+			let tags: Vec<String> = featured.iter().map(|name| format!("#{name}")).collect();
+			text.push_str("\r\nFeatured hashtags: ");
+			text.push_str(&tags.join(", "));
+		}
+		if let Some(relationship) = self.relationship.borrow().as_ref() {
+			user_actions::append_relationship_text(&mut text, relationship, self.is_own_account);
+		}
 		self.profile_text.set_value(&text);
 	}
 }

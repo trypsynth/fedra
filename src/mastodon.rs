@@ -25,7 +25,7 @@ pub use status::{
 	Conversation, MediaAttachment, Mention, PostSubmission, ScheduledStatus, Status, StatusAction, StatusContext,
 	StatusSource, StatusVersion,
 };
-pub use tag::Tag;
+pub use tag::{FeaturedTag, Tag};
 pub use time::friendly_time_local;
 
 /// Sent with every request Fedra makes. Some firewalls in front of instances, such as Prot.li,
