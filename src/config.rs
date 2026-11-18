@@ -55,6 +55,9 @@ pub struct Config {
 	pub content_warning_display: ContentWarningDisplay,
 	#[serde(default)]
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	/// Which emoji to leave out of post text, as for names.
+	#[serde(default)]
+	pub post_emoji_mode: DisplayNameEmojiMode,
 	/// Names chosen for people, keyed by their lowercased `user@instance` handle.
 	#[serde(default)]
 	pub user_aliases: std::collections::BTreeMap<String, String>,
@@ -1213,6 +1216,7 @@ impl Default for Config {
 			sort_order: SortOrder::default(),
 			content_warning_display: ContentWarningDisplay::default(),
 			display_name_emoji_mode: DisplayNameEmojiMode::default(),
+			post_emoji_mode: DisplayNameEmojiMode::default(),
 			user_aliases: std::collections::BTreeMap::new(),
 			preserve_thread_order: true,
 			default_timelines: default_timelines(),

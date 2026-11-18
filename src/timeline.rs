@@ -146,6 +146,7 @@ pub enum TimelineEntry {
 pub struct TimelineTextOptions {
 	pub cw_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub post_emoji_mode: DisplayNameEmojiMode,
 	pub user_aliases: std::collections::BTreeMap<String, String>,
 	pub show_link_previews: bool,
 	pub post_template: String,
@@ -161,6 +162,7 @@ impl TimelineTextOptions {
 		Self {
 			cw_display: config.content_warning_display,
 			display_name_emoji_mode: config.display_name_emoji_mode,
+			post_emoji_mode: config.post_emoji_mode,
 			user_aliases: config.user_aliases.clone(),
 			show_link_previews: config.show_link_previews,
 			post_template: config.templates.resolve_post_template(key).to_string(),
@@ -175,6 +177,7 @@ impl TimelineTextOptions {
 		Self {
 			cw_display: config.content_warning_display,
 			display_name_emoji_mode: config.display_name_emoji_mode,
+			post_emoji_mode: config.post_emoji_mode,
 			user_aliases: config.user_aliases.clone(),
 			show_link_previews: config.show_link_previews,
 			post_template: DEFAULT_POST_TEMPLATE.to_string(),

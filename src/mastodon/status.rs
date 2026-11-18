@@ -13,6 +13,7 @@ use crate::{
 		time::friendly_time,
 	},
 	template::{PostTemplateVars, render_template},
+	text::strip_post_emojis,
 	timeline::TimelineTextOptions,
 };
 
@@ -200,6 +201,9 @@ pub struct Status {
 	pub mentions: Vec<Mention>,
 	#[serde(default)]
 	pub tags: Vec<Tag>,
+	/// The custom emoji the post uses.
+	#[serde(default)]
+	pub emojis: Vec<CustomEmoji>,
 	pub poll: Option<Poll>,
 	#[serde(default)]
 	pub card: Option<Card>,
@@ -339,6 +343,11 @@ impl StatusVersion {
 		}
 		out
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CustomEmoji {
+	pub shortcode: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -512,6 +521,7 @@ impl Status {
 		} else {
 			self.content_with_cw(options.cw_display, cw_expanded)
 		};
+		content = self.without_emoji(&content, options);
 		if options.show_link_previews
 			&& let Some(card) = self.card_summary()
 		{
@@ -536,7 +546,8 @@ impl Status {
 					strip_re_prefix(&mut content);
 					let author = quote.account.timeline_display_name(options);
 					let username = format!("@{}", quote.account.acct);
-					let mut content = quote.content_with_cw(options.cw_display, cw_expanded);
+					let mut content =
+						quote.without_emoji(&quote.content_with_cw(options.cw_display, cw_expanded), options);
 					// The quoted post can itself be a quote of another post, in which case its
 					// content carries the same plain-text "RE: <link>" fallback that ours does.
 					strip_re_prefix(&mut content);
@@ -590,6 +601,12 @@ impl Status {
 			"direct" => "Direct".to_string(),
 			other => other.to_string(),
 		}
+	}
+
+	/// `text` from this post, with the emoji the user hides in posts taken out.
+	fn without_emoji(&self, text: &str, options: &TimelineTextOptions) -> String {
+		let shortcodes: Vec<String> = self.emojis.iter().map(|emoji| emoji.shortcode.clone()).collect();
+		strip_post_emojis(text, &shortcodes, options.post_emoji_mode)
 	}
 
 	pub fn content_with_cw(&self, cw_display: ContentWarningDisplay, cw_expanded: bool) -> String {

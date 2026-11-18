@@ -176,6 +176,7 @@ Fedra remembers the post you were on in each open timeline, and goes back to it 
   - Unicode emojis
   - Instance emojis
   - All
+- Hide emoji in posts: the same choices, for the text of posts. Line breaks stay.
 - `Read link previews in timelines`
 - `Show oldest timeline entries first`
 - `Always preserve thread order`
@@ -537,6 +538,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Added builds for Intel Macs.
 - Added Followed Hashtags to the Options menu, to see the hashtags you follow and open, unfollow, or mute them.
 - Added Follower Analysis to the Options menu, to see who follows you that you don't follow, who you follow that doesn't follow you, who follows you back, and who you follow that hasn't posted in a year.
+- Added Hide emoji in posts to the Display tab of the options, to leave emoji out of post text as you already can for names.
 - Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
 - Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. For a mute with a time limit, the list shows when it ends.
 - Added Scheduled Posts to the Options menu, to see the posts you've scheduled and reschedule or delete them.

@@ -17,6 +17,7 @@ const EMOJI_MODES: [DisplayNameEmojiMode; 4] = [
 pub struct DisplaySettings {
 	pub content_warning_display: ContentWarningDisplay,
 	pub display_name_emoji_mode: DisplayNameEmojiMode,
+	pub post_emoji_mode: DisplayNameEmojiMode,
 	pub show_link_previews: bool,
 	pub sort_order: SortOrder,
 	pub preserve_thread_order: bool,
@@ -27,6 +28,7 @@ impl DisplaySettings {
 		Self {
 			content_warning_display: config.content_warning_display,
 			display_name_emoji_mode: config.display_name_emoji_mode,
+			post_emoji_mode: config.post_emoji_mode,
 			show_link_previews: config.show_link_previews,
 			sort_order: config.sort_order,
 			preserve_thread_order: config.preserve_thread_order,
@@ -36,6 +38,7 @@ impl DisplaySettings {
 	pub const fn save(&self, config: &mut Config) {
 		config.content_warning_display = self.content_warning_display;
 		config.display_name_emoji_mode = self.display_name_emoji_mode;
+		config.post_emoji_mode = self.post_emoji_mode;
 		config.show_link_previews = self.show_link_previews;
 		config.sort_order = self.sort_order;
 		config.preserve_thread_order = self.preserve_thread_order;
@@ -46,6 +49,7 @@ pub struct DisplayTab {
 	pub panel: Panel,
 	content_warnings: Choice,
 	emoji_mode: Choice,
+	post_emoji_mode: Choice,
 	link_previews: CheckBox,
 	oldest_first: CheckBox,
 	thread_order: CheckBox,
@@ -60,6 +64,9 @@ impl DisplayTab {
 		let emoji_label = StaticText::builder(&panel).with_label("Hide &emoji in names:").build();
 		let emoji_index = EMOJI_MODES.iter().position(|m| *m == initial.display_name_emoji_mode).unwrap_or(0);
 		let emoji_mode = choice(panel, &["None", "Unicode emojis", "Instance emojis", "All"], emoji_index);
+		let post_emoji_label = StaticText::builder(&panel).with_label("Hide emoji in pos&ts:").build();
+		let post_emoji_index = EMOJI_MODES.iter().position(|m| *m == initial.post_emoji_mode).unwrap_or(0);
+		let post_emoji_mode = choice(panel, &["None", "Unicode emojis", "Instance emojis", "All"], post_emoji_index);
 		let link_previews = checkbox(panel, "Read link &previews in timelines", initial.show_link_previews);
 		let oldest_first =
 			checkbox(panel, "Show oldest timeline entries &first", initial.sort_order == SortOrder::OldestToNewest);
@@ -67,6 +74,7 @@ impl DisplayTab {
 		let sizer = TabSizer::new();
 		sizer.add_labeled(cw_label, &content_warnings, true);
 		sizer.add_labeled(emoji_label, &emoji_mode, true);
+		sizer.add_labeled(post_emoji_label, &post_emoji_mode, true);
 		sizer.add(&link_previews);
 		sizer.add(&oldest_first);
 		sizer.add(&thread_order);
@@ -75,6 +83,7 @@ impl DisplayTab {
 			panel,
 			content_warnings,
 			emoji_mode,
+			post_emoji_mode,
 			link_previews,
 			oldest_first,
 			thread_order,
@@ -90,6 +99,7 @@ impl DisplayTab {
 				self.initial.content_warning_display,
 			),
 			display_name_emoji_mode: chosen(self.emoji_mode, &EMOJI_MODES, self.initial.display_name_emoji_mode),
+			post_emoji_mode: chosen(self.post_emoji_mode, &EMOJI_MODES, self.initial.post_emoji_mode),
 			show_link_previews: self.link_previews.get_value(),
 			sort_order: if self.oldest_first.get_value() {
 				SortOrder::OldestToNewest

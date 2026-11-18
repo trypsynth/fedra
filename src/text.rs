@@ -14,6 +14,24 @@ pub fn strip_display_name_emojis(name: &str, mode: DisplayNameEmojiMode) -> Stri
 	normalize_spaces(&with_unicode_filtered)
 }
 
+/// Post text without the emoji `mode` says, keeping its line breaks. Only the post's own custom emoji, `shortcodes`,
+/// count as `:name:`, so text that merely looks like one, such as a time of 12:30:45, stays.
+pub fn strip_post_emojis(text: &str, shortcodes: &[String], mode: DisplayNameEmojiMode) -> String {
+	let mut text = text.to_string();
+	if matches!(mode, DisplayNameEmojiMode::InstanceOnly | DisplayNameEmojiMode::All) {
+		for shortcode in shortcodes {
+			text = text.replace(&format!(":{shortcode}:"), "");
+		}
+	}
+	if matches!(mode, DisplayNameEmojiMode::UnicodeOnly | DisplayNameEmojiMode::All) {
+		text = strip_unicode_emoji_chars(&text);
+	}
+	if mode == DisplayNameEmojiMode::None {
+		return text;
+	}
+	text.lines().map(normalize_spaces).collect::<Vec<_>>().join("\n")
+}
+
 fn strip_instance_shortcodes(input: &str) -> String {
 	let chars: Vec<char> = input.chars().collect();
 	let mut output = String::with_capacity(input.len());
@@ -65,8 +83,23 @@ fn normalize_spaces(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::strip_display_name_emojis;
+	use super::{strip_display_name_emojis, strip_post_emojis};
 	use crate::config::DisplayNameEmojiMode;
+
+	#[test]
+	fn strips_only_a_posts_own_custom_emoji_and_keeps_its_lines() {
+		let text = "Lunch at 12:30:45 :blobcat: \u{1F354}\nSee you :wave:";
+		let shortcodes = ["blobcat".to_string()];
+		assert_eq!(
+			strip_post_emojis(text, &shortcodes, DisplayNameEmojiMode::All),
+			"Lunch at 12:30:45\nSee you :wave:"
+		);
+		assert_eq!(
+			strip_post_emojis(text, &shortcodes, DisplayNameEmojiMode::UnicodeOnly),
+			"Lunch at 12:30:45 :blobcat:\nSee you :wave:"
+		);
+		assert_eq!(strip_post_emojis(text, &shortcodes, DisplayNameEmojiMode::None), text);
+	}
 
 	#[test]
 	fn strips_unicode_only() {
