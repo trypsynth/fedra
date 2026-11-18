@@ -5,7 +5,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use chrono::Local;
 use wx_utils::{
-	progress::{Ended, run_with_progress},
+	progress::{Ended, run_without_estimate},
 	tasks::spawn_for,
 };
 use wxdragon::prelude::*;
@@ -453,7 +453,7 @@ pub(super) fn follower_analysis(ctx: &mut UiCommandContext<'_>) {
 	};
 	let live_region = ctx.live_region.clone();
 	let ui_tx = ctx.ui_tx.clone();
-	run_with_progress(
+	run_without_estimate(
 		ctx.frame,
 		"Follower Analysis",
 		"Loading your followers...",
