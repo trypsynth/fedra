@@ -130,7 +130,14 @@ impl LanguagePicker {
 			codes.push(code.to_string());
 			names.push(code.to_string());
 		}
-		let choice = Choice::builder(&panel).with_choices(names).build();
+		let choice = Choice::builder(&panel).build();
+		// Filled frozen: added one by one as it's drawn, the instance's 180 or so languages took most of a second, every
+		// time compose opened.
+		choice.freeze();
+		for name in &names {
+			choice.append(name);
+		}
+		choice.thaw();
 		let selected = initial.and_then(|code| codes.iter().position(|c| c.eq_ignore_ascii_case(code))).unwrap_or(0);
 		choice.set_selection(u32::try_from(selected).unwrap_or(0));
 		Self::Listed(choice, codes)
