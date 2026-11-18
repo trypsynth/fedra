@@ -195,6 +195,12 @@ impl MastodonClient {
 		Self::send_json(self.http.post(url).bearer_auth(access_token).form(&[("comment", note)]), "save note")
 	}
 
+	/// Makes the account stop following the user, without blocking it.
+	pub fn remove_from_followers(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
+		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/remove_from_followers"))?;
+		self.post_json(access_token, url, "remove follower")
+	}
+
 	pub fn unmute_account(&self, access_token: &str, account_id: &str) -> Result<Relationship> {
 		let url = self.base_url.join(&format!("api/v1/accounts/{account_id}/unmute"))?;
 		self.post_json(access_token, url, "unmute account")

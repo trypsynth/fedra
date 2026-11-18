@@ -29,6 +29,7 @@
   - See who follows you that you don't follow, who you follow that doesn't follow you, who you follow each other with, and who you follow that hasn't posted in a year, with `Options -> Follower Analysis...`. Fedra loads all of your followers and follows first, with a progress bar that you can cancel.
   - Give a user an alias. Fedra shows the alias in place of their display name.
   - Keep a private note on a user, which only you can see, with `Edit Private Note...` in their Actions menu. Your server keeps it, so other apps show it too.
+  - Remove someone from your followers without blocking them, with `Remove from Followers` in their Actions menu. They can follow you again later.
   - Follow, unfollow, and mute hashtags. To see the ones you follow, use `Options -> Followed Hashtags...`.
   - See the users who boosted or favorited a post.
   - Search for accounts, hashtags, and posts.
@@ -543,6 +544,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Added Hide emoji in posts to the Display tab of the options, to leave emoji out of post text as you already can for names.
 - Added Mute / Unmute Conversation to the Post menu, to stop notifications from a thread.
 - Added Muted Users and Blocked Users to the Options menu, to see everyone you've muted or blocked and unmute or unblock them. For a mute with a time limit, the list shows when it ends.
+- Added Remove from Followers to a user's Actions menu, to make someone stop following you without blocking them.
 - Added Scheduled Posts to the Options menu, to see the posts you've scheduled and reschedule or delete them.
 - Added suggestions for hashtags as you type `#` in a post, the same way as for mentions.
 - Added View Edit History to the Post menu, to read every version of an edited post.

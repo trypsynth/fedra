@@ -32,6 +32,7 @@ pub const ID_ACTION_SEND_DIRECT_MESSAGE: i32 = 6017;
 pub const ID_ACTION_SET_ALIAS: i32 = 6018;
 pub const ID_ACTION_REMOVE_FROM_LIST: i32 = 6019;
 pub const ID_ACTION_EDIT_NOTE: i32 = 6020;
+pub const ID_ACTION_REMOVE_FOLLOWER: i32 = 6021;
 
 pub fn append_relationship_text(text: &mut String, relationship: &Relationship, is_own_account: bool) {
 	let mut body = String::new();
@@ -109,6 +110,9 @@ pub fn build_actions_menu(relationship: Option<&Relationship>) -> Menu {
 		if r.requested_by {
 			menu.append(ID_ACTION_ACCEPT_FOLLOW_REQUEST, "Accept Follow Request", "", ItemKind::Normal);
 			menu.append(ID_ACTION_REJECT_FOLLOW_REQUEST, "Reject Follow Request", "", ItemKind::Normal);
+		}
+		if r.followed_by {
+			menu.append(ID_ACTION_REMOVE_FOLLOWER, "Remove from Followers", "", ItemKind::Normal);
 		}
 		if r.muting {
 			menu.append(ID_ACTION_UNMUTE, "Unmute", "", ItemKind::Normal);
@@ -208,6 +212,16 @@ pub fn handle_action(
 			(RelationshipAction::Block, current)
 		}
 		ID_ACTION_UNBLOCK => (RelationshipAction::Unblock, current),
+		ID_ACTION_REMOVE_FOLLOWER => {
+			let question = format!(
+				"Remove {} from your followers? They can follow you again unless you block them.",
+				account.display_name_or_username()
+			);
+			if !wx_utils::confirm(parent, question, "Remove Follower") {
+				return;
+			}
+			(RelationshipAction::RemoveFromFollowers, current)
+		}
 		ID_ACTION_MUTE => {
 			let Some(mute) = prompt_for_mute(parent, account.display_name_or_username()) else { return };
 			(RelationshipAction::Mute(mute), current)

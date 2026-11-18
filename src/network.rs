@@ -27,6 +27,7 @@ pub enum RelationshipAction {
 	Unblock,
 	Mute(MuteOptions),
 	Unmute,
+	RemoveFromFollowers,
 	ShowBoosts,
 	HideBoosts,
 	EnableNotifications,
@@ -463,6 +464,7 @@ pub fn change_relationship(
 			client.mute_account(access_token, account_id, mute.notifications, mute.duration)
 		}
 		RelationshipAction::Unmute => client.unmute_account(access_token, account_id),
+		RelationshipAction::RemoveFromFollowers => client.remove_from_followers(access_token, account_id),
 		RelationshipAction::ToggleFollow => toggle_follow(client, access_token, Some(account_id.to_owned()), "").1,
 	}
 }
