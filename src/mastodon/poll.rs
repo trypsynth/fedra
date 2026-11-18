@@ -1,6 +1,6 @@
 //! Polls and the instance limits that apply to them.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::mastodon::{
 	instance::PollConfiguration,
@@ -29,7 +29,7 @@ pub struct PollOption {
 	pub votes_count: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PollLimits {
 	pub max_options: usize,
 	pub max_option_chars: usize,

@@ -14,8 +14,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use url::Url;
 
-use crate::template::{
-	DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE,
+use crate::{
+	mastodon::{Language, PollLimits},
+	template::{DEFAULT_BOOST_TEMPLATE, DEFAULT_FAVORITE_TEMPLATE, DEFAULT_POST_TEMPLATE, DEFAULT_QUOTE_TEMPLATE},
 };
 
 const APP_NAME: &str = "Fedra";
@@ -1261,6 +1262,10 @@ pub struct Account {
 	/// been looked up.
 	#[serde(default)]
 	pub default_post_language: Option<String>,
+	/// What the account's instance allowed when it last said, so a post opened before it answers again has the real
+	/// limits and languages rather than the defaults.
+	#[serde(default)]
+	pub instance_limits: Option<InstanceLimits>,
 	#[serde(default)]
 	pub saved_timelines: Vec<crate::timeline::TimelineType>,
 	#[serde(default)]
@@ -1278,6 +1283,14 @@ pub struct Account {
 	pub notifying_timelines: Vec<crate::timeline::TimelineType>,
 	#[serde(default)]
 	pub timeline_sounds: Vec<TimelineSound>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstanceLimits {
+	pub max_post_chars: usize,
+	pub max_media_description_chars: usize,
+	pub poll_limits: PollLimits,
+	pub languages: Vec<Language>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1310,6 +1323,7 @@ impl Account {
 			user_id: None,
 			default_post_visibility: None,
 			default_post_language: None,
+			instance_limits: None,
 			saved_timelines: Vec::new(),
 			saved_active_timeline: None,
 			saved_positions: Vec::new(),

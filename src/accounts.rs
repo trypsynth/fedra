@@ -150,11 +150,12 @@ pub fn switch_to_account(
 	tracing::info!(account = active_id, instance = url.host_str(), "switching to account");
 	state.streaming_url = Some(url.clone());
 	state.access_token = Some(token.clone());
-	// The previous account's limits don't apply here; the instance's own arrive with its info.
-	state.max_post_chars = None;
-	state.max_media_description_chars = None;
-	state.poll_limits = PollLimits::default();
-	state.instance_languages = Vec::new();
+	// The previous account's limits don't apply here. Until the instance answers, these are what it said last time.
+	let limits = state.active_account().and_then(|account| account.instance_limits.clone());
+	state.max_post_chars = limits.as_ref().map(|l| l.max_post_chars);
+	state.max_media_description_chars = limits.as_ref().map(|l| l.max_media_description_chars);
+	state.poll_limits = limits.as_ref().map_or_else(PollLimits::default, |l| l.poll_limits.clone());
+	state.instance_languages = limits.map(|l| l.languages).unwrap_or_default();
 	if let Ok(client) = MastodonClient::new(url) {
 		state.client = Some(client.clone());
 		state.session = Some(Session::new(client.clone(), token.clone()));

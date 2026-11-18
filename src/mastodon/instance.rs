@@ -1,6 +1,6 @@
 //! Instance metadata and the capabilities it advertises.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::mastodon::PollLimits;
 
@@ -96,7 +96,7 @@ pub(super) fn media_description_limit(v2: Option<&InstanceConfiguration>, v1: Op
 }
 
 /// A language the instance lets posts be written in.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Language {
 	/// Such as "en".
 	pub code: String,

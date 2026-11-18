@@ -4,6 +4,7 @@ use url::Url;
 use super::{NetworkResponseContext, helpers::summarize_api_error};
 use crate::{
 	AppState, UiCommand,
+	config::InstanceLimits,
 	mastodon::{Account, InstanceInfo, MastodonClient, Relationship},
 	network::{
 		AccountQuery, MUTE_DURATIONS, RelationshipAction, fetch_credentials, fetch_relationship, find_account,
@@ -56,10 +57,22 @@ pub fn fetch_notification_policy(requests: &Requests) {
 }
 
 fn instance_info_fetched(state: &mut AppState, info: InstanceInfo) {
-	state.max_post_chars = Some(info.max_post_chars);
-	state.max_media_description_chars = Some(info.max_media_description_chars);
-	state.poll_limits = info.poll_limits;
-	state.instance_languages = info.languages;
+	let limits = InstanceLimits {
+		max_post_chars: info.max_post_chars,
+		max_media_description_chars: info.max_media_description_chars,
+		poll_limits: info.poll_limits,
+		languages: info.languages,
+	};
+	state.max_post_chars = Some(limits.max_post_chars);
+	state.max_media_description_chars = Some(limits.max_media_description_chars);
+	state.poll_limits.clone_from(&limits.poll_limits);
+	state.instance_languages.clone_from(&limits.languages);
+	if let Some(account) = state.active_account_mut()
+		&& account.instance_limits.as_ref() != Some(&limits)
+	{
+		account.instance_limits = Some(limits);
+		let _ = state.save_config();
+	}
 	let streaming_url = info.streaming_url.and_then(|url| Url::parse(&url).ok());
 	if streaming_url.is_some() && streaming_url != state.streaming_url {
 		state.streaming_url = streaming_url;
