@@ -545,6 +545,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Added Your Followers and Who You Follow to the Options menu, so you don't have to open your own profile to see them.
 - Closing a post, reply, or edit that you changed without sending it now asks first. You can turn this off on the Composing tab of the options.
 - `Enter` now opens whatever a post has: its poll, its media, or a link. When a post has more than one, Fedra asks which, and the thread is one of the choices. On a post with none, `Enter` opens the thread. Open Links is still in the Post menu, without a default shortcut.
+- Fixed a new post opened right after Fedra starts showing a 500-character limit.
 - Fixed a reply to your own post starting with a space.
 - Fixed Fedra sometimes staying open with no window after you exited it.
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
