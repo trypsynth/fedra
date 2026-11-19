@@ -6,7 +6,7 @@ use wxdragon::{event::KeyboardEvent, prelude::*};
 
 use super::{
 	common::show_warning,
-	completion::{Completer, SuggestionSource},
+	completion::{SuggestionSource, completer},
 	language_picker::{LanguagePicker, normalize_language_code, system_language},
 };
 use crate::{
@@ -1023,7 +1023,7 @@ pub fn prompt_for_compose(
 	dialog.set_sizer(dialog_sizer, true);
 	dialog.set_affirmative_id(ID_OK);
 	dialog.set_escape_id(ID_CANCEL);
-	let (mentions, mention_timer) = Completer::new(dialog, panel, content_text, mention_list, mention_source);
+	let (mentions, mention_timer) = completer(dialog, panel, content_text, mention_list, mention_source);
 	let media_items: Rc<RefCell<Vec<PostMedia>>> = Rc::new(RefCell::new(initial_media));
 	let sensitive_state: Rc<RefCell<bool>> = Rc::new(RefCell::new(config.initial_sensitive));
 	let media_items_manage = media_items.clone();
@@ -1161,17 +1161,10 @@ pub fn prompt_for_compose(
 	let dialog_enter = dialog;
 	let content_text_enter = content_text;
 	let title_prefix_enter = title_prefix.clone();
-	let content_text_mentions = content_text;
 	dialog.bind_internal(EventType::CHAR_HOOK, move |event| {
 		let key_event = KeyboardEvent::new(event);
 		// Up/Down, Enter, Tab and Escape belong to the mention suggestions while they're open.
-		if content_text_mentions.has_focus()
-			&& mentions.handle_key(
-				key_event.get_key_code(),
-				key_event.shift_down(),
-				key_event.control_down(),
-				key_event.alt_down(),
-			) {
+		if mentions.handle_key(&key_event) {
 			key_event.event.skip(false);
 			return;
 		}

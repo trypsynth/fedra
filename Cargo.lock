@@ -760,6 +760,7 @@ dependencies = [
  "tungstenite",
  "url",
  "windows",
+ "wordsmith",
  "wx-utils",
  "wxdragon",
 ]
@@ -3822,6 +3823,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
 dependencies = [
  "toml",
+]
+
+[[package]]
+name = "wordsmith"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76e12557df082d78de711489b02e97a722f203accb1bbd610d335df4129e42f6"
+dependencies = [
+ "wxdragon",
 ]
 
 [[package]]
