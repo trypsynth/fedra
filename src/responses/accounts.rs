@@ -32,6 +32,32 @@ pub fn fetch_instance_info(requests: &Requests) {
 	);
 }
 
+/// Fetches the account's default visibility and language, which can have changed in another app since Fedra last
+/// looked.
+pub fn fetch_posting_defaults(requests: &Requests) {
+	requests.request(MastodonClient::verify_credentials, |ctx, result| {
+		if let Ok(account) = result
+			&& remember_posting_defaults(ctx.state, account)
+		{
+			let _ = ctx.state.save_config();
+		}
+	});
+}
+
+/// Keeps `account`'s posting defaults on the active account, if it's still the one they're for. Says whether they
+/// changed.
+fn remember_posting_defaults(state: &mut AppState, account: Account) -> bool {
+	let Some(active) = state.active_account_mut().filter(|a| a.user_id.as_deref() == Some(account.id.as_str())) else {
+		return false;
+	};
+	let source = account.source.unwrap_or_default();
+	let language = Some(source.language.unwrap_or_default());
+	let changed = active.default_post_visibility != source.privacy || active.default_post_language != language;
+	active.default_post_visibility = source.privacy;
+	active.default_post_language = language;
+	changed
+}
+
 /// Fetches where the account last read up to, for timelines to restore.
 pub fn fetch_markers(requests: &Requests) {
 	requests.request(MastodonClient::get_markers, |ctx, result| {
@@ -250,9 +276,10 @@ fn relationship_message(action: RelationshipAction, target_name: &str) -> String
 
 fn credentials_fetched(ctx: &NetworkResponseContext<'_>, account: &Account, max_profile_fields: Option<usize>) {
 	let account = account.clone();
+	let languages = ctx.state.instance_languages.clone();
 	deferred::dialog_some(
 		ctx,
-		move |frame| dialogs::show_profile_edit_dialog(frame, &account, max_profile_fields),
+		move |frame| dialogs::show_profile_edit_dialog(frame, &account, max_profile_fields, &languages),
 		|ctx, update| {
 			if let Some(requests) = ctx.requests() {
 				requests.request(
@@ -269,11 +296,7 @@ fn credentials_fetched(ctx: &NetworkResponseContext<'_>, account: &Account, max_
 
 fn profile_updated(ctx: &mut NetworkResponseContext<'_>, account: Account) {
 	ctx.announce("Profile updated");
-	if let Some(active) = ctx.state.active_account_mut() {
-		let source = account.source.unwrap_or_default();
-		active.default_post_visibility = source.privacy;
-		active.default_post_language = Some(source.language.unwrap_or_default());
-	}
+	remember_posting_defaults(ctx.state, account);
 	let _ = ctx.state.save_config();
 	let _ = ctx.ui_tx.send(UiCommand::Refresh);
 }

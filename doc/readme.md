@@ -117,7 +117,7 @@ The dialog has these controls:
 - Content warning: a check box and a field for the warning text.
 - Content type: Default, plain text, Markdown, or HTML, on instances that support it. When you edit a Markdown post, you get your original Markdown, not the rendered text.
 - Visibility: Public, Unlisted, Followers only, or Direct. It starts with the default visibility of your account.
-- Post language: the languages your instance offers, by name. It starts with the default posting language in your account's settings, or a post's own language when you edit it. On an instance that doesn't list its languages, type a code such as `en` or `de`.
+- Post language: the languages your instance offers, by name. It starts with the default posting language in your account's settings, or the language of your system when you haven't set one, or a post's own language when you edit it. On an instance that doesn't list its languages, type a code such as `en` or `de`.
 - `Manage Media...`: add attachments, add a description to each one, and mark them as sensitive.
 - `Add Poll...`: add options up to the limit of your instance. Select a duration, allow more than one choice, and hide the vote counts until the poll ends.
 - `Schedule...`: select a local date and time to publish the post. To post immediately, select `Clear Schedule`. To see, reschedule, or delete the posts you've scheduled, use `Options -> Scheduled Posts...`.
@@ -480,7 +480,7 @@ The alias shows in place of their display name in all your timelines, for all yo
 - `Discoverable in directory`
 - The default post visibility.
 - `Mark media as sensitive by default`
-- The default post language, as a code such as `en` or `de`.
+- The default posting language, chosen by name from the languages your instance offers. `Not set` clears it.
 
 ## Lists
 `Options -> Manage Lists...` shows your Mastodon lists. Use its buttons to add, edit, and delete lists, and to see and change their members. To open a list as a timeline, use `Timelines -> Open List...`. You can also add a user to a list from the `Actions...` menu in the profile, followers, and following dialogs. List timelines update live.
@@ -556,7 +556,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 - Fixed a reply to your own post starting with a space.
 - Fixed Fedra sometimes staying open with no window after you exited it.
 - Muting someone now asks how long to mute them for, and whether to hide their notifications too.
-- New posts now start in the default posting language from your account's settings, and you choose a language by name from the ones your instance offers instead of typing a code.
+- New posts now start in the default posting language from your account's settings, or your system's language when you haven't set one. You choose a language by name from the ones your instance offers instead of typing a code, in Edit Profile as well as when posting. A change made in another app shows up the next time Fedra starts.
 - Profiles now list the hashtags the account features.
 - Profiles now show an account's roles, such as Moderator, and whether it has moved, is a memorial, or was limited or suspended by moderators. They also mark verified links and show the date of the last post.
 - Profiles now show the descriptions of a profile picture and header image, and you can set your own in Edit Profile.

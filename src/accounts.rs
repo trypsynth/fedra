@@ -8,7 +8,9 @@ use crate::{
 	config::Account,
 	mastodon::{MastodonClient, PollLimits},
 	network::Session,
-	responses::{fetch_instance_info, fetch_markers, fetch_notification_policy, search, timelines},
+	responses::{
+		fetch_instance_info, fetch_markers, fetch_notification_policy, fetch_posting_defaults, search, timelines,
+	},
 	streaming,
 	timeline::TimelineType,
 	ui::{dialogs, menu::update_menu_labels, timeline_view::with_suppressed_selection},
@@ -161,13 +163,11 @@ pub fn switch_to_account(
 		state.session = Some(Session::new(client.clone(), token.clone()));
 		if let Some(requests) = state.requests() {
 			fetch_instance_info(&requests);
+			fetch_posting_defaults(&requests);
 		}
 		let needs_verify = state.active_account().and_then(|a| a.acct.as_deref()).is_none()
 			|| state.active_account().and_then(|a| a.display_name.as_deref()).is_none()
-			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none()
-			|| state
-				.active_account()
-				.is_some_and(|a| a.default_post_visibility.is_none() || a.default_post_language.is_none());
+			|| state.active_account().and_then(|a| a.user_id.as_deref()).is_none();
 		if needs_verify {
 			if let Ok(account) = client.verify_credentials(&token)
 				&& let Some(active) = state.active_account_mut()

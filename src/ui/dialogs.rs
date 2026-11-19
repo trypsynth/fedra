@@ -8,6 +8,7 @@ mod filters;
 mod find;
 mod follow_analysis;
 mod follow_list;
+mod language_picker;
 mod link_selection;
 mod list_edit;
 mod list_selection;

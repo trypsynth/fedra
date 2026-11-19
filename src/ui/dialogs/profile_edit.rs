@@ -1,7 +1,12 @@
 use wx_utils::{add_ok_cancel_footer, build_ok_cancel_buttons_on};
 use wxdragon::prelude::*;
 
-use crate::{html, mastodon::Account, network::ProfileUpdate};
+use super::language_picker::LanguagePicker;
+use crate::{
+	html,
+	mastodon::{Account, Language},
+	network::ProfileUpdate,
+};
 
 /// Mastodon's limit before 4.6, which is when instances started reporting it.
 const DEFAULT_MAX_PROFILE_FIELDS: usize = 4;
@@ -10,6 +15,7 @@ pub fn show_profile_edit_dialog(
 	frame: &Frame,
 	current: &Account,
 	max_profile_fields: Option<usize>,
+	languages: &[Language],
 ) -> Option<ProfileUpdate> {
 	let dialog = Dialog::builder(frame, "Edit Profile").with_size(600, 600).build();
 	let panel = Panel::builder(&dialog).build();
@@ -97,7 +103,7 @@ pub fn show_profile_edit_dialog(
 		content_sizer.add_sizer(&row_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
 		field_controls.push((name_ctrl, val_ctrl));
 	}
-	let (privacy_choice_opt, sensitive_cb_opt, lang_text_opt) =
+	let (privacy_choice_opt, sensitive_cb_opt, language_opt) =
 		current.source.as_ref().map_or((None, None, None), |source| {
 			let privacy_sizer = BoxSizer::builder(Orientation::Horizontal).build();
 			let privacy_label = StaticText::builder(&scroll_win).with_label("Default post visibility").build();
@@ -117,15 +123,13 @@ pub fn show_profile_edit_dialog(
 			sensitive_cb.set_value(source.sensitive.unwrap_or(false));
 			content_sizer.add(&sensitive_cb, 0, SizerFlag::All, 5);
 			let lang_sizer = BoxSizer::builder(Orientation::Horizontal).build();
-			let lang_label = StaticText::builder(&scroll_win).with_label("Language:").build();
-			let lang_text = TextCtrl::builder(&scroll_win)
-				.with_value(source.language.as_deref().unwrap_or(""))
-				.with_size(Size::new(1, -1))
-				.build();
+			let lang_label = StaticText::builder(&scroll_win).with_label("Posting language:").build();
+			let current_language = source.language.clone().filter(|code| !code.is_empty());
+			let lang_picker = LanguagePicker::new(&scroll_win, languages, current_language.as_deref());
 			lang_sizer.add(&lang_label, 0, SizerFlag::AlignCenterVertical | SizerFlag::Right, 5);
-			lang_sizer.add(&lang_text, 1, SizerFlag::Expand, 0);
+			lang_picker.add_to(lang_sizer);
 			content_sizer.add_sizer(&lang_sizer, 0, SizerFlag::Expand | SizerFlag::All, 5);
-			(Some(privacy_choice), Some(sensitive_cb), Some(lang_text))
+			(Some(privacy_choice), Some(sensitive_cb), Some((lang_picker, current_language)))
 		});
 	scroll_win.set_sizer(content_sizer, true);
 	main_sizer.add(&scroll_win, 1, SizerFlag::Expand, 0);
@@ -186,8 +190,8 @@ pub fn show_profile_edit_dialog(
 		// Always send every row, blank ones included, so the server clears any field that was emptied
 		fields_attributes.push((name, val));
 	}
-	let source = if let (Some(privacy_choice), Some(sensitive_cb), Some(lang_text)) =
-		(privacy_choice_opt, sensitive_cb_opt, lang_text_opt)
+	let source = if let (Some(privacy_choice), Some(sensitive_cb), Some((picker, current_language))) =
+		(privacy_choice_opt, sensitive_cb_opt, language_opt)
 	{
 		let privacy = match privacy_choice.get_selection() {
 			Some(1) => "unlisted",
@@ -198,7 +202,11 @@ pub fn show_profile_edit_dialog(
 		Some(crate::mastodon::Source {
 			privacy: Some(privacy),
 			sensitive: Some(sensitive_cb.get_value()),
-			language: Some(lang_text.get_value()),
+			// Only a change is sent, and Not set sends an empty language to clear it.
+			language: {
+				let chosen = picker.value();
+				(chosen != current_language).then(|| chosen.unwrap_or_default())
+			},
 			fields: Vec::new(),
 		})
 	} else {
