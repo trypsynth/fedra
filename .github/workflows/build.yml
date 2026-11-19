@@ -61,10 +61,9 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         # Shared with the other workflow, so a release build starts from the last build on main.
-        shared-key: release-windows-${{ matrix.arch }}
-        # The wxWidgets build cache's key too, so a wxdragon-sys built against one wxWidgets build is never restored beside
-        # another, whose PDBs its objects don't match.
-        key: wx-${{ steps.wxdragon.outputs.hash }}-msvc${{ env.VCToolsVersion }}
+        # With the wxWidgets build cache's key, so a wxdragon-sys built against one wxWidgets build is never restored beside
+        # another, whose PDBs its objects don't match. rust-cache ignores its key input once there's a shared key.
+        shared-key: release-windows-${{ matrix.arch }}-wx-${{ steps.wxdragon.outputs.hash }}-msvc${{ env.VCToolsVersion }}
         save-if: ${{ github.ref == 'refs/heads/main' }}
     # After the Rust cache, since post steps run in reverse: this one saves before rust-cache's cleanup would drop it.
     - name: Cache wxWidgets build
@@ -136,10 +135,9 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         # Shared with the other workflow, so a release build starts from the last build on main.
-        shared-key: release-macos
-        # The wxWidgets build cache's key too, so a wxdragon-sys built against one wxWidgets build is never restored beside
-        # another.
-        key: wx-${{ steps.wxdragon.outputs.hash }}
+        # With the wxWidgets build cache's key, so a wxdragon-sys built against one wxWidgets build is never restored beside
+        # another. rust-cache ignores its key input once there's a shared key.
+        shared-key: release-macos-wx-${{ steps.wxdragon.outputs.hash }}
         save-if: ${{ github.ref == 'refs/heads/main' }}
     # After the Rust cache, since post steps run in reverse: this one saves before rust-cache's cleanup would drop it.
     - name: Cache wxWidgets build
