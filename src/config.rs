@@ -502,8 +502,22 @@ impl ActionId {
 		}
 	}
 
+	/// On macOS Command-Q quits and Command-Shift-Q logs out, so the actions with those keys elsewhere get others there.
+	fn mac_default_chord(self, quick: bool) -> Option<KeyChord> {
+		match self {
+			Self::Quote if !quick => Some(KeyChord::new(true, true, false, "Q")),
+			Self::ToggleQuickActionKeys => Some(KeyChord::new(true, true, false, "K")),
+			_ => None,
+		}
+	}
+
 	#[allow(clippy::match_same_arms, reason = "one arm per action keeps the default table readable")]
 	pub fn default_chord(self, quick: bool) -> Option<KeyChord> {
+		if cfg!(target_os = "macos")
+			&& let Some(chord) = self.mac_default_chord(quick)
+		{
+			return Some(chord);
+		}
 		if quick {
 			match self {
 				Self::NewPost => Some(KeyChord::new(false, false, false, "C")),
@@ -1561,6 +1575,21 @@ mod tests {
 		assert_eq!(mode.get_chord(ActionId::NewPost, false), None);
 		mode.reset_all();
 		assert_eq!(mode.get_chord(ActionId::NewPost, false), Some(KeyChord::new(true, false, false, "N")));
+	}
+
+	#[test]
+	fn no_mac_default_takes_quit_or_log_out() {
+		for quick in [false, true] {
+			for action in ActionId::all() {
+				let Some(chord) = action.mac_default_chord(quick).or_else(|| action.default_chord(quick)) else {
+					continue;
+				};
+				assert!(
+					!(chord.ctrl && !chord.alt && chord.key == "Q"),
+					"{action:?} takes Command-Q or Command-Shift-Q"
+				);
+			}
+		}
 	}
 
 	#[test]
