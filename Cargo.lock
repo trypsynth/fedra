@@ -639,9 +639,9 @@ dependencies = [
 
 [[package]]
 name = "doorbell"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64f5511514bb80334f0e72811e308daf66145f7114e1269b80eaffa1dd149338"
+checksum = "06f1c53a5f4a9cdff01241989c0a163df2f5d1139cbee995a1a22f95c81ab9d9"
 dependencies = [
  "windows",
 ]
