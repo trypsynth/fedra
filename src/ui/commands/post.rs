@@ -14,7 +14,7 @@ use crate::{
 	mastodon::{MastodonClient, Status, StatusAction, friendly_time_local},
 	network::{self, Target, resolve_status},
 	responses::{spoken_failure, status_acted, statuses},
-	timeline::{TimelineTextOptions, TimelineType},
+	timeline::{TimelineEntry, TimelineTextOptions, TimelineType},
 	ui::{dialogs, timeline_view::list_index_to_entry_index},
 };
 
@@ -439,6 +439,57 @@ pub(super) fn edit_post(ctx: &mut UiCommandContext<'_>) {
 	} else {
 		live_region.announce("Network not available");
 	}
+}
+
+/// Reads the post the selected one replies to without leaving the timeline, from a loaded timeline when one has it.
+pub(super) fn read_replied_post(ctx: &mut UiCommandContext<'_>) {
+	let state = &*ctx.state;
+	let Some(status) = get_selected_status(state) else {
+		ctx.live_region.announce("No post selected");
+		return;
+	};
+	let Some(parent_id) = status.reblog.as_deref().unwrap_or(status).in_reply_to_id.clone() else {
+		ctx.live_region.announce("Not a reply");
+		return;
+	};
+	let loaded = state
+		.timeline_manager
+		.timelines()
+		.iter()
+		.flat_map(|timeline| &timeline.entries)
+		.filter_map(TimelineEntry::as_status)
+		.find(|status| status.id == parent_id);
+	if let Some(parent) = loaded {
+		ctx.live_region.announce(&replied_post_text(state, parent));
+		return;
+	}
+	let Some(requests) = ctx.requests() else {
+		ctx.live_region.announce("Network not available");
+		return;
+	};
+	requests.request(
+		move |client, token| client.get_status(token, &parent_id),
+		|ctx, result| match result {
+			Ok(parent) => ctx.live_region.announce(&replied_post_text(ctx.state, &parent)),
+			Err(err) => ctx.live_region.announce(&spoken_failure("Could not load the post this replies to", &err)),
+		},
+	);
+}
+
+/// `parent` as the active timeline would show it.
+fn replied_post_text(state: &AppState, parent: &Status) -> String {
+	let options = state.timeline_manager.active().map_or_else(
+		|| TimelineTextOptions::from_config_default(&state.config),
+		|a| TimelineTextOptions::from_config(&state.config, &a.timeline_type),
+	);
+	parent.timeline_display(
+		&options,
+		false,
+		&options.post_template,
+		&options.boost_template,
+		&options.quote_template,
+		&options.filter_context,
+	)
 }
 
 pub(super) fn copy_post(ctx: &mut UiCommandContext<'_>) {

@@ -74,6 +74,7 @@ seq_ids! {
 	ID_OPEN_POST,
 	ID_FOLLOWER_ANALYSIS,
 	ID_FOLLOWED_HASHTAGS,
+	ID_READ_REPLIED_POST,
 }
 
 /// wx's standard preferences item, which macOS moves into the app menu as Settings.

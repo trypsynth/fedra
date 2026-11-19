@@ -310,7 +310,7 @@ Global shortcuts are off by default. To turn them on, select `Use the invisible 
 
 Each default global shortcut is the Normal mode shortcut for the same action, with `Ctrl`, `Alt`, and `Win` added. For example, `Ctrl+P` for a profile becomes `Ctrl+Alt+Win+P`. The arrow keys that move through the list become `Ctrl+Alt+Win` with an arrow key. The show and hide shortcut stays `Ctrl+Alt+F`.
 
-Some actions have no default global shortcut, because their keys conflict with other actions or with Windows. These include Find, View Thread, Delete Post, Open in Browser, Clear Timeline, and Exit. `Ctrl+Alt+Shift+Win` is the Office key. Thus, no default uses it with a letter that opens an Office app, such as O for Outlook.
+Some actions have no default global shortcut, because their keys conflict with other actions or with Windows. These include Find, View Thread, Read Replied-To Post, Delete Post, Open in Browser, Clear Timeline, and Exit. `Ctrl+Alt+Shift+Win` is the Office key. Thus, no default uses it with a letter that opens an Office app, such as O for Outlook.
 
 | Action | Default |
 |---|---|
@@ -392,6 +392,7 @@ On macOS, `Ctrl` in these shortcuts is `Command`. A few are different, since mac
 | View Post Details | `Shift+Enter` | `Shift+Enter` |
 | View Edit History | None | None |
 | View Thread | `Alt+Enter` | `Alt+Enter` |
+| Read Replied-To Post | `Ctrl+Enter` | `Ctrl+Enter` |
 | View Quoted Thread | None | None |
 | Edit Post... | `Ctrl+E` | `E` |
 | Delete Post | `Delete` | `Delete` |
@@ -532,6 +533,8 @@ Press `Ctrl+I`, or `I` in Quick Action Keys mode, on a post with media to open t
 ## Opening Posts
 Press `Enter` on a post to open what it has: its poll, its media, or its links. If it has only one of these, Fedra opens it. If it has more, such as a poll and a link, a dialog lists them, with `View thread` last, and its `Open` button opens the one you select. If it has none, `Enter` opens the thread, as `View Thread` does, and on a user or a hashtag it opens their profile or timeline. On a notification without a post, such as a follow, it opens the profile of whoever it's from. For a link, `Copy` copies it. If `Always prompt to open links` is on, Fedra also asks when the only thing to open is a link. Fedra removes tracking parameters from URLs, unless you turn this off in the General options.
 
+Press `Ctrl+Enter` on a reply to hear the post it replies to, without leaving the timeline. Read Replied-To Post is also in the Post menu and the context menu.
+
 You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Links` are in the Post menu and the context menu.
 
 ## Configuration File
@@ -542,6 +545,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 ## Changelog
 
 ### Version 0.9.1
+- Added Read Replied-To Post, on `Ctrl+Enter`, to hear the post a reply answers without leaving the timeline.
 - Fixed Fedra sometimes staying running with no window after you closed it, which made every launch after it open another copy instead of switching to the open one, and made updating fail.
 - On macOS, four shortcuts moved off keys macOS keeps for itself, so `Command+Q` quits Fedra, `Command+Shift+Q` logs out, `Command+H` hides Fedra, and `Command+M` minimizes it as usual. Quote Post is now `Command+Option+Q`, Toggle Quick Keys Mode `Command+Option+K`, View Hashtags `Command+Shift+H`, and View Mentions `Command+Option+Shift+M`. Shortcuts you changed yourself stay as they are.
 

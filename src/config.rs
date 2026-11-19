@@ -272,6 +272,7 @@ pub enum ActionId {
 	ViewPost,
 	ViewEditHistory,
 	ViewThread,
+	ReadRepliedPost,
 	ViewQuotedThread,
 	EditPost,
 	DeletePost,
@@ -355,6 +356,7 @@ impl ActionId {
 			Self::ViewPost,
 			Self::ViewEditHistory,
 			Self::ViewThread,
+			Self::ReadRepliedPost,
 			Self::ViewQuotedThread,
 			Self::EditPost,
 			Self::DeletePost,
@@ -438,6 +440,7 @@ impl ActionId {
 			Self::ViewPost => "View Post Details",
 			Self::ViewEditHistory => "View Edit History",
 			Self::ViewThread => "View Thread",
+			Self::ReadRepliedPost => "Read Replied-To Post",
 			Self::ViewQuotedThread => "View Quoted Thread",
 			Self::EditPost => "Edit Post...",
 			Self::DeletePost => "Delete Post",
@@ -539,6 +542,7 @@ impl ActionId {
 				Self::CopyPostLink => Some(KeyChord::new(true, false, false, "C")),
 				Self::ViewPost => Some(KeyChord::new(false, false, true, "Enter")),
 				Self::ViewThread => Some(KeyChord::new(false, true, false, "Enter")),
+				Self::ReadRepliedPost => Some(KeyChord::new(true, false, false, "Enter")),
 				Self::ViewQuotedThread => None,
 				Self::EditPost => Some(KeyChord::new(false, false, false, "E")),
 				Self::DeletePost => Some(KeyChord::new(false, false, false, "Delete")),
@@ -617,6 +621,7 @@ impl ActionId {
 				Self::CopyPostLink => Some(KeyChord::new(true, false, false, "C")),
 				Self::ViewPost => Some(KeyChord::new(false, false, true, "Enter")),
 				Self::ViewThread => Some(KeyChord::new(false, true, false, "Enter")),
+				Self::ReadRepliedPost => Some(KeyChord::new(true, false, false, "Enter")),
 				Self::ViewQuotedThread => None,
 				Self::EditPost => Some(KeyChord::new(true, false, false, "E")),
 				Self::DeletePost => Some(KeyChord::new(false, false, false, "Delete")),
@@ -829,12 +834,13 @@ impl GlobalAction {
 			Self::ReadPost => Some(global("Space")),
 			Self::PreviousTimeline => Some(global("Left")),
 			Self::NextTimeline => Some(global("Right")),
-			// Exit would be Ctrl+Alt+Win+F4, too close to Windows' Ctrl+Win+F4. Find and View thread
-			// would land on Follow's and Open links' keys, and the Delete ones on Ctrl+Alt+Delete.
+			// Exit would be Ctrl+Alt+Win+F4, too close to Windows' Ctrl+Win+F4. Find, View thread and Read replied-to
+			// post would land on Follow's and Open's keys, and the Delete ones on Ctrl+Alt+Delete.
 			Self::Exit
 			| Self::Action(
 				ActionId::Find
 				| ActionId::ViewThread
+				| ActionId::ReadRepliedPost
 				| ActionId::DeletePost
 				| ActionId::ClearTimeline
 				| ActionId::ClearAllTimelines,
