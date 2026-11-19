@@ -502,11 +502,14 @@ impl ActionId {
 		}
 	}
 
-	/// On macOS Command-Q quits and Command-Shift-Q logs out, so the actions with those keys elsewhere get others there.
+	/// Keys the actions have elsewhere that macOS keeps for itself: Command-Q quits, Command-Shift-Q logs out, Command-H
+	/// hides the app, and Command-M minimizes its window.
 	fn mac_default_chord(self, quick: bool) -> Option<KeyChord> {
 		match self {
 			Self::Quote if !quick => Some(KeyChord::new(true, true, false, "Q")),
 			Self::ToggleQuickActionKeys => Some(KeyChord::new(true, true, false, "K")),
+			Self::ViewHashtags if !quick => Some(KeyChord::new(true, false, true, "H")),
+			Self::ViewMentions if !quick => Some(KeyChord::new(true, true, true, "M")),
 			_ => None,
 		}
 	}
@@ -1578,16 +1581,27 @@ mod tests {
 	}
 
 	#[test]
-	fn no_mac_default_takes_quit_or_log_out() {
+	fn no_mac_default_takes_a_key_macos_keeps() {
+		let reserved = [
+			KeyChord::new(true, false, false, "Q"),
+			KeyChord::new(true, false, true, "Q"),
+			KeyChord::new(true, true, true, "Q"),
+			KeyChord::new(true, false, false, "H"),
+			KeyChord::new(true, true, false, "H"),
+			KeyChord::new(true, false, false, "M"),
+			KeyChord::new(true, true, false, "M"),
+		];
 		for quick in [false, true] {
-			for action in ActionId::all() {
-				let Some(chord) = action.mac_default_chord(quick).or_else(|| action.default_chord(quick)) else {
-					continue;
-				};
-				assert!(
-					!(chord.ctrl && !chord.alt && chord.key == "Q"),
-					"{action:?} takes Command-Q or Command-Shift-Q"
-				);
+			let chords: Vec<(ActionId, KeyChord)> = ActionId::all()
+				.iter()
+				.filter_map(|&action| {
+					action.mac_default_chord(quick).or_else(|| action.default_chord(quick)).map(|chord| (action, chord))
+				})
+				.collect();
+			for (action, chord) in &chords {
+				assert!(!reserved.contains(chord), "{action:?} takes {chord:?}, which macOS keeps");
+				let same = chords.iter().filter(|(_, other)| other == chord).count();
+				assert_eq!(same, 1, "{action:?} shares {chord:?} with another action");
 			}
 		}
 	}

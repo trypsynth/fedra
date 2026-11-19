@@ -366,7 +366,12 @@ If another program already uses one of these shortcuts, Fedra tells you at start
 
 ### Default Shortcuts
 
-On macOS, `Ctrl` in these shortcuts is `Command`. Quote Post is `Command+Option+Q` and Toggle Quick Keys Mode is `Command+Option+K` instead, since `Command+Q` quits and `Command+Shift+Q` logs out.
+On macOS, `Ctrl` in these shortcuts is `Command`. A few are different, since macOS keeps their keys for itself:
+
+- Quote Post is `Command+Option+Q`, since `Command+Q` quits.
+- Toggle Quick Keys Mode is `Command+Option+K`, since `Command+Shift+Q` logs out.
+- View Hashtags is `Command+Shift+H`, since `Command+H` hides Fedra.
+- View Mentions is `Command+Option+Shift+M`, since `Command+M` minimizes the window.
 
 | Action | Normal mode | Quick Action Keys mode |
 |---|---|---|
@@ -538,7 +543,7 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 
 ### Version 0.9.1
 - Fixed Fedra sometimes staying running with no window after you closed it, which made every launch after it open another copy instead of switching to the open one, and made updating fail.
-- On macOS, Quote Post is now `Command+Option+Q` and Toggle Quick Keys Mode is `Command+Option+K`, so `Command+Q` quits Fedra and `Command+Shift+Q` logs out as usual. Shortcuts you changed yourself stay as they are.
+- On macOS, four shortcuts moved off keys macOS keeps for itself, so `Command+Q` quits Fedra, `Command+Shift+Q` logs out, `Command+H` hides Fedra, and `Command+M` minimizes it as usual. Quote Post is now `Command+Option+Q`, Toggle Quick Keys Mode `Command+Option+K`, View Hashtags `Command+Shift+H`, and View Mentions `Command+Option+Shift+M`. Shortcuts you changed yourself stay as they are.
 
 ### Version 0.9.0
 - A profile's relationship section now says when someone has blocked you, when you feature them on your profile, and whether your mute also hides their notifications.
