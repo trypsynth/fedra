@@ -534,6 +534,9 @@ You can also open just one kind: `Vote on Poll...`, `Play Media`, and `Open Link
 
 ## Changelog
 
+### Version 0.9.1
+- Fixed Fedra sometimes staying running with no window after you closed it, which made every launch after it open another copy instead of switching to the open one, and made updating fail.
+
 ### Version 0.9.0
 - A profile's relationship section now says when someone has blocked you, when you feature them on your profile, and whether your mute also hides their notifications.
 - Added a log, `fedra.log` in the same folder as your settings, to help with reporting problems. The new Advanced tab of the options sets how much it records, or turns it off.

@@ -37,6 +37,8 @@ use std::{
 };
 
 use logkeeper::{Guard, Logkeeper};
+#[cfg(windows)]
+use windows::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
 use wx_utils::tasks::{sleep, spawn_local};
 use wxdragon::prelude::*;
 
@@ -282,6 +284,13 @@ static LOG_GUARD: Mutex<Option<Guard>> = Mutex::new(None);
 pub(crate) fn exit_now() -> ! {
 	tracing::info!("exiting");
 	drop(LOG_GUARD.lock().map(|mut guard| guard.take()));
+	// Everything worth keeping is saved by now. Exiting normally runs each thread-local's destructor, and releasing the
+	// spell checker, which lives in another process, then waits forever on a COM call nothing is left to answer. That
+	// left a copy with no window, holding fedra.exe and the pipe a second copy hands over to.
+	#[cfg(windows)]
+	unsafe {
+		let _ = TerminateProcess(GetCurrentProcess(), 0);
+	}
 	process::exit(0);
 }
 
