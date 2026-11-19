@@ -56,6 +56,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          # The wxWidgets build cache's key too, so a wxdragon-sys built against one wxWidgets build is never restored
+          # beside another, whose PDBs its objects don't match.
+          key: wx-${{ steps.wxdragon.outputs.hash }}-msvc${{ env.VCToolsVersion }}
       # wxdragon-sys builds wxWidgets with CMake into target/debug/*_cmake_build.
       # rust-cache wipes everything in target/debug except Cargo's own
       # directories before saving, even paths passed as cache-directories, so
