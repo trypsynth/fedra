@@ -19,6 +19,7 @@ mod network;
 mod notifications;
 mod read_position;
 mod responses;
+mod soundpack;
 mod speech;
 mod streaming;
 mod template;
@@ -345,6 +346,7 @@ fn main() {
 			Ok(output) => state.notification_sound = Some(output),
 			Err(err) => tracing::warn!(error = %err, "couldn't open audio output, so notifications have no sound"),
 		}
+		soundpack::play(&state, soundpack::SoundEvent::Start);
 		let refresh_timer = Rc::new(Timer::new(&frame));
 		let ui_tx_timer_poll = ui_tx.clone();
 		refresh_timer.on_tick(move |_| {

@@ -9,6 +9,7 @@ use crate::{
 	UiCommand,
 	mastodon::{Poll, PostSubmission, Status, StatusAction, StatusSource, friendly_time_local},
 	network::{self, PostData, StatusEdit, Target, resolve_status, submit},
+	soundpack::SoundEvent,
 	ui::commands::{Requests, run_edit_post_dialog},
 };
 
@@ -63,7 +64,7 @@ pub fn resolve_for_quote(requests: &Requests, url: String) {
 			Ok(focus) => {
 				let _ = ctx.ui_tx.send(UiCommand::PromptForQuote(Box::new(focus)));
 			}
-			Err(err) => ctx.announce(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err))),
+			Err(err) => ctx.announce_error(&format!("Failed to resolve post for quote: {}", summarize_api_error(&err))),
 		},
 	);
 }
@@ -76,7 +77,7 @@ pub fn resolve_for_thread(requests: &Requests, url: String) {
 			Ok(focus) => {
 				let _ = ctx.ui_tx.send(UiCommand::ViewResolvedThread(Box::new(focus)));
 			}
-			Err(err) => ctx.announce(&format!("Failed to resolve thread: {}", summarize_api_error(&err))),
+			Err(err) => ctx.announce_error(&format!("Failed to resolve thread: {}", summarize_api_error(&err))),
 		},
 	);
 }
@@ -216,6 +217,14 @@ pub fn action(ctx: &mut NetworkResponseContext<'_>, action: StatusAction, result
 				refresh_own_user_timelines(ctx.state);
 			}
 			ctx.refresh_menu_labels();
+			// Only turning something on has a sound; the undoing actions stay silent.
+			match action {
+				StatusAction::Favorite => ctx.play(SoundEvent::Favorite),
+				StatusAction::Bookmark => ctx.play(SoundEvent::Bookmark),
+				StatusAction::Boost => ctx.play(SoundEvent::Boost),
+				StatusAction::Pin => ctx.play(SoundEvent::Pin),
+				_ => {}
+			}
 			ctx.announce(effect.success);
 		}
 		Err(err) => ctx.announce_failure(effect.failure, &err),
@@ -245,6 +254,7 @@ fn post_complete(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmis
 	match result {
 		Ok(PostSubmission::Published(status)) => {
 			ctx.state.pending_post = None;
+			ctx.play(SoundEvent::PostSent);
 			ctx.announce("Posted");
 			continue_thread_if_pending(ctx, status);
 		}
@@ -265,6 +275,7 @@ fn replied(ctx: &mut NetworkResponseContext<'_>, result: Result<PostSubmission>)
 	match result {
 		Ok(PostSubmission::Published(status)) => {
 			ctx.state.pending_post = None;
+			ctx.play(SoundEvent::PostSent);
 			ctx.announce("Reply sent");
 			continue_thread_if_pending(ctx, status);
 		}
@@ -291,6 +302,7 @@ fn continue_thread_if_pending(ctx: &mut NetworkResponseContext<'_>, status: Box<
 fn deleted(ctx: &mut NetworkResponseContext<'_>, status_id: &str) {
 	remove_status_from_timelines(ctx.state, status_id);
 	ctx.refresh_active_timeline();
+	ctx.play(SoundEvent::PostDeleted);
 	ctx.announce("Deleted");
 }
 
@@ -298,6 +310,7 @@ fn edited(ctx: &mut NetworkResponseContext<'_>, status: &Status) {
 	let snapshot = status.clone();
 	update_status_in_timelines(ctx.state, &status.id, |s| *s = snapshot.clone());
 	ctx.refresh_active_timeline();
+	ctx.play(SoundEvent::PostEdited);
 	ctx.announce("Edited");
 }
 
@@ -306,6 +319,7 @@ fn poll_voted(ctx: &mut NetworkResponseContext<'_>, result: Result<Poll>) {
 		Ok(poll) => {
 			update_poll_in_timelines(ctx.state, &poll);
 			ctx.refresh_active_timeline();
+			ctx.play(SoundEvent::PollVoted);
 			ctx.announce("Vote submitted");
 		}
 		Err(err) => ctx.announce_failure("Failed to vote", &err),

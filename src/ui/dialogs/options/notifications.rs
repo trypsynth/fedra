@@ -16,6 +16,8 @@ pub struct NotificationSettings {
 	pub hidden: Vec<NotificationKind>,
 	/// Types that show but never make a sound or notification.
 	pub silent: Vec<NotificationKind>,
+	/// The folder name of the chosen soundpack, or `None` for no event sounds.
+	pub soundpack: Option<String>,
 }
 
 impl NotificationSettings {
@@ -24,6 +26,7 @@ impl NotificationSettings {
 			preference: config.notification_preference,
 			hidden: config.disabled_notification_types.clone(),
 			silent: config.silent_notification_types.clone(),
+			soundpack: config.soundpack.clone(),
 		}
 	}
 
@@ -31,6 +34,7 @@ impl NotificationSettings {
 		config.notification_preference = self.preference;
 		config.disabled_notification_types = self.hidden;
 		config.silent_notification_types = self.silent;
+		config.soundpack = self.soundpack;
 	}
 }
 
@@ -39,6 +43,10 @@ pub struct NotificationsTab {
 	preference: Choice,
 	types: Rc<RefCell<(Vec<NotificationKind>, Vec<NotificationKind>)>>,
 	initial_preference: NotificationPreference,
+	soundpack: Choice,
+	/// The packs found when the dialog opened, in the order the choice lists them after "None".
+	soundpack_names: Vec<String>,
+	initial_soundpack: Option<String>,
 }
 
 impl NotificationsTab {
@@ -55,11 +63,31 @@ impl NotificationsTab {
 				*current.borrow_mut() = updated;
 			}
 		});
+		let soundpack_label = StaticText::builder(&panel).with_label("&Soundpack:").build();
+		// "None" first, then every pack folder found. A saved pack that's no longer installed shows as None.
+		let soundpack_names = crate::soundpack::list_packs();
+		let mut soundpack_choices = vec!["None"];
+		soundpack_choices.extend(soundpack_names.iter().map(String::as_str));
+		let soundpack_index = initial
+			.soundpack
+			.as_ref()
+			.and_then(|current| soundpack_names.iter().position(|name| name == current))
+			.map_or(0, |index| index + 1);
+		let soundpack = choice(panel, &soundpack_choices, soundpack_index);
 		let sizer = TabSizer::new();
 		sizer.add_labeled(preference_label, &preference, true);
 		sizer.add(&types_button);
+		sizer.add_labeled(soundpack_label, &soundpack, true);
 		sizer.finish(panel);
-		Self { panel, preference, types, initial_preference: initial.preference }
+		Self {
+			panel,
+			preference,
+			types,
+			initial_preference: initial.preference,
+			soundpack,
+			soundpack_names,
+			initial_soundpack: initial.soundpack,
+		}
 	}
 
 	pub fn values(&self) -> NotificationSettings {
@@ -68,6 +96,11 @@ impl NotificationsTab {
 			preference: chosen(self.preference, &PREFERENCES, self.initial_preference),
 			hidden,
 			silent,
+			soundpack: match self.soundpack.get_selection() {
+				Some(0) => None,
+				Some(index) => self.soundpack_names.get(index as usize - 1).cloned(),
+				None => self.initial_soundpack.clone(),
+			},
 		}
 	}
 }

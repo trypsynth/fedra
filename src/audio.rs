@@ -3,8 +3,8 @@
 //! Fedra used to hand media playback off to the Windows Media Player Legacy
 //! component through wxWidgets' `MediaCtrl`. That component isn't installed on
 //! every system and only speaks video-player idioms that don't matter to a
-//! screen-reader-first client, so all playback (the favorite/notification
-//! sound and attachment playback) goes through rodio instead.
+//! screen-reader-first client, so all playback (event sounds and attachment
+//! playback) goes through rodio instead.
 
 use std::{
 	fs::File,
@@ -35,24 +35,24 @@ impl AudioOutput {
 	}
 }
 
-/// Decodes and plays the audio file at `path` once, independently of any
-/// other playback already in progress on `output`. Silently does nothing if
-/// the file can't be read or decoded, since this is used for the best-effort
-/// favorite/notification sound.
-pub fn play_once(output: &AudioOutput, path: &Path) {
+/// Decodes and plays the audio file at `path` once, at `volume` (0.0 is silent, 1.0 is the file's
+/// own level), independently of any other playback already in progress on `output`. Silently does
+/// nothing if the file can't be read or decoded, since this is used for best-effort event sounds.
+pub fn play_once(output: &AudioOutput, path: &Path, volume: f32) {
 	let Ok(file) = File::open(path) else { return };
 	let Ok(source) = rodio::Decoder::try_from(file) else { return };
-	play_source(output, source);
+	play_source(output, source, volume);
 }
 
 /// Like [`play_once`], for a sound built into the executable.
-pub fn play_bytes_once(output: &AudioOutput, bytes: &'static [u8]) {
+pub fn play_bytes_once(output: &AudioOutput, bytes: &'static [u8], volume: f32) {
 	let Ok(source) = rodio::Decoder::new(Cursor::new(bytes)) else { return };
-	play_source(output, source);
+	play_source(output, source, volume);
 }
 
-fn play_source<R: Read + Seek + Send + Sync + 'static>(output: &AudioOutput, source: rodio::Decoder<R>) {
+fn play_source<R: Read + Seek + Send + Sync + 'static>(output: &AudioOutput, source: rodio::Decoder<R>, volume: f32) {
 	let player = rodio::Player::connect_new(output.mixer());
+	player.set_volume(volume);
 	player.append(source);
 	player.detach();
 }

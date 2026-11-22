@@ -132,6 +132,46 @@ When you type `@` in the post text, Fedra suggests people: first the people in t
 - `Enter` or `Tab` adds the highlighted suggestion and a space.
 - `Escape` closes the suggestions. `Ctrl+Space` opens them again.
 
+## Soundpacks
+A soundpack plays a sound when something happens in Fedra. Choose one in `Options -> General -> Soundpack`. The default is `None`, so Fedra plays no event sounds until you choose a pack.
+
+### Installing a Soundpack
+Fedra looks for soundpacks in the `soundpacks` folder in the same place as the [configuration file](#configuration-file). On Windows, when Fedra is installed, this is `%APPDATA%\Fedra\soundpacks`. When Fedra is portable, it is the `soundpacks` folder in the same folder as the program. On macOS, it is `~/Library/Application Support/Fedra/soundpacks`. Each soundpack is a folder in `soundpacks`, and the name of the folder is the name of the pack. Fedra finds new packs when you open the options.
+
+### Sounds in a Soundpack
+Put a file in the pack's folder for each event that you want a sound for. Name the file for the event, for example `boost.mp3`. Fedra plays MP3, Ogg, WAV, FLAC, and M4A files. If a pack has no file for an event, that event is silent.
+
+| File name | When it plays |
+|---|---|
+| `bookmark` | You bookmark a post. |
+| `boost` | You boost a post. |
+| `boundary` | With the invisible interface, you try to move past the first or last post. |
+| `close_timeline` | You close a timeline. |
+| `direct_message` | You get a direct message. |
+| `error` | Fedra gets an error. |
+| `favorite` | You favorite a post. |
+| `follow` | You follow a user or hashtag, or someone follows you. |
+| `follow_request` | You get or send a follow request. |
+| `home_post` | A new post arrives in your Home timeline. |
+| `mentions` | You get a mention. |
+| `mention` | You move to a post that mentions you. |
+| `media` | You move to a post that has media. |
+| `notification` | You get any other notification. |
+| `open_timeline` | You open a timeline. |
+| `pin` | You pin a post. |
+| `poll_ended` | A poll ends. |
+| `poll_voted` | You vote in a poll. |
+| `post_deleted` | You delete a post. |
+| `post_edited` | You edit a post. |
+| `post_sent` | You send a post. |
+| `start` | Fedra starts. |
+| `volume_change` | You change the volume. |
+
+Undoing an action, such as removing a favorite, doesn't play a sound. A direct message or mention plays only its own sound, not the notification sound. A notification type that you turned off in `Notification Types...` doesn't play a sound either.
+
+### Volume
+Press `Ctrl+Shift+Up Arrow` to raise the volume and `Ctrl+Shift+Down Arrow` to lower it. Each press changes it by 10 percent. Fedra says the new volume and plays the `volume_change` sound at that volume. The volume applies to soundpack sounds, notification sounds, and timeline notification sounds. It doesn't change the media player's volume. You can change these shortcuts in `Customize Keyboard Shortcuts...`.
+
 ## Options
 To open the options, press `Ctrl+,`.
 
@@ -198,6 +238,7 @@ Fedra remembers the post you were on in each open timeline, and goes back to it 
   - Edited posts
   - New posts
   - Moderation and admin
+- `Soundpack`: the set of sounds that Fedra plays for events. The default is `None`, which plays no event sounds. See [Soundpacks](#soundpacks).
 
 ### Templates Tab
 Templates set how posts show in each timeline. They use [Jinja2](https://jinja.palletsprojects.com/en/stable/templates/) syntax.
@@ -436,6 +477,8 @@ On macOS, `Ctrl` in these shortcuts is `Command`. A few are different, since mac
 | Next Account | `Ctrl+]` | `Ctrl+]` |
 | Toggle Content Warning | `Ctrl+X` | `X` |
 | Toggle Quick Keys Mode | `Ctrl+Shift+Q` | `Ctrl+Shift+Q` |
+| Increase Sound Volume | `Ctrl+Shift+Up Arrow` | `Ctrl+Shift+Up Arrow` |
+| Decrease Sound Volume | `Ctrl+Shift+Down Arrow` | `Ctrl+Shift+Down Arrow` |
 | Manage Accounts... | `Ctrl+Alt+A` | `Ctrl+Alt+A` |
 | Manage Filters... | None | None |
 | Scheduled Posts... | None | None |

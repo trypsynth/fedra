@@ -8,6 +8,7 @@ use super::{UiCommandContext, command_for, deferred, handle_ui_command};
 use crate::{
 	UiCommand,
 	config::{ActionId, GlobalAction},
+	soundpack::{self, SoundEvent},
 	ui::{app_shell, dialogs, keys},
 };
 
@@ -58,7 +59,11 @@ fn step(ctx: &UiCommandContext<'_>, key: i32) {
 	}
 	let before = list.get_selection();
 	list.navigate(key);
-	if !ctx.state.config.repeat_at_timeline_edges && list.get_selection() == before {
+	let at_edge = list.get_selection() == before;
+	if at_edge {
+		soundpack::play(ctx.state, SoundEvent::Boundary);
+	}
+	if !ctx.state.config.repeat_at_timeline_edges && at_edge {
 		return;
 	}
 	// With the list focused in a foreground window, the screen reader reads the new selection

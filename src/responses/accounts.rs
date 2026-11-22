@@ -12,6 +12,7 @@ use crate::{
 	},
 	notifications::notify_message_requests,
 	read_position::apply_markers,
+	soundpack::SoundEvent,
 	timeline::TimelineType,
 	ui::{
 		commands::{Requests, deferred},
@@ -114,7 +115,7 @@ pub fn look_up(requests: &Requests, query: AccountQuery, action: UserLookupActio
 		move |client, token| find_account(client, token, &asked),
 		move |ctx, result| match result {
 			Ok(account) => open_account(ctx, &account, action),
-			Err(err) => ctx.announce(&format!("Failed to find user {query}: {}", summarize_api_error(&err))),
+			Err(err) => ctx.announce_error(&format!("Failed to find user {query}: {}", summarize_api_error(&err))),
 		},
 	);
 }
@@ -208,6 +209,14 @@ pub fn relationship_updated(
 		}
 	};
 	show_relationship(ctx, &rel);
+	// Following someone who has to approve it only asks, which is a follow request.
+	if matches!(action, RelationshipAction::Follow | RelationshipAction::ToggleFollow) {
+		if rel.requested {
+			ctx.play(SoundEvent::FollowRequest);
+		} else if rel.following {
+			ctx.play(SoundEvent::Follow);
+		}
+	}
 	ctx.announce(&relationship_message(action, target_name));
 }
 

@@ -7,6 +7,7 @@ use super::NetworkResponseContext;
 use crate::{
 	UiCommand,
 	mastodon::{Account, List, MastodonClient},
+	soundpack::SoundEvent,
 	timeline::TimelineType,
 	ui::{
 		commands::{Requests, deferred},
@@ -178,6 +179,7 @@ fn accounts_fetched(ctx: &mut NetworkResponseContext<'_>, list_id: String, membe
 }
 
 fn operation_failed(ctx: &mut NetworkResponseContext<'_>, err: &anyhow::Error) {
+	ctx.play(SoundEvent::Error);
 	ctx.state.pending_add_to_list_user = None;
 	// Over the lists dialog when that's what's open, so the error isn't hidden behind it.
 	let parent: Option<Dialog> = ctx

@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use super::{NetworkResponseContext, helpers::summarize_api_error, timeline_updates::update_tag_in_timelines};
-use crate::{UiCommand, mastodon::Tag, ui::dialogs};
+use crate::{UiCommand, mastodon::Tag, soundpack::SoundEvent, ui::dialogs};
 
 pub fn following_changed<T>(ctx: &mut NetworkResponseContext<'_>, name: &str, result: &Result<T>, following: bool) {
 	match result {
@@ -10,9 +10,12 @@ pub fn following_changed<T>(ctx: &mut NetworkResponseContext<'_>, name: &str, re
 			if let Some(dlg) = &ctx.state.hashtag_dialog {
 				dlg.update_tag(name, following);
 			}
+			if following {
+				ctx.play(SoundEvent::Follow);
+			}
 			ctx.announce(&format!("{} #{name}", if following { "Followed" } else { "Unfollowed" }));
 		}
-		Err(err) => ctx.announce(&format!(
+		Err(err) => ctx.announce_error(&format!(
 			"Failed to {} #{name}: {}",
 			if following { "follow" } else { "unfollow" },
 			summarize_api_error(err)
@@ -28,7 +31,7 @@ pub fn muted_changed<T>(ctx: &NetworkResponseContext<'_>, name: &str, result: &R
 			}
 			ctx.announce(&format!("{} #{name}", if muted { "Muted" } else { "Unmuted" }));
 		}
-		Err(err) => ctx.announce(&format!(
+		Err(err) => ctx.announce_error(&format!(
 			"Failed to {} #{name}: {}",
 			if muted { "mute" } else { "unmute" },
 			summarize_api_error(err)
