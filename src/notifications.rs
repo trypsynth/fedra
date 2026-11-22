@@ -12,8 +12,7 @@ use crate::{
 #[cfg(windows)]
 fn show(app_shell: Option<&AppShell>, title: &str, body: &str) {
 	if let Some(app_shell) = app_shell {
-		// wxICON_INFORMATION = 0x00000002
-		app_shell.taskbar.show_balloon(title, body, 5000, 0x0000_0002, None);
+		app_shell.show_balloon(title, body);
 	}
 }
 

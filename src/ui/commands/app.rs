@@ -3,12 +3,13 @@
 use wxdragon::prelude::*;
 
 use super::{UiCommandContext, deferred};
-use crate::ui::{app_shell, menu::relabel_menus};
+use crate::ui::menu::relabel_menus;
 
-pub(super) fn toggle_window_visibility(ctx: &mut UiCommandContext<'_>) {
-	let frame = ctx.frame;
+pub(super) fn show_or_hide_window(ctx: &mut UiCommandContext<'_>) {
 	let tray_hidden = ctx.tray_hidden;
-	app_shell::toggle_window_visibility(frame, tray_hidden);
+	if let Some(app_shell) = ctx.state.app_shell.clone() {
+		app_shell.show_or_hide(tray_hidden);
+	}
 	// Saved right away rather than on exit, since a Windows shutdown can end the process before
 	// AppClosing runs, and that's the case where an autostarted Fedra needs to remember it.
 	if ctx.state.config.saved_window_hidden != tray_hidden.get() {
@@ -48,6 +49,10 @@ pub(super) fn view_help(ctx: &mut UiCommandContext<'_>) {
 }
 
 pub(super) fn show_window(ctx: &mut UiCommandContext<'_>) {
+	if let Some(app_shell) = ctx.state.app_shell.clone() {
+		app_shell.come_forward(ctx.tray_hidden);
+		return;
+	}
 	let frame = ctx.frame;
 	if !frame.is_shown() {
 		frame.show(true);

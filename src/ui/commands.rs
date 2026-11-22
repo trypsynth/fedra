@@ -132,7 +132,7 @@ pub enum UiCommand {
 	ToggleFollow,
 	// Sent by the tray icon, which isn't installed on macOS.
 	#[cfg_attr(target_os = "macos", allow(dead_code))]
-	ToggleWindowVisibility,
+	ShowOrHideWindow,
 	ShowWindow,
 	Global(crate::config::GlobalAction),
 	SetQuickActionKeysEnabled(bool),
@@ -239,7 +239,7 @@ impl UiCommand {
 			Self::LoadMoreBackground => "LoadMoreBackground",
 			Self::ToggleContentWarning => "ToggleContentWarning",
 			Self::ToggleFollow => "ToggleFollow",
-			Self::ToggleWindowVisibility => "ToggleWindowVisibility",
+			Self::ShowOrHideWindow => "ShowOrHideWindow",
 			Self::ShowWindow => "ShowWindow",
 			Self::Global(..) => "Global",
 			Self::SetQuickActionKeysEnabled(..) => "SetQuickActionKeysEnabled",
@@ -527,7 +527,7 @@ pub fn handle_ui_command(cmd: UiCommand, ctx: &mut UiCommandContext<'_>) {
 		UiCommand::LoadMoreBackground => timeline::load_more_background(ctx),
 		UiCommand::LoadMore => timeline::load_more(ctx),
 		UiCommand::ToggleContentWarning => post::toggle_content_warning(ctx),
-		UiCommand::ToggleWindowVisibility => app::toggle_window_visibility(ctx),
+		UiCommand::ShowOrHideWindow => app::show_or_hide_window(ctx),
 		UiCommand::ShowWindow => app::show_window(ctx),
 		UiCommand::Global(action) => global::run(ctx, action),
 		UiCommand::SetQuickActionKeysEnabled(enabled) => app::set_quick_action_keys_enabled(ctx, enabled),

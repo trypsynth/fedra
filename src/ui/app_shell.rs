@@ -1,21 +1,26 @@
-use std::cell::{Cell, RefCell};
-
-use wx_utils::global_hotkeys::GlobalHotkeys;
-use wxdragon::prelude::*;
+use std::{
+	cell::{Cell, RefCell},
+	rc::Rc,
+};
 
 #[cfg(not(target_os = "macos"))]
-use crate::{ID_TRAY_EXIT, ID_TRAY_TOGGLE};
+use wx_utils::tray::Tray;
+use wx_utils::{global_hotkeys::GlobalHotkeys, tray::Visibility};
+use wxdragon::prelude::*;
+
 use crate::{
 	UiCommand,
 	config::{GlobalAction, GlobalShortcuts, KeyChord},
 	ui_wake::UiCommandSender,
 };
 
+/// The tray icon, the global hotkeys, and hiding the window and bringing it back.
 pub struct AppShell {
+	frame: Frame,
+	/// Hides the window and brings it back along with whichever dialog the user was in.
+	visibility: Rc<Visibility>,
 	#[cfg(not(target_os = "macos"))]
-	pub(crate) tray_menu: RefCell<Option<Menu>>,
-	#[cfg(not(target_os = "macos"))]
-	pub(crate) taskbar: TaskBarIcon,
+	tray: Tray,
 	hotkeys: RefCell<Option<GlobalHotkeys>>,
 }
 
@@ -50,18 +55,40 @@ impl AppShell {
 		failed.iter().map(KeyChord::to_shortcut_string).collect()
 	}
 
+	/// Hides Fedra when it's what the user is in, and otherwise brings it forward. For the hotkey.
+	/// `tray_hidden` learns which it did.
+	pub fn toggle(&self, tray_hidden: &Cell<bool>) {
+		self.visibility.toggle();
+		tray_hidden.set(!self.frame.is_shown());
+	}
+
+	/// Hides Fedra when it's shown, and otherwise brings it back. For the tray menu, which takes
+	/// the foreground itself, so whether Fedra was in front can't be told any more.
+	pub fn show_or_hide(&self, tray_hidden: &Cell<bool>) {
+		self.visibility.show_or_hide();
+		tray_hidden.set(!self.frame.is_shown());
+	}
+
+	/// Brings Fedra to the front, onto the dialog the user was last in.
+	pub fn come_forward(&self, tray_hidden: &Cell<bool>) {
+		self.visibility.come_forward();
+		tray_hidden.set(false);
+	}
+
+	/// Shows a notification from the tray icon, which only Windows does.
+	#[cfg(windows)]
+	pub fn show_balloon(&self, title: &str, body: &str) {
+		// wxICON_INFORMATION = 0x00000002
+		self.tray.show_balloon(title, body, 5000, 0x0000_0002);
+	}
+
 	/// Clean up the tray icon and hotkey thread. Safe to call multiple times.
 	/// This should be called during `on_close` (before window destruction begins)
 	/// so that destroying the tray icon doesn't cause a focus shift back to the
 	/// still-alive window, which screen readers would announce.
 	pub fn cleanup(&self) {
 		#[cfg(not(target_os = "macos"))]
-		{
-			if let Some(mut menu) = self.tray_menu.borrow_mut().take() {
-				menu.destroy_menu();
-			}
-			self.taskbar.destroy();
-		}
+		self.tray.remove();
 		// Leaked rather than dropped: dropping waits for the hotkey thread, and blocking here
 		// during close can hang the UI thread. The process is exiting, and Windows releases its
 		// hotkeys when it does.
@@ -73,57 +100,27 @@ impl AppShell {
 }
 
 #[cfg(target_os = "macos")]
-pub fn install_app_shell(_frame: &Frame, _ui_tx: UiCommandSender) -> AppShell {
+pub fn install_app_shell(frame: &Frame, _ui_tx: UiCommandSender) -> AppShell {
 	// macOS uses the Dock to reopen the window, without a menu bar status item.
-	AppShell { hotkeys: RefCell::new(None) }
+	AppShell { frame: *frame, visibility: Rc::new(Visibility::new(*frame)), hotkeys: RefCell::new(None) }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn install_app_shell(_frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
-	let mut tray_menu = Menu::builder()
-		.append_item(ID_TRAY_TOGGLE, "Show/Hide", "Show or hide Fedra")
-		.append_separator()
-		.append_item(ID_TRAY_EXIT, "Exit", "Exit Fedra")
-		.build();
-	let taskbar = TaskBarIcon::builder().with_icon_type(TaskBarIconType::CustomStatusItem).build();
-	taskbar.set_popup_menu(&mut tray_menu);
-	let tray_icon = ArtProvider::get_bitmap(ArtId::Information, ArtClient::Menu, Some(Size::new(16, 16)));
-	if let Some(icon) = tray_icon {
-		let _ = taskbar.set_icon(&icon, "Fedra");
-	} else if let Some(fallback) = Bitmap::new(16, 16) {
-		let _ = taskbar.set_icon(&fallback, "Fedra");
-	}
-	taskbar.on_menu(move |event| match event.get_id() {
-		ID_TRAY_TOGGLE => {
-			let _ = ui_tx.send(UiCommand::ToggleWindowVisibility);
-		}
-		ID_TRAY_EXIT => {
-			let _ = ui_tx.send(UiCommand::ExitApp);
-		}
-		_ => {}
+pub fn install_app_shell(frame: &Frame, ui_tx: UiCommandSender) -> AppShell {
+	let (click_tx, menu_tx, exit_tx) = (ui_tx.clone(), ui_tx.clone(), ui_tx);
+	// Through the command queue, so the window's hidden state is saved as it changes.
+	let tray = Tray::builder("Fedra")
+		.on_click(move || {
+			let _ = click_tx.send(UiCommand::ShowWindow);
+		})
+		.on_show_hide(move || {
+			let _ = menu_tx.send(UiCommand::ShowOrHideWindow);
+		})
+		.build(frame);
+	tray.on_exit(move || {
+		let _ = exit_tx.send(UiCommand::ExitApp);
 	});
-	AppShell { tray_menu: RefCell::new(Some(tray_menu)), taskbar, hotkeys: RefCell::new(None) }
-}
-
-pub fn toggle_window_visibility(frame: &Frame, tray_hidden: &Cell<bool>) {
-	let is_shown = frame.is_shown();
-	if is_shown && is_window_active(frame) {
-		frame.show(false);
-		tray_hidden.set(true);
-		return;
-	}
-	if is_shown && !is_window_active(frame) {
-		if frame.is_iconized() {
-			frame.iconize(false);
-		}
-		frame.raise();
-		return;
-	}
-	if !is_shown {
-		frame.show(true);
-		frame.raise();
-		tray_hidden.set(false);
-	}
+	AppShell { frame: *frame, visibility: Rc::new(Visibility::new(*frame)), tray, hotkeys: RefCell::new(None) }
 }
 
 pub fn is_window_active(frame: &Frame) -> bool {

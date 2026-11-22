@@ -57,8 +57,6 @@ pub(crate) use crate::ui::ids::{
 	ID_VIEW_PROFILE, ID_VIEW_QUOTED_THREAD, ID_VIEW_THREAD, ID_VIEW_USER_TIMELINE, ID_VOTE, ID_YOUR_FOLLOWERS,
 	ID_YOUR_FOLLOWING,
 };
-#[cfg(not(target_os = "macos"))]
-pub(crate) use crate::ui::ids::{ID_TRAY_EXIT, ID_TRAY_TOGGLE};
 use crate::{
 	accounts::{apply_refresh_interval, start_add_account_flow, switch_to_account},
 	config::Config,

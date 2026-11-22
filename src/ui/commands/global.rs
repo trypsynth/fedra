@@ -13,7 +13,11 @@ use crate::{
 
 pub(super) fn run(ctx: &mut UiCommandContext<'_>, action: GlobalAction) {
 	match action {
-		GlobalAction::ToggleWindow => app_shell::toggle_window_visibility(ctx.frame, ctx.tray_hidden),
+		GlobalAction::ToggleWindow => {
+			if let Some(app_shell) = ctx.state.app_shell.clone() {
+				app_shell.toggle(ctx.tray_hidden);
+			}
+		}
 		GlobalAction::PreviousPost => step(ctx, keys::UP),
 		GlobalAction::NextPost => step(ctx, keys::DOWN),
 		GlobalAction::FirstPost => step(ctx, keys::HOME),
