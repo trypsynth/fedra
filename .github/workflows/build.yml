@@ -44,7 +44,7 @@ jobs:
     # The x64 runner has CMake, and the MSVC step puts Visual Studio's Ninja on the PATH.
     - name: Install CMake and Ninja
       if: matrix.arch == 'arm64'
-      uses: lukka/get-cmake@v4.5.0
+      uses: lukka/get-cmake@v4.5.1
     # wxWidgets is built by wxdragon-sys, so only its locked version decides whether a cached build still fits.
     - name: Find the locked wxdragon-sys
       id: wxdragon
